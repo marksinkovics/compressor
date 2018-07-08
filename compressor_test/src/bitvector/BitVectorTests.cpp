@@ -114,8 +114,7 @@ TEST_F(BitVectorTests, AssignmentOperator) {
 }
 
 TEST_F(BitVectorTests, Iterator) {
-    BitVector v1;
-    v1.resize_in_bytes(2);
+    BitVector v1(2);
     v1.set(0);
     v1.set(7);
     v1.set(10);
@@ -156,4 +155,16 @@ TEST_F(BitVectorTests, Iterator) {
 //                  [](const auto& n) { std::cout << n;});
     std::cout << '\n';
     std::cout << b << std::endl;
+}
+
+TEST_F(BitVectorTests, ToString) {
+    BitVector v1(2);
+    v1.set(2);
+    v1.set(4);
+    std::cout << "BitVector:\n" << v1 << '\n';
+
+    std::bitset<16> b1;
+    b1.set(2);
+    b1.set(4);
+    std::cout << "std::bitset:\n" << b1 << '\n';
 }

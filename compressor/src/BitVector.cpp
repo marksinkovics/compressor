@@ -13,15 +13,19 @@
 #include <cmath>
 #include <sstream>
 
-BitVector::BitVector() {
-    this->internal_size_in_bytes = 1;
-    this->internal_array = new DATA_TYPE[this->internal_size_in_bytes];
-    this->internal_array[0] = 0; // reset all bits to zero
-    this->bit_pointer = internal_size_in_bytes * BITS_PER_BYTE;
+BitVector::BitVector() : BitVector(1){
+    
 }
 
-BitVector::BitVector(const BitVector& v)
-{
+BitVector::BitVector(const size_t& size_in_bytes){
+    this->internal_size_in_bytes = size_in_bytes;
+    this->internal_array = new DATA_TYPE[this->internal_size_in_bytes];
+    std::fill(this->internal_array, this->internal_array+this->internal_size_in_bytes, 0);
+    this->bit_pointer = internal_size_in_bytes * BITS_PER_BYTE;
+
+}
+
+BitVector::BitVector(const BitVector& v){
     DATA_TYPE *new_internal_array = new DATA_TYPE[v.internal_size_in_bytes];
     for (size_t index = 0; index < v.internal_size_in_bytes; ++index) {
         new_internal_array[index] = v.internal_array[index];
@@ -32,7 +36,7 @@ BitVector::BitVector(const BitVector& v)
     this->bit_pointer = v.bit_pointer;
 }
 
-BitVector::~BitVector() {
+BitVector::~BitVector(){
     delete [] this->internal_array;
 }
 
@@ -167,7 +171,7 @@ std::ostream& operator<<(std::ostream& os, const BitVector& bitVector) {
 }
 
 //
-// BitVectorIterator
+//MARK: - BitVectorIterator
 //
 
 BitVectorIterator::BitVectorIterator(const BitVector& vector, const size_t index)

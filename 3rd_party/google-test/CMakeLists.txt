@@ -1,3 +1,7 @@
+# 
+# Google Test
+# 
+
 # Download and unpack googletest at configure time
 # See: http://crascit.com/2015/07/25/cmake-gtest/
 configure_file(CMakeLists.txt.in googletest-download/CMakeLists.txt)
@@ -8,6 +12,7 @@ execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" .
 if(result)
   message(FATAL_ERROR "CMake step for googletest failed: ${result}")
 endif()
+
 # Build the downloaded google test
 execute_process(COMMAND ${CMAKE_COMMAND} --build .
   RESULT_VARIABLE result
