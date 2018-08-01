@@ -10,6 +10,7 @@
 #include <chrono>
 #include <iostream>
 
+#include <boost/dynamic_bitset.hpp>
 #include <gtest/gtest.h>
 
 #include <BitVector.hpp>
@@ -167,4 +168,9 @@ TEST_F(BitVectorTests, ToString) {
     b1.set(2);
     b1.set(4);
     std::cout << "std::bitset:\n" << b1 << '\n';
+
+    boost::dynamic_bitset<> db1(16);
+    db1[2] = 1;
+    db1[4] = 1;
+    std::cout << "boost::dynamic_bitset:\n" << db1 << '\n';
 }

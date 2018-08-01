@@ -6,6 +6,7 @@ enable_testing()
 
 set(CMAKE_CXX_STANDARD 17)
 
+add_subdirectory(3rd_party/boost)
 add_subdirectory(compressor)
 add_subdirectory(compressor_app)
 add_subdirectory(3rd_party/google-test)
