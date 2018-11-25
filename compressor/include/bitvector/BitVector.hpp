@@ -10,6 +10,7 @@
 #define BitVector_hpp
 
 #include <iostream>
+#include <fstream>
 
 class BitVectorIterator;
 
@@ -34,6 +35,7 @@ public:
     bool operator[](const size_t& pos) const;
     BitVector& operator=(const BitVector& rhs);
     
+    std::string byte_to_bit_string(uint8_t value, uint8_t length = 8) const;
     std::string to_string() const;
     
     size_t size_in_bits() const;
@@ -50,33 +52,11 @@ public:
 private:
     size_t internal_size_in_bytes;
     DATA_TYPE *internal_array;
+    // store the last position index in the array
     size_t bit_pointer;
-};
-
-class BitVectorIterator {
 public:
-    //http://anderberg.me/2016/07/04/c-custom-iterators/
-    
-    // Default constructible.
-    BitVectorIterator() = default;
-    explicit BitVectorIterator(const BitVector& vector, const size_t index);
-    
-    bool operator*() const;
-    
-    // Pre- and post-incrementable.
-    BitVectorIterator& operator++();
-    BitVectorIterator operator++(int);
-    
-    // Pre- and post-decrementable.
-    BitVectorIterator& operator--();
-    BitVectorIterator operator--(int);
-    
-    // Equality / inequality.
-    bool operator==(const BitVectorIterator& rhs);
-    bool operator!=(const BitVectorIterator& rhs);
-private:
-    size_t internal_bit_index;
-    const BitVector* internal_bitvector;
+    friend std::ofstream& operator<<(std::ofstream& ofs, const BitVector& bitVector);
+    friend std::ifstream& operator>>(std::ifstream& ifs, BitVector& bitVector);
 };
 
 std::ostream& operator<<(std::ostream& os, const BitVector& bitVector);

@@ -1,9 +1,9 @@
 #include <thread>
 
 #include <benchmark/benchmark.h>
-#include <boost/dynamic_bitset.hpp>
+#include <boost/dynamic_bitset/dynamic_bitset.hpp>
 
-#include <Bitvector.hpp>
+#include <bitvector/BitVector.hpp>
 
 static void BM_BoolVectorCreation(benchmark::State& state) {
     int bit_count = state.range(0) * 8;

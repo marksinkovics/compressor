@@ -4,6 +4,8 @@ project(CompressionProject)
 
 enable_testing()
 
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+
 set(CMAKE_CXX_STANDARD 17)
 
 add_subdirectory(3rd_party/boost)

@@ -1,8 +1,6 @@
-
 class Compressor {
 public:
-	Compressor();
-	int value() const;
+    Compressor(const char* input);
 private:
-	int value_;
+    const char* _input;
 };

@@ -13,6 +13,13 @@ add_executable(${PROJECT_NAME}
     ${INCLUDE_FILES}
 )
 
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SRC_FILES})
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${INCLUDE_FILES})
+
+target_include_directories(${PROJECT_NAME}
+    PUBLIC ${Boost_INCLUDE_DIR}
+)
+
 target_link_libraries(${PROJECT_NAME}
-    compressor  
+    compressor
 )
