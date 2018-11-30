@@ -1,15 +1,7 @@
-//
-//  BitVectorIterator.cpp
-//  CompressionProject
-//
-//  Created by Mark Sinkovics on 2018. 11. 20..
-//
+#include <bitvector/bitvectoriterator.h>
+#include <bitvector/bitvector.h>
 
-#include <bitvector/BitVectorIterator.hpp>
-
-#include <bitvector/BitVector.hpp>
-
-BitVectorIterator::BitVectorIterator(const BitVector& vector, const size_t index)
+BitVectorIterator::BitVectorIterator(const BitVector& vector, const std::size_t index)
 {
     this->internal_bitvector = &vector;
     this->internal_bit_index = index;
@@ -18,7 +10,7 @@ BitVectorIterator::BitVectorIterator(const BitVector& vector, const size_t index
 // Dereferencable.
 bool BitVectorIterator::operator*() const
 {
-    if (this->internal_bitvector) {
+    if (this->internal_bitvector && this->internal_bit_index < this->internal_bitvector->size()) {
         return this->internal_bitvector->test(this->internal_bit_index);
     }
     return false;

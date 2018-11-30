@@ -8,8 +8,14 @@ set(INCLUDE_FILES)
 set(SRC_DIR ${PROJECT_SOURCE_DIR}/src)
 set(SRC_FILES
     "${SRC_DIR}/compressor/test.cpp"
-    "${SRC_DIR}/bitvector/BitVectorTests.cpp"
-    "${SRC_DIR}/bitvector/BitVectorIteratorTests.cpp"
+    "${SRC_DIR}/compressor/compressor.cpp"
+    "${SRC_DIR}/bitvector/bitvector.cpp"
+    "${SRC_DIR}/bitvector/bitvectoriterator.cpp"
+    "${SRC_DIR}/tree/binary/node.cpp"
+    "${SRC_DIR}/tree/binary/tree.cpp"
+    "${SRC_DIR}/tree/binary/nodeiterator.cpp"
+    "${SRC_DIR}/utils/utils.cpp"
+    "${SRC_DIR}/data/data.cpp"
 )
 
 add_executable(${PROJECT_NAME}
@@ -26,7 +32,8 @@ target_include_directories(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME}
     compressor
     GTest::GTest
-    GTest::Main
+    GMock::GMock
+    GMock::Main
 )
 
 include(GoogleTest)

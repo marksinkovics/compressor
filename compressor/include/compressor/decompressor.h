@@ -1,3 +1,5 @@
+#ifndef Decompressor_h
+#define Decompressor_h
 
 class Decompressor {
 public:
@@ -6,3 +8,5 @@ public:
 private:
     int value_;
 };
+
+#endif /* Decompressor_h */

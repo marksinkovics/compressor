@@ -1,13 +1,4 @@
-//
-//  BitVector.cpp
-//  HuffmanLib
-//
-//  Created by Mark Sinkovics on 2018. 06. 16..
-//  Copyright © 2018. Mark Sinkovics. All rights reserved.
-//
-
-#include "bitvector/BitVector.hpp"
-#include "bitvector/BitVectorIterator.hpp"
+#include <bitvector/bitvector.h>
 
 #include <algorithm>
 #include <bitset>
@@ -15,196 +6,309 @@
 #include <sstream>
 #include <fstream>
 
-BitVector::BitVector() : BitVector(1){
-    
+#include <bitvector/bitvectoriterator.h>
+#include <compressor/utils/utils.h>
+
+BitVector::BitVector(const std::size_t& bits)
+{
+    this->bit_size = bits;
+    this->byte_size = Utils::calculate_byte_size(bits);
+    this->blocks = std::vector<DATA_TYPE>(this->byte_size);
 }
 
-BitVector::BitVector(const size_t& size_in_bytes){
-    this->internal_size_in_bytes = size_in_bytes;
-    this->internal_array = new DATA_TYPE[this->internal_size_in_bytes];
-    std::fill(this->internal_array, this->internal_array+this->internal_size_in_bytes, 0);
-    this->bit_pointer = internal_size_in_bytes * BITS_PER_BYTE - 1;
-}
-
-BitVector::BitVector(const BitVector& v){
-    DATA_TYPE *new_internal_array = new DATA_TYPE[v.internal_size_in_bytes];
-    for (size_t index = 0; index < v.internal_size_in_bytes; ++index) {
-        new_internal_array[index] = v.internal_array[index];
-    }
-    
-    this->internal_array = new_internal_array;
-    this->internal_size_in_bytes = v.internal_size_in_bytes;
-    this->bit_pointer = v.bit_pointer;
-}
-
-BitVector::~BitVector(){
-    delete [] this->internal_array;
-}
-
-void BitVector::set(const size_t& pos) {
-    this->set(pos, true);
-}
-
-void BitVector::reset(const size_t& pos) {
-    this->set(pos, false);
-}
-
-bool BitVector::test(const size_t& pos) const {
-    return this->get(pos);
-}
-
-void BitVector::set(const size_t &pos, const bool &data) {
-    if (pos >= this->internal_size_in_bytes * BITS_PER_BYTE) {
-        std::cerr << "Attempted to access an illegal position." << std::endl;
-        return;
-    }
-    
-    if (pos > this->bit_pointer) {
-        this->bit_pointer = pos;
-    }
-    
-    size_t byte_index = (pos >> 3); //pos / BITS_PER_BYTE;
-    size_t bit_offset = (pos & 7); //pos % BITS_PER_BYTE;
-
-    if (data) {
-        this->internal_array[byte_index] |= 1 << bit_offset;
-    } else {
-        this->internal_array[byte_index] &= ~(1 << bit_offset);
+BitVector::BitVector(const std::string& bitstring)
+    : BitVector(bitstring.length())
+{
+    for (std::size_t sidx = 0, bidx = bitstring.length() - 1; sidx < bitstring.length(); ++sidx, --bidx)
+    {
+        if (bitstring[sidx] == '1')
+            this->set(bidx);
     }
 }
 
-bool BitVector::get(const size_t &pos) const {
-    if (pos >= this->internal_size_in_bytes * sizeof(DATA_TYPE) * BITS_PER_BYTE) {
-        std::cerr << "Attempted to access an illegal position." << std::endl;
-        return false;
-    }
-
-    size_t byte_index = (pos >> 3); //pos / BITS_PER_BYTE;
-    size_t bit_offset = (pos & 7); //pos % BITS_PER_BYTE;
-    
-    return (this->internal_array[byte_index] >> bit_offset) & 1;
+BitVector::BitVector(const BitVector& v)
+{
+    this->bit_size = v.bit_size;
+    this->byte_size = v.byte_size;
+    this->blocks = v.blocks;
 }
 
-bool BitVector::at(const size_t &pos) const {
-    return this->get(pos);
+BitVector::BitVector(BitVector&& v) noexcept
+    : bit_size(std::exchange(v.bit_size, 0))
+    , byte_size(std::exchange(v.byte_size, 0))
+    , blocks(std::move(v.blocks))
+{
+    v.bit_size = 0;
+    v.byte_size = 0;
+    v.blocks.resize(0);
 }
 
-bool BitVector::operator[](const size_t& pos) const {
-    return this->get(pos);
+BitVector::~BitVector()
+{
+    
 }
 
-BitVector& BitVector::operator=(const BitVector& rhs) {
-    
-    DATA_TYPE *new_internal_array = new DATA_TYPE[rhs.internal_size_in_bytes];
-    
-    for (size_t index = 0; index < rhs.internal_size_in_bytes; ++index) {
-        new_internal_array[index] = rhs.internal_array[index];
-    }
-    
-    delete [] this->internal_array;
-    
-    this->internal_array = new_internal_array;
-    this->internal_size_in_bytes = rhs.internal_size_in_bytes;
-    this->bit_pointer = rhs.bit_pointer;
+BitVector& BitVector::operator=(const BitVector& rhs)
+{
+    if (&rhs == this)
+        return *this;
 
+    this->bit_size = rhs.bit_size;
+    this->byte_size = rhs.byte_size;
+    this->blocks = rhs.blocks;
     return *this;
 }
 
-std::string BitVector::byte_to_bit_string(uint8_t byte, uint8_t length) const
+BitVector& BitVector::operator=(BitVector &&rhs)
 {
-    if (length < 0 || length > 8) {
-        std::cerr << "Invalid length was given!\n";
-        return "";
+    if (&rhs == this)
+        return *this;
+    
+    this->bit_size = std::exchange(rhs.bit_size, 0);
+    this->byte_size = std::exchange(rhs.byte_size, 0);
+    this->blocks = std::move(rhs.blocks);
+    return *this;
+}
+
+BitVector& BitVector::operator=(const std::string& bitstring)
+{
+    if (this->str().compare(bitstring) == 0)
+        return *this;
+
+    this->bit_size = bitstring.length();
+    this->byte_size = Utils::calculate_byte_size(this->bit_size);
+    this->blocks = std::vector<DATA_TYPE>(this->byte_size);
+    
+    for (std::size_t sidx = 0, bidx = bitstring.length() - 1; sidx < bitstring.length(); ++sidx, --bidx)
+    {
+        if (bitstring[sidx] == '1')
+            this->set(bidx);
     }
     
-    std::stringstream stream;
-    for (size_t bit_index = 0; bit_index < length; bit_index++) {
-        stream << ((byte >> (length - bit_index - 1)) & 0x1);
-    }
-    return stream.str();
+    return *this;
 }
 
-std::string BitVector::to_string() const
+void BitVector::set(const std::size_t &pos, bool value) noexcept
+{
+    if (pos > this->bit_size) {
+        Utils::handle_illegal_position(pos);
+        return;
+    }
+    
+    std::size_t byte_index = (pos >> 3); //pos / BITS_PER_BYTE;
+    std::size_t bit_offset = (pos & 7); //pos % BITS_PER_BYTE;
+    if (value) {
+        this->blocks[byte_index] |= 1 << bit_offset;
+    } else {
+        this->blocks[byte_index] &= ~(1 << bit_offset);
+    }
+}
+
+void BitVector::reset(const std::size_t& pos) noexcept
+{
+    this->set(pos, false);
+}
+
+bool BitVector::test(const std::size_t pos) const noexcept
+{
+    if (pos > this->bit_size) {
+        Utils::handle_illegal_position(pos);
+        return false;
+    }
+    return (this->blocks[(pos >> 3)] & (1 << (pos & 7))) != 0;
+}
+
+bool BitVector::operator[](const std::size_t& pos) const noexcept
+{
+    return this->test(pos);
+}
+
+void BitVector::push_back(bool bit) noexcept
+{
+    const std::size_t size = this->size();
+    resize(size + 1);
+    set(size, bit);
+}
+
+void BitVector::append(const BitVector& vector) noexcept
+{
+    const std::size_t size = this->size();
+    resize(size + vector.size());
+    for(std::size_t i = 0; i < vector.size(); ++i)
+    {
+        set(i + size, vector[i]);
+    }
+}
+
+void BitVector::resize(const std::size_t &bits) noexcept
+{
+    const std::size_t bytes = Utils::calculate_byte_size(bits);
+    this->bit_size = bits;
+    if (bytes != this->byte_size)
+    {
+        this->byte_size = bytes;
+        this->blocks.resize(byte_size);
+    }
+}
+
+// Relational operators
+
+bool BitVector::operator==(const BitVector& rhs) const noexcept
+{
+    return this->size() == rhs.size() && this->blocks == rhs.blocks;
+}
+
+bool BitVector::operator!=(const BitVector& rhs) const noexcept
+{
+    return !(*this == rhs);
+}
+
+bool BitVector::operator<(const BitVector& rhs) const noexcept
+{
+    std::size_t asize = this->size();
+    std::size_t bsize = rhs.size();
+    
+    if (!bsize)
+    {
+        return false;
+    }
+    else if (!asize)
+    {
+        return true;
+    }
+    else
+    {
+        if(asize == bsize)
+        {
+            for(std::size_t i = this->num_bytes(); i > 0; --i)
+            {
+                std::size_t j = i - 1;
+                if (blocks[j] < rhs.blocks[j])
+                {
+                    return true;
+                }
+                else if (blocks[j]> rhs.blocks[j])
+                {
+                    return false;
+                }
+            }
+            return false;
+        }
+        else
+        {
+            std::size_t minsize = std::min(asize, bsize);
+            for (std::size_t i = 0; i < minsize; ++i, --asize,--bsize)
+            {
+                size_t a_index = asize - 1;
+                size_t b_index = bsize - 1;
+                if ((*this)[a_index] < rhs[b_index])
+                {
+                    return true;
+                }
+                else if ((*this)[a_index] > rhs[b_index])
+                {
+                    return false;
+                }
+            }
+            return (this->size() < rhs.size());
+        }
+    }
+}
+
+bool BitVector::operator>(const BitVector& rhs) const noexcept
+{
+    return rhs < *this;
+}
+
+bool BitVector::operator<=(const BitVector& rhs) const noexcept
+{
+    return !(*this > rhs);
+}
+
+bool BitVector::operator>=(const BitVector& rhs) const noexcept
+{
+    return !(*this < rhs);
+}
+
+// ToString methods
+
+std::string BitVector::str() const noexcept
 {
     std::stringstream stream;
-    size_t fragment = ((this->bit_pointer + 1) & 7);
-    for (size_t byte_index = this->internal_size_in_bytes; byte_index > 0; byte_index--) {
-        DATA_TYPE byte = this->internal_array[byte_index - 1];
-        if (byte_index == this->internal_size_in_bytes && fragment > 0)
-            stream << byte_to_bit_string(byte, fragment);
+    std::size_t fragment = (this->bit_size & 7);
+    for (std::size_t byte_index = this->byte_size; byte_index > 0; byte_index--)
+    {
+        DATA_TYPE byte = this->blocks[byte_index - 1];
+        if (byte_index == this->byte_size && fragment > 0)
+        {
+            stream << Utils::byte_to_bit_string(byte, fragment);
+        }
         else
-            stream << byte_to_bit_string(byte);
+        {
+            stream << Utils::byte_to_bit_string(byte);
+        }
     }
     return stream.str();
 }
 
-void BitVector::resize_in_bytes(const size_t &bytes){
-    DATA_TYPE* new_internal_array = new DATA_TYPE[bytes];
-    const size_t lower_size = std::min(this->internal_size_in_bytes, bytes);
-    for (size_t i = 0; i < lower_size; ++i) {
-        new_internal_array[i] = this->internal_array[i];
-    }
-    this->internal_size_in_bytes = bytes;
-    delete [] this->internal_array;
-    this->internal_array = new_internal_array;
+std::size_t BitVector::size() const noexcept
+{
+    return this->bit_size;
 }
 
-void BitVector::resize_in_bits(const size_t &bits) {
-    const size_t bytes = (bits >> 3) + ((bits & 7) ? 1 : 0);
-    this->bit_pointer = bits - 1;
-    this->resize_in_bytes(bytes);
-}
-
-size_t BitVector::size_in_bits() const {
-    return this->internal_size_in_bytes * sizeof(DATA_TYPE) * BITS_PER_BYTE;
-}
-
-size_t BitVector::size_in_bytes() const {
-    return this->internal_size_in_bytes;
+std::size_t BitVector::num_bytes() const noexcept
+{
+    return this->byte_size;
 }
 
 // Iterator
 
-BitVectorIterator BitVector::begin() const {
+BitVectorIterator BitVector::begin() const noexcept
+{
     return BitVectorIterator(*this, 0);
 }
 
-BitVectorIterator BitVector::end() const {
-    return BitVectorIterator(*this, this->bit_pointer);
+BitVectorIterator BitVector::end() const noexcept
+{
+    return BitVectorIterator(*this, this->bit_size);
 }
 
-// Streaming
+std::ostream& operator<<(std::ostream& ostream, const BitVector& bitVector)
+{
+    ostream.write(reinterpret_cast<const char*>(&bitVector.bit_size), sizeof(bitVector.bit_size));
+//    std::ostream_iterator<BitVector::DATA_TYPE> output_iterator(ostream);
+//    std::copy(bitVector.blocks.begin(), bitVector.blocks.end(), output_iterator);
+//    ostream.write(fd, &vector[0], vector.size() * sizeof(vector[0]));
+    if (bitVector.bit_size > 0)
+    {
+        ostream.write(reinterpret_cast<const char*>(&(bitVector.blocks[0])), bitVector.blocks.size() * sizeof(BitVector::DATA_TYPE));
+    }
 
-std::ostream& operator<<(std::ostream& os, const BitVector& bitVector) {
-    return os << bitVector.to_string();
+//    for(const auto value : bitVector.blocks)
+//    {
+//        ostream.write(reinterpret_cast<const char*>(&value), sizeof(BitVector::DATA_TYPE));
+//    }
+    return ostream;
 }
 
-std::ofstream& operator<<(std::ofstream& ofs, const BitVector& bitVector) {
+std::istream& operator>>(std::istream& istream, BitVector& bitVector)
+{
+    istream.read(reinterpret_cast<char*>(&bitVector.bit_size), sizeof(bitVector.bit_size));
     
-    std::cout << "Size: " << bitVector.internal_size_in_bytes << '\n';
-    ofs.write(reinterpret_cast<const char*>(&bitVector.internal_size_in_bytes), sizeof(size_t));
-    std::cout << "Pointer: " << bitVector.bit_pointer << '\n';
-    ofs.write(reinterpret_cast<const char*>(&bitVector.bit_pointer), sizeof(size_t));
-    ofs.write(reinterpret_cast<const char*>(bitVector.internal_array), bitVector.internal_size_in_bytes);
-    return ofs;
-}
-
-std::ifstream& operator>>(std::ifstream& ifs, BitVector& bitVector) {
-    
-    size_t size_in_bytes;
-    size_t bit_pointer;
-    
-    ifs.read(reinterpret_cast<char*>(&size_in_bytes), sizeof(size_in_bytes));
-    ifs.read(reinterpret_cast<char*>(&bit_pointer), sizeof(bit_pointer));
-
-    if (bitVector.internal_array != nullptr) {
-        delete [] bitVector.internal_array;
+    if (bitVector.bit_size > 0)
+    {
+        bitVector.byte_size = Utils::calculate_byte_size(bitVector.bit_size);
+        bitVector.blocks.reserve(bitVector.byte_size);
+        for (std::size_t i = 0; i < bitVector.byte_size; ++i)
+        {
+            BitVector::DATA_TYPE value;
+            istream.read(reinterpret_cast<char*>(&value), sizeof(BitVector::DATA_TYPE));
+            bitVector.blocks.push_back(value);
+        }
     }
     
-    bitVector.bit_pointer = bit_pointer;
-    bitVector.internal_size_in_bytes = size_in_bytes;
-    bitVector.internal_array = new BitVector::DATA_TYPE[bitVector.internal_size_in_bytes];
-    ifs.read(reinterpret_cast<char*>(bitVector.internal_array), bitVector.internal_size_in_bytes);
-
-    return ifs;
+//    std::copy_n(std::istream_iterator<BitVector::DATA_TYPE>(istream),
+//                bitVector.byte_size,
+//                std::back_inserter(bitVector.blocks));
+    return istream;
 }

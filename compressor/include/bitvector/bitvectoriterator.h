@@ -11,7 +11,7 @@ public:
     
     // Default constructible.
     BitVectorIterator() = default;
-    explicit BitVectorIterator(const BitVector& vector, const size_t index);
+    explicit BitVectorIterator(const BitVector& vector, const std::size_t index);
     
     bool operator*() const;
     
@@ -31,7 +31,7 @@ public:
     bool operator==(const BitVectorIterator& rhs) const;
     bool operator!=(const BitVectorIterator& rhs) const;
 private:
-    size_t internal_bit_index;
+    std::size_t internal_bit_index;
     const BitVector* internal_bitvector;
 };
 
