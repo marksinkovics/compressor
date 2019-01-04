@@ -3,9 +3,9 @@
 
 #include <map>
 #include <vector>
-#include <bitvector/bitvector.h>
+#include <compressor/bitset/bitset.h>
 
-namespace Compressor
+namespace compressor
 {
 
 struct Data
@@ -18,8 +18,8 @@ std::istream& operator>>(std::istream& istream, Data& data);
     
 struct EncodedData
 {
-    std::map<BitVector, uint8_t> bit_dict_;
-    BitVector data_;
+    std::map<bitset, uint8_t> bit_dict_;
+    bitset data_;
 };
     
 std::ostream& operator<<(std::ostream& ostream, const EncodedData& data);

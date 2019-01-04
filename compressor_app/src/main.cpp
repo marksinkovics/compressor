@@ -2,7 +2,7 @@
 #include <fstream>
 
 #include <compressor/compressor.h>
-#include <bitvector/bitvector.h>
+#include <compressor/bitset/bitset.h>
 
 #include <boost/dynamic_bitset/dynamic_bitset.hpp>
 #include <boost/timer.hpp>
@@ -31,11 +31,11 @@ void compress()
         return;
     }
     
-    Compressor::Data data;
+    compressor::Data data;
     istream >> data;
     istream.close();
     
-    Compressor::Compressor compressor(data);
+    compressor::Compressor compressor(data);
     auto encoded_data = compressor.encode();
     
     std::ofstream ostream;
@@ -60,11 +60,11 @@ void decompress()
         return;
     }
     
-    Compressor::EncodedData encoded_data;
+    compressor::EncodedData encoded_data;
     istream >> encoded_data;
     istream.close();
     
-    Compressor::Compressor compressor(encoded_data);
+    compressor::Compressor compressor(encoded_data);
     auto data = compressor.decode();
     
     std::ofstream ostream;

@@ -5,17 +5,16 @@
 #include <string>
 #include <iomanip>
 
-#include <bitvector/bitvector.h>
-#include <bitvector/bitvectoriterator.h>
+#include <compressor/bitset/bitset.h>
+#include <compressor/bitset/bitset_iterator.h>
 #include <compressor/compressor.h>
 #include <tree/symbolnode.h>
 #include <tree/binary/nodeiterator.h>
 
 #include <compressor/data/data.h>
 
-namespace Compressor
+namespace compressor
 {
-
 
 Compressor::Compressor(const std::string& input)
 {
@@ -88,13 +87,13 @@ void Compressor::create_hash_table() noexcept
         
         if (!node->hasParent())
         {
-            node->setTag(std::make_shared<BitVector>(0));
+            node->setTag(std::make_shared<compressor::bitset>(0));
             return;
         }
         
         bool isRightChild = (node->parent().lock()->right() == node);
-        std::shared_ptr<BitVector> parentVector = node->parent().lock()->tag();
-        node->setTag(std::make_shared<BitVector>(*parentVector));
+        std::shared_ptr<compressor::bitset> parentVector = node->parent().lock()->tag();
+        node->setTag(std::make_shared<bitset>(*parentVector));
         node->tag()->push_back(isRightChild);
     });
     
@@ -107,10 +106,10 @@ void Compressor::create_hash_table() noexcept
     }
 }
 
-std::shared_ptr<BitVector> Compressor::find_path(std::shared_ptr<SymbolNode>& node) noexcept
+std::shared_ptr<compressor::bitset> Compressor::find_path(std::shared_ptr<SymbolNode>& node) noexcept
 {
     std::shared_ptr<SymbolNode> innerNode = node;
-    auto vector = std::make_shared<BitVector>(0);
+    auto vector = std::make_shared<compressor::bitset>(0);
     while (!innerNode->parent().expired())
     {
         bool isRightChild = (node->parent().lock()->right() == node);
@@ -161,7 +160,7 @@ EncodedData Compressor::encode()
     build_tree();
     create_hash_table();
 
-    BitVector vector(0);
+    bitset vector(0);
     for (const char& symbol : data_.data_)
     {
         auto node = _symbols_dict[symbol];
@@ -182,7 +181,7 @@ EncodedData Compressor::encode()
     
 Data Compressor::decode()
 {
-    auto current = std::make_unique<BitVector>();
+    auto current = std::make_unique<bitset>();
     std::string str;
     for (const bool bit : encoded_data_.data_)
     {
@@ -191,7 +190,7 @@ Data Compressor::decode()
         if (search != encoded_data_.bit_dict_.end()) {
             uint8_t c = search->second;
             str += c;
-            current.reset(new BitVector());
+            current.reset(new bitset());
         }
     }
     std::vector<uint8_t> result_data(str.begin(), str.end());

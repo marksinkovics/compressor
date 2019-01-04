@@ -1,6 +1,6 @@
 #include <tree/binary/node.h>
 
-#include <bitvector/bitvector.h>
+#include <compressor/bitset/bitset.h>
 
 std::shared_ptr<BinaryNode> BinaryNode::left() const
 {
@@ -37,12 +37,12 @@ bool BinaryNode::hasParent() const
     return !_parent.expired();
 }
 
-void BinaryNode::setTag(std::shared_ptr<BitVector> tag)
+void BinaryNode::setTag(std::shared_ptr<compressor::bitset> tag)
 {
     _tag = tag;
 }
 
-std::shared_ptr<BitVector> BinaryNode::tag() const
+std::shared_ptr<compressor::bitset> BinaryNode::tag() const
 {
     return _tag;
 }

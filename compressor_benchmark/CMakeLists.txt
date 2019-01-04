@@ -5,9 +5,9 @@ set(INCLUDE_FILES)
 
 set(SRC_DIR ${PROJECT_SOURCE_DIR}/src)
 set(SRC_FILES
-    "${SRC_DIR}/bitvector/Creation.cpp"
-    "${SRC_DIR}/bitvector/Access.cpp"
-    "${SRC_DIR}/bitvector/Copying.cpp"
+    "${SRC_DIR}/bitset/Creation.cpp"
+    "${SRC_DIR}/bitset/Access.cpp"
+    "${SRC_DIR}/bitset/Copying.cpp"
 )
 
 add_executable(${PROJECT_NAME}

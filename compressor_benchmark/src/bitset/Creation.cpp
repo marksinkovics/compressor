@@ -3,7 +3,7 @@
 #include <benchmark/benchmark.h>
 #include <boost/dynamic_bitset/dynamic_bitset.hpp>
 
-#include <bitvector/bitvector.h>
+#include <compressor/bitset/bitset.h>
 
 static void BM_BoolVectorCreation(benchmark::State& state) {
     uint8_t bit_count = state.range(0);
@@ -21,10 +21,10 @@ static void BM_BoostDynamicBitSetCreation(benchmark::State& state) {
 
 BENCHMARK(BM_BoostDynamicBitSetCreation)->RangeMultiplier(2)->Range(8, 1<<10);
 
-static void BM_BitVectorCreation(benchmark::State& state) {
+static void BM_bitsetCreation(benchmark::State& state) {
     uint8_t bit_count = state.range(0);
     for (auto _ : state)
-        BitVector sample(bit_count);
+        compressor::bitset sample(bit_count);
 }
 
-BENCHMARK(BM_BitVectorCreation)->RangeMultiplier(2)->Range(8, 1<<10);
+BENCHMARK(BM_bitsetCreation)->RangeMultiplier(2)->Range(8, 1<<10);

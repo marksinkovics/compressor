@@ -1,6 +1,6 @@
 #include <compressor/data/data.h>
 
-namespace Compressor
+namespace compressor
 {
 
 std::ostream& operator<<(std::ostream& ostream, const Data& data)
@@ -37,7 +37,7 @@ std::istream& operator>>(std::istream& istream, EncodedData& data)
     istream.read(reinterpret_cast<char*>(&dict_size), sizeof(dict_size));
     for (std::size_t i = 0; i < dict_size; ++i)
     {
-        BitVector first;
+        bitset first;
         uint8_t second;
         istream >> first;
         istream.read(reinterpret_cast<char*>(&second), sizeof(second));

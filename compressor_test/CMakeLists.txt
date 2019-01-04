@@ -9,8 +9,8 @@ set(SRC_DIR ${PROJECT_SOURCE_DIR}/src)
 set(SRC_FILES
     "${SRC_DIR}/compressor/test.cpp"
     "${SRC_DIR}/compressor/compressor.cpp"
-    "${SRC_DIR}/bitvector/bitvector.cpp"
-    "${SRC_DIR}/bitvector/bitvectoriterator.cpp"
+    "${SRC_DIR}/bitset/bitset.cpp"
+    "${SRC_DIR}/bitset/bitset_iterator.cpp"
     "${SRC_DIR}/tree/binary/node.cpp"
     "${SRC_DIR}/tree/binary/tree.cpp"
     "${SRC_DIR}/tree/binary/nodeiterator.cpp"
@@ -40,5 +40,3 @@ include(GoogleTest)
 gtest_discover_tests(${PROJECT_NAME})
 # add_test(test_all ${PROJECT_NAME})
 # add_test(NAME ${PROJECT_NAME} COMMAND ${PROJECT_NAME})
-
-

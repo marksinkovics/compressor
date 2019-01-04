@@ -3,7 +3,10 @@
 
 #include <iostream>
 
-class BitVector;
+namespace compressor
+{
+    class bitset;
+}
 
 class BinaryNode
 {
@@ -24,8 +27,8 @@ public:
     virtual void setParent(std::weak_ptr<BinaryNode> parent);
     virtual bool hasParent() const;
     
-    virtual void setTag(std::shared_ptr<BitVector> tag);
-    virtual std::shared_ptr<BitVector> tag() const;
+    virtual void setTag(std::shared_ptr<compressor::bitset> tag);
+    virtual std::shared_ptr<compressor::bitset> tag() const;
     
     bool operator==(const BinaryNode& rhs);
     bool operator!=(const BinaryNode& rhs);
@@ -34,7 +37,7 @@ protected:
     std::shared_ptr<BinaryNode> _left;
     std::shared_ptr<BinaryNode> _right;
     std::weak_ptr<BinaryNode> _parent;
-    std::shared_ptr<BitVector> _tag;
+    std::shared_ptr<compressor::bitset> _tag;
 };
 
 #endif /* BinaryNode_hpp */

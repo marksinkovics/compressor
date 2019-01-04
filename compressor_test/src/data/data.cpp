@@ -4,6 +4,7 @@
 #include <gmock/gmock.h>
 
 #include <compressor/data/data.h>
+#include <compressor/bitset/bitset.h>
 
 class CompressorDataTests : public ::testing::Test {
 protected:
@@ -16,11 +17,11 @@ protected:
 
 TEST_F(CompressorDataTests, DataStream)
 {
-    Compressor::Data input_data;
+    compressor::Data input_data;
     input_data.data_ = {1, 2, 3, 4, 5};
     stream << input_data;
     
-    Compressor::Data output_data;
+    compressor::Data output_data;
     stream >> output_data;
     
     EXPECT_EQ(input_data.data_, output_data.data_);
@@ -29,22 +30,22 @@ TEST_F(CompressorDataTests, DataStream)
 
 TEST_F(CompressorDataTests, EncodedDataStream)
 {
-    Compressor::EncodedData input_data;
+    compressor::EncodedData input_data;
     input_data.bit_dict_ = {
-        { BitVector("00"), 'g' },
-        { BitVector("001"), 'p' },
-        { BitVector("0011"), 's' },
-        { BitVector("0111"), 'r' },
-        { BitVector("10"), 'o' },
-        { BitVector("101"), ' ' },
-        { BitVector("1011"), 'e' },
-        { BitVector("1111"), 'h' },
+        { compressor::bitset("00"), 'g' },
+        { compressor::bitset("001"), 'p' },
+        { compressor::bitset("0011"), 's' },
+        { compressor::bitset("0111"), 'r' },
+        { compressor::bitset("10"), 'o' },
+        { compressor::bitset("101"), ' ' },
+        { compressor::bitset("1011"), 'e' },
+        { compressor::bitset("1111"), 'h' },
     };
-    input_data.data_ = BitVector("01010");
+    input_data.data_ = compressor::bitset("01010");
     
     stream << input_data;
     
-    Compressor::EncodedData output_data;
+    compressor::EncodedData output_data;
     stream >> output_data;
 
     EXPECT_EQ(input_data.bit_dict_, output_data.bit_dict_);

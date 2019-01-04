@@ -1,4 +1,4 @@
-#include <bitvector/bitvector.h>
+#include <compressor/bitset/bitset.h>
 
 #include <algorithm>
 #include <bitset>
@@ -6,18 +6,21 @@
 #include <sstream>
 #include <fstream>
 
-#include <bitvector/bitvectoriterator.h>
+#include <compressor/bitset/bitset_iterator.h>
 #include <compressor/utils/utils.h>
 
-BitVector::BitVector(const std::size_t& bits)
+namespace compressor
+{
+
+bitset::bitset(const std::size_t& bits)
 {
     this->bit_size = bits;
     this->byte_size = Utils::calculate_byte_size(bits);
     this->blocks = std::vector<DATA_TYPE>(this->byte_size);
 }
 
-BitVector::BitVector(const std::string& bitstring)
-    : BitVector(bitstring.length())
+bitset::bitset(const std::string& bitstring)
+    : bitset(bitstring.length())
 {
     for (std::size_t sidx = 0, bidx = bitstring.length() - 1; sidx < bitstring.length(); ++sidx, --bidx)
     {
@@ -26,14 +29,14 @@ BitVector::BitVector(const std::string& bitstring)
     }
 }
 
-BitVector::BitVector(const BitVector& v)
+bitset::bitset(const bitset& v)
 {
     this->bit_size = v.bit_size;
     this->byte_size = v.byte_size;
     this->blocks = v.blocks;
 }
 
-BitVector::BitVector(BitVector&& v) noexcept
+bitset::bitset(bitset&& v) noexcept
     : bit_size(std::exchange(v.bit_size, 0))
     , byte_size(std::exchange(v.byte_size, 0))
     , blocks(std::move(v.blocks))
@@ -43,12 +46,12 @@ BitVector::BitVector(BitVector&& v) noexcept
     v.blocks.resize(0);
 }
 
-BitVector::~BitVector()
+bitset::~bitset()
 {
     
 }
 
-BitVector& BitVector::operator=(const BitVector& rhs)
+bitset& bitset::operator=(const bitset& rhs)
 {
     if (&rhs == this)
         return *this;
@@ -59,7 +62,7 @@ BitVector& BitVector::operator=(const BitVector& rhs)
     return *this;
 }
 
-BitVector& BitVector::operator=(BitVector &&rhs)
+bitset& bitset::operator=(bitset &&rhs)
 {
     if (&rhs == this)
         return *this;
@@ -70,7 +73,7 @@ BitVector& BitVector::operator=(BitVector &&rhs)
     return *this;
 }
 
-BitVector& BitVector::operator=(const std::string& bitstring)
+bitset& bitset::operator=(const std::string& bitstring)
 {
     if (this->str().compare(bitstring) == 0)
         return *this;
@@ -88,7 +91,7 @@ BitVector& BitVector::operator=(const std::string& bitstring)
     return *this;
 }
 
-void BitVector::set(const std::size_t &pos, bool value) noexcept
+void bitset::set(const std::size_t &pos, bool value) noexcept
 {
     if (pos > this->bit_size) {
         Utils::handle_illegal_position(pos);
@@ -104,12 +107,12 @@ void BitVector::set(const std::size_t &pos, bool value) noexcept
     }
 }
 
-void BitVector::reset(const std::size_t& pos) noexcept
+void bitset::reset(const std::size_t& pos) noexcept
 {
     this->set(pos, false);
 }
 
-bool BitVector::test(const std::size_t pos) const noexcept
+bool bitset::test(const std::size_t pos) const noexcept
 {
     if (pos > this->bit_size) {
         Utils::handle_illegal_position(pos);
@@ -118,19 +121,19 @@ bool BitVector::test(const std::size_t pos) const noexcept
     return (this->blocks[(pos >> 3)] & (1 << (pos & 7))) != 0;
 }
 
-bool BitVector::operator[](const std::size_t& pos) const noexcept
+bool bitset::operator[](const std::size_t& pos) const noexcept
 {
     return this->test(pos);
 }
 
-void BitVector::push_back(bool bit) noexcept
+void bitset::push_back(bool bit) noexcept
 {
     const std::size_t size = this->size();
     resize(size + 1);
     set(size, bit);
 }
 
-void BitVector::append(const BitVector& vector) noexcept
+void bitset::append(const bitset& vector) noexcept
 {
     const std::size_t size = this->size();
     resize(size + vector.size());
@@ -140,7 +143,7 @@ void BitVector::append(const BitVector& vector) noexcept
     }
 }
 
-void BitVector::resize(const std::size_t &bits) noexcept
+void bitset::resize(const std::size_t &bits) noexcept
 {
     const std::size_t bytes = Utils::calculate_byte_size(bits);
     this->bit_size = bits;
@@ -153,17 +156,17 @@ void BitVector::resize(const std::size_t &bits) noexcept
 
 // Relational operators
 
-bool BitVector::operator==(const BitVector& rhs) const noexcept
+bool bitset::operator==(const bitset& rhs) const noexcept
 {
     return this->size() == rhs.size() && this->blocks == rhs.blocks;
 }
 
-bool BitVector::operator!=(const BitVector& rhs) const noexcept
+bool bitset::operator!=(const bitset& rhs) const noexcept
 {
     return !(*this == rhs);
 }
 
-bool BitVector::operator<(const BitVector& rhs) const noexcept
+bool bitset::operator<(const bitset& rhs) const noexcept
 {
     std::size_t asize = this->size();
     std::size_t bsize = rhs.size();
@@ -215,24 +218,24 @@ bool BitVector::operator<(const BitVector& rhs) const noexcept
     }
 }
 
-bool BitVector::operator>(const BitVector& rhs) const noexcept
+bool bitset::operator>(const bitset& rhs) const noexcept
 {
     return rhs < *this;
 }
 
-bool BitVector::operator<=(const BitVector& rhs) const noexcept
+bool bitset::operator<=(const bitset& rhs) const noexcept
 {
     return !(*this > rhs);
 }
 
-bool BitVector::operator>=(const BitVector& rhs) const noexcept
+bool bitset::operator>=(const bitset& rhs) const noexcept
 {
     return !(*this < rhs);
 }
 
 // ToString methods
 
-std::string BitVector::str() const noexcept
+std::string bitset::str() const noexcept
 {
     std::stringstream stream;
     std::size_t fragment = (this->bit_size & 7);
@@ -251,64 +254,66 @@ std::string BitVector::str() const noexcept
     return stream.str();
 }
 
-std::size_t BitVector::size() const noexcept
+std::size_t bitset::size() const noexcept
 {
     return this->bit_size;
 }
 
-std::size_t BitVector::num_bytes() const noexcept
+std::size_t bitset::num_bytes() const noexcept
 {
     return this->byte_size;
 }
 
 // Iterator
 
-BitVectorIterator BitVector::begin() const noexcept
+bitset_iterator bitset::begin() const noexcept
 {
-    return BitVectorIterator(*this, 0);
+    return bitset_iterator(*this, 0);
 }
 
-BitVectorIterator BitVector::end() const noexcept
+bitset_iterator bitset::end() const noexcept
 {
-    return BitVectorIterator(*this, this->bit_size);
+    return bitset_iterator(*this, this->bit_size);
 }
 
-std::ostream& operator<<(std::ostream& ostream, const BitVector& bitVector)
+std::ostream& operator<<(std::ostream& ostream, const bitset& bitset)
 {
-    ostream.write(reinterpret_cast<const char*>(&bitVector.bit_size), sizeof(bitVector.bit_size));
-//    std::ostream_iterator<BitVector::DATA_TYPE> output_iterator(ostream);
-//    std::copy(bitVector.blocks.begin(), bitVector.blocks.end(), output_iterator);
+    ostream.write(reinterpret_cast<const char*>(&bitset.bit_size), sizeof(bitset.bit_size));
+//    std::ostream_iterator<bitset::DATA_TYPE> output_iterator(ostream);
+//    std::copy(bitset.blocks.begin(), bitset.blocks.end(), output_iterator);
 //    ostream.write(fd, &vector[0], vector.size() * sizeof(vector[0]));
-    if (bitVector.bit_size > 0)
+    if (bitset.bit_size > 0)
     {
-        ostream.write(reinterpret_cast<const char*>(&(bitVector.blocks[0])), bitVector.blocks.size() * sizeof(BitVector::DATA_TYPE));
+        ostream.write(reinterpret_cast<const char*>(&(bitset.blocks[0])), bitset.blocks.size() * sizeof(bitset::DATA_TYPE));
     }
 
-//    for(const auto value : bitVector.blocks)
+//    for(const auto value : bitset.blocks)
 //    {
-//        ostream.write(reinterpret_cast<const char*>(&value), sizeof(BitVector::DATA_TYPE));
+//        ostream.write(reinterpret_cast<const char*>(&value), sizeof(bitset::DATA_TYPE));
 //    }
     return ostream;
 }
 
-std::istream& operator>>(std::istream& istream, BitVector& bitVector)
+std::istream& operator>>(std::istream& istream, bitset& bitset)
 {
-    istream.read(reinterpret_cast<char*>(&bitVector.bit_size), sizeof(bitVector.bit_size));
+    istream.read(reinterpret_cast<char*>(&bitset.bit_size), sizeof(bitset.bit_size));
     
-    if (bitVector.bit_size > 0)
+    if (bitset.bit_size > 0)
     {
-        bitVector.byte_size = Utils::calculate_byte_size(bitVector.bit_size);
-        bitVector.blocks.reserve(bitVector.byte_size);
-        for (std::size_t i = 0; i < bitVector.byte_size; ++i)
+        bitset.byte_size = Utils::calculate_byte_size(bitset.bit_size);
+        bitset.blocks.reserve(bitset.byte_size);
+        for (std::size_t i = 0; i < bitset.byte_size; ++i)
         {
-            BitVector::DATA_TYPE value;
-            istream.read(reinterpret_cast<char*>(&value), sizeof(BitVector::DATA_TYPE));
-            bitVector.blocks.push_back(value);
+            bitset::DATA_TYPE value;
+            istream.read(reinterpret_cast<char*>(&value), sizeof(bitset::DATA_TYPE));
+            bitset.blocks.push_back(value);
         }
     }
     
-//    std::copy_n(std::istream_iterator<BitVector::DATA_TYPE>(istream),
-//                bitVector.byte_size,
-//                std::back_inserter(bitVector.blocks));
+//    std::copy_n(std::istream_iterator<bitset::DATA_TYPE>(istream),
+//                bitset.byte_size,
+//                std::back_inserter(bitset.blocks));
     return istream;
 }
+
+} // compressor

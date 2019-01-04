@@ -4,7 +4,7 @@
 #include <benchmark/benchmark.h>
 #include <boost/dynamic_bitset/dynamic_bitset.hpp>
 
-#include <bitvector/bitvector.h>
+#include <compressor/bitset/bitset.h>
 
 static void BM_BoolVectorAccess(benchmark::State& state) {
     uint8_t bit_count = state.range(0);
@@ -26,12 +26,12 @@ static void BM_BoostDynamicBitSetAccess(benchmark::State& state) {
 
 BENCHMARK(BM_BoostDynamicBitSetAccess)->Ranges({{16, 32}, {8, 15}});
 
-static void BM_BitVectorAccess(benchmark::State& state) {
+static void BM_bitsetAccess(benchmark::State& state) {
     uint8_t bit_count = state.range(0);
     std::size_t index = state.range(1);
-    BitVector sample(bit_count);
+    compressor::bitset sample(bit_count);
     for (auto _ : state)
         sample[index];
 }
 
-BENCHMARK(BM_BitVectorAccess)->Ranges({{16, 32}, {8, 15}});
+BENCHMARK(BM_bitsetAccess)->Ranges({{16, 32}, {8, 15}});

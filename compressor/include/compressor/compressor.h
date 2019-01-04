@@ -10,12 +10,12 @@
 #include <tree/binary/tree.h>
 #include <tree/binary/node.h>
 #include <tree/symbolnode.h>
-#include <bitvector/bitvector.h>
+#include <compressor/bitset/bitset.h>
 #include <compressor/data/data.h>
 
 class SymbolNode;
 
-namespace Compressor
+namespace compressor
 {
 
 class Compressor
@@ -30,7 +30,7 @@ public:
     void build_tree() noexcept;
     void create_hash_table() noexcept;
     
-    std::shared_ptr<BitVector> find_path(std::shared_ptr<SymbolNode>& node) noexcept;
+    std::shared_ptr<compressor::bitset> find_path(std::shared_ptr<SymbolNode>& node) noexcept;
     void print_graph() const noexcept;
     void print_dict() const noexcept;
     
@@ -41,8 +41,8 @@ private:
     std::shared_ptr<BinaryTree> _tree;
     std::map<uint8_t, std::shared_ptr<SymbolNode>> _symbols_dict;
     
-    std::map<uint8_t, BitVector> byte_dict_;
-    std::map<BitVector, uint8_t> bit_dict_;
+    std::map<uint8_t, compressor::bitset> byte_dict_;
+    std::map<compressor::bitset, uint8_t> bit_dict_;
     
     Data data_;
     EncodedData encoded_data_;

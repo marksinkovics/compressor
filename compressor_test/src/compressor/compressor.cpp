@@ -10,11 +10,11 @@ class CompressorTests : public ::testing::Test {};
 TEST_F(CompressorTests, Compression)
 {
     const std::string input = "go go gophers";
-    Compressor::Compressor comp1(input);
-    Compressor::EncodedData encoded_data = comp1.encode();
+    compressor::Compressor comp1(input);
+    compressor::EncodedData encoded_data = comp1.encode();
     
-    Compressor::Compressor comp2(encoded_data);
-    Compressor::Data decoded_data = comp2.decode();
+    compressor::Compressor comp2(encoded_data);
+    compressor::Data decoded_data = comp2.decode();
 
     std::string decoded_str(decoded_data.data_.begin(), decoded_data.data_.end());
     
@@ -25,16 +25,16 @@ TEST_F(CompressorTests, Stream)
 {
     std::stringstream stream;
     const std::string input = "go go gophers";
-    Compressor::Compressor comp1(input);
-    Compressor::EncodedData encoded_data = comp1.encode();
+    compressor::Compressor comp1(input);
+    compressor::EncodedData encoded_data = comp1.encode();
     
     stream << encoded_data;
     
-    Compressor::EncodedData encoded_data2;
+    compressor::EncodedData encoded_data2;
     stream >> encoded_data2;
     
-    Compressor::Compressor comp2(encoded_data2);
-    Compressor::Data decoded_data = comp2.decode();
+    compressor::Compressor comp2(encoded_data2);
+    compressor::Data decoded_data = comp2.decode();
     
     std::string decoded_str(decoded_data.data_.begin(), decoded_data.data_.end());
     
