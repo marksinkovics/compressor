@@ -1,7 +1,10 @@
-#include <tree/binary/tree.h>
+#include <compressor/tree/binary/tree.h>
 
-#include <tree/binary/node.h>
-#include <tree/binary/nodeiterator.h>
+#include <compressor/tree/binary/node.h>
+#include <compressor/tree/binary/nodeiterator.h>
+
+namespace compressor
+{
 
 void BinaryTree::setRoot(std::shared_ptr<BinaryNode> root)
 {
@@ -47,3 +50,5 @@ BinaryNodePreOrderIterator BinaryTree::preOrderEnd() const
     
     return BinaryNodePreOrderIterator(rightestNode, num);
 }
+    
+} // compressor

@@ -1,7 +1,10 @@
 #ifndef SymbolNode_hpp
 #define SymbolNode_hpp
 
-#include <tree/binary/node.h>
+#include <compressor/tree/binary/node.h>
+
+namespace compressor
+{
 
 class SymbolNode: public BinaryNode
 {
@@ -21,5 +24,7 @@ private:
     std::string _value;
     uint64_t _frequency;
 };
+    
+} // compressor
 
 #endif // SymbolNode_hpp

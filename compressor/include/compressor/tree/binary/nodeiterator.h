@@ -3,7 +3,10 @@
 
 #include <memory>
 #include <unordered_set>
-#include <tree/binary/node.h>
+#include <compressor/tree/binary/node.h>
+
+namespace compressor
+{
 
 class BinaryNodeIterator {
 public:
@@ -41,6 +44,8 @@ public:
 //    BinaryNodePreOrderIterator& operator--();
 //    BinaryNodePreOrderIterator operator--(int);
 };
+    
+} // compressor
 
 #endif /* BinaryNodeIterator_hpp */
 

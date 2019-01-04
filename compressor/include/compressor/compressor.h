@@ -7,9 +7,9 @@
 #include <map>
 #include <vector>
 
-#include <tree/binary/tree.h>
-#include <tree/binary/node.h>
-#include <tree/symbolnode.h>
+#include <compressor/tree/binary/tree.h>
+#include <compressor/tree/binary/node.h>
+#include <compressor/tree/symbolnode.h>
 #include <compressor/bitset/bitset.h>
 #include <compressor/data/data.h>
 

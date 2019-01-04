@@ -8,8 +8,8 @@
 #include <compressor/bitset/bitset.h>
 #include <compressor/bitset/bitset_iterator.h>
 #include <compressor/compressor.h>
-#include <tree/symbolnode.h>
-#include <tree/binary/nodeiterator.h>
+#include <compressor/tree/symbolnode.h>
+#include <compressor/tree/binary/nodeiterator.h>
 
 #include <compressor/data/data.h>
 

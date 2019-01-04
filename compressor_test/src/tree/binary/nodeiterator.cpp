@@ -6,39 +6,39 @@
 
 #include <gtest/gtest.h>
 
-#include <tree/binary/node.h>
-#include <tree/binary/nodeiterator.h>
-#include <tree/binary/tree.h>
-#include <tree/symbolnode.h>
+#include <compressor/tree/binary/node.h>
+#include <compressor/tree/binary/nodeiterator.h>
+#include <compressor/tree/binary/tree.h>
+#include <compressor/tree/symbolnode.h>
 
 class BinaryNodeIteratorTests : public ::testing::Test {
 protected:
     
-    std::shared_ptr<BinaryTree> _tree;
+    std::shared_ptr<compressor::BinaryTree> _tree;
     
-    std::shared_ptr<SymbolNode> node1 = std::make_shared<SymbolNode>("1");
-    std::shared_ptr<SymbolNode> node2 = std::make_shared<SymbolNode>("2");
-    std::shared_ptr<SymbolNode> node3 = std::make_shared<SymbolNode>("3");
-    std::shared_ptr<SymbolNode> node4 = std::make_shared<SymbolNode>("4");
-    std::shared_ptr<SymbolNode> node5 = std::make_shared<SymbolNode>("5");
-    std::shared_ptr<SymbolNode> node6 = std::make_shared<SymbolNode>("6");
-    std::shared_ptr<SymbolNode> node7 = std::make_shared<SymbolNode>("7");
-    std::shared_ptr<SymbolNode> node8 = std::make_shared<SymbolNode>("8");
-    std::shared_ptr<SymbolNode> node9 = std::make_shared<SymbolNode>("9");
+    std::shared_ptr<compressor::SymbolNode> node1 = std::make_shared<compressor::SymbolNode>("1");
+    std::shared_ptr<compressor::SymbolNode> node2 = std::make_shared<compressor::SymbolNode>("2");
+    std::shared_ptr<compressor::SymbolNode> node3 = std::make_shared<compressor::SymbolNode>("3");
+    std::shared_ptr<compressor::SymbolNode> node4 = std::make_shared<compressor::SymbolNode>("4");
+    std::shared_ptr<compressor::SymbolNode> node5 = std::make_shared<compressor::SymbolNode>("5");
+    std::shared_ptr<compressor::SymbolNode> node6 = std::make_shared<compressor::SymbolNode>("6");
+    std::shared_ptr<compressor::SymbolNode> node7 = std::make_shared<compressor::SymbolNode>("7");
+    std::shared_ptr<compressor::SymbolNode> node8 = std::make_shared<compressor::SymbolNode>("8");
+    std::shared_ptr<compressor::SymbolNode> node9 = std::make_shared<compressor::SymbolNode>("9");
     
-    void setLeft(std::shared_ptr<SymbolNode>& node, std::shared_ptr<SymbolNode>& left)
+    void setLeft(std::shared_ptr<compressor::SymbolNode>& node, std::shared_ptr<compressor::SymbolNode>& left)
     {
         node->setLeft(left);
         left->setParent(node);
     }
 
-    void setRight(std::shared_ptr<SymbolNode>& node, std::shared_ptr<SymbolNode>& right)
+    void setRight(std::shared_ptr<compressor::SymbolNode>& node, std::shared_ptr<compressor::SymbolNode>& right)
     {
         node->setRight(right);
         right->setParent(node);
     }
     
-    std::shared_ptr<SymbolNode> buildTree() {
+    std::shared_ptr<compressor::SymbolNode> buildTree() {
         setLeft(node1, node2);
         setRight(node1, node3);
         
@@ -57,7 +57,7 @@ protected:
     void SetUp() override
     {
         auto node = buildTree();
-        _tree = std::make_shared<BinaryTree>();
+        _tree = std::make_shared<compressor::BinaryTree>();
         _tree->setRoot(node);
     }
 };
@@ -108,7 +108,7 @@ TEST_F(BinaryNodeIteratorTests, ForIterator)
     std::stringstream ss;
     for(auto iter = begin; iter != end; iter++)
     {
-        auto node = std::dynamic_pointer_cast<SymbolNode>(*iter);
+        auto node = std::dynamic_pointer_cast<compressor::SymbolNode>(*iter);
         ss << node->value();
     }
     ASSERT_STREQ(ss.str().c_str(), "124536897");
@@ -121,7 +121,7 @@ TEST_F(BinaryNodeIteratorTests, ForEachIterator)
     auto end = _tree->preOrderEnd();
     std::stringstream ss;
     std::for_each(begin, end, [&ss](const auto& bin_node){
-        auto node = std::dynamic_pointer_cast<SymbolNode>(bin_node);
+        auto node = std::dynamic_pointer_cast<compressor::SymbolNode>(bin_node);
         ss << node->value();
     });
     ASSERT_STREQ(ss.str().c_str(), "124536897");
@@ -131,7 +131,7 @@ TEST_F(BinaryNodeIteratorTests, ForEachIterator)
 TEST_F(BinaryNodeIteratorTests, Tagging)
 {
     std::for_each(_tree->preOrderBegin(), _tree->preOrderEnd(), [](const auto &bin_node) {
-        std::shared_ptr<SymbolNode> node = std::dynamic_pointer_cast<SymbolNode>(bin_node);
+        std::shared_ptr<compressor::SymbolNode> node = std::dynamic_pointer_cast<compressor::SymbolNode>(bin_node);
     });
 }
 

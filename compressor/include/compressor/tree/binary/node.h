@@ -5,8 +5,8 @@
 
 namespace compressor
 {
-    class bitset;
-}
+
+class bitset;
 
 class BinaryNode
 {
@@ -39,5 +39,7 @@ protected:
     std::weak_ptr<BinaryNode> _parent;
     std::shared_ptr<compressor::bitset> _tag;
 };
+
+}
 
 #endif /* BinaryNode_hpp */

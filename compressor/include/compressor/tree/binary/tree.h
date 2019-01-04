@@ -3,6 +3,9 @@
 
 #include <memory>
 
+namespace compressor
+{
+
 class BinaryNode;
 class BinaryNodePreOrderIterator;
 
@@ -21,6 +24,8 @@ private:
     
     std::shared_ptr<BinaryNode> _root;
 };
+
+} //compressor
 
 #endif /* BinaryTree_hpp */
 

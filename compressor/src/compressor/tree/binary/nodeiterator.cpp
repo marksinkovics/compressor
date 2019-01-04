@@ -1,4 +1,7 @@
-#include <tree/binary/nodeiterator.h>
+#include <compressor/tree/binary/nodeiterator.h>
+
+namespace compressor
+{
 
 BinaryNodeIterator::BinaryNodeIterator(std::shared_ptr<BinaryNode> node, uint64_t index)
     : _node(node)
@@ -98,4 +101,4 @@ BinaryNodePreOrderIterator BinaryNodePreOrderIterator::operator++(int)
 //}
 
 
-
+} // compressor

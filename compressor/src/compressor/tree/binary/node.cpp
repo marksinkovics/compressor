@@ -1,6 +1,9 @@
-#include <tree/binary/node.h>
+#include <compressor/tree/binary/node.h>
 
 #include <compressor/bitset/bitset.h>
+
+namespace compressor
+{
 
 std::shared_ptr<BinaryNode> BinaryNode::left() const
 {
@@ -57,3 +60,5 @@ bool BinaryNode::operator==(const BinaryNode& rhs)
 bool BinaryNode::operator!=(const BinaryNode& rhs){
     return !(*this == rhs);
 }
+
+} // compressor
