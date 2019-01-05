@@ -15,8 +15,9 @@ class bitset_iterator;
 class bitset
 {
 public:
-    using DATA_TYPE = uint8_t;
-    static const size_t BITS_PER_BYTE = (std::numeric_limits<DATA_TYPE>::digits);
+    using block_type = uint8_t;
+    static const std::size_t BITS_PER_BYTE = std::numeric_limits<uint8_t>::digits;
+    static const std::size_t BITS_PER_BLOCK = std::numeric_limits<block_type>::digits;
     using value_type = bool;
     using iterator = bitset_iterator;
 public:
@@ -26,7 +27,6 @@ public:
     bitset& operator=(const bitset& rhs);
     bitset(bitset&& v) noexcept;
     bitset& operator=(bitset&& rhs);
-    
     bitset& operator=(const std::string& bitstring);
     
     ~bitset();
@@ -47,6 +47,7 @@ public:
     
     std::size_t size() const noexcept;
     std::size_t num_bytes() const noexcept;
+    std::size_t num_blocks() const noexcept;
     
     // Relational operators
     
@@ -68,8 +69,7 @@ public:
 
 private:
     std::size_t bit_size;
-    std::size_t byte_size;
-    std::vector<DATA_TYPE> blocks;
+    std::vector<block_type> blocks;
 public:
     friend std::ostream& operator<<(std::ostream& ostream, const bitset& bitset);
     friend std::istream& operator>>(std::istream& istream, bitset& bitset);

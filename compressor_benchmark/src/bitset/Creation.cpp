@@ -21,10 +21,10 @@ static void BM_BoostDynamicBitSetCreation(benchmark::State& state) {
 
 BENCHMARK(BM_BoostDynamicBitSetCreation)->RangeMultiplier(2)->Range(8, 1<<10);
 
-static void BM_bitsetCreation(benchmark::State& state) {
+static void BM_BitSetCreation(benchmark::State& state) {
     uint8_t bit_count = state.range(0);
     for (auto _ : state)
         compressor::bitset sample(bit_count);
 }
 
-BENCHMARK(BM_bitsetCreation)->RangeMultiplier(2)->Range(8, 1<<10);
+BENCHMARK(BM_BitSetCreation)->RangeMultiplier(2)->Range(8, 1<<10);

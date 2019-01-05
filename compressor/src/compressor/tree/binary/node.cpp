@@ -52,9 +52,9 @@ std::shared_ptr<compressor::bitset> BinaryNode::tag() const
 
 bool BinaryNode::operator==(const BinaryNode& rhs)
 {
-    return this->_left.get() == this->_left.get()
-        && this->_right.get() == this->_right.get()
-        && this->_parent.lock().get() == this->_parent.lock().get();
+    return this->_left.get() == rhs._left.get()
+        && this->_right.get() == rhs._right.get()
+        && this->_parent.lock().get() == rhs._parent.lock().get();
 }
 
 bool BinaryNode::operator!=(const BinaryNode& rhs){

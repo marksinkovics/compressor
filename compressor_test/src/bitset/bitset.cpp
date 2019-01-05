@@ -18,23 +18,23 @@ class BitsetTests : public ::testing::Test {};
 
 TEST_F(BitsetTests, Init) {
     compressor::bitset v1(1);
-    ASSERT_EQ(v1.size(), 1);
-    ASSERT_EQ(v1.num_bytes(), 1);
+    ASSERT_EQ(v1.size(), 1u);
+    ASSERT_EQ(v1.num_bytes(), 1u);
     
     compressor::bitset v2(0);
-    ASSERT_EQ(v2.size(), 0);
-    ASSERT_EQ(v2.num_bytes(), 0);
+    ASSERT_EQ(v2.size(), 0u);
+    ASSERT_EQ(v2.num_bytes(), 0u);
     
     compressor::bitset v3("010");
-    ASSERT_EQ(v3.size(), 3);
-    ASSERT_EQ(v3.num_bytes(), 1);
+    ASSERT_EQ(v3.size(), 3u);
+    ASSERT_EQ(v3.num_bytes(), 1u);
     ASSERT_FALSE(v3[0]);
     ASSERT_TRUE(v3[1]);
     ASSERT_FALSE(v3[2]);
     
     compressor::bitset v4("0101010101");
-    ASSERT_EQ(v4.size(), 10);
-    ASSERT_EQ(v4.num_bytes(), 2);
+    ASSERT_EQ(v4.size(), 10u);
+    ASSERT_EQ(v4.num_bytes(), 2u);
 }
 
 TEST_F(BitsetTests, Accessors) {
@@ -69,16 +69,16 @@ TEST_F(BitsetTests, ResizeInBits) {
     compressor::bitset v1(8);
     v1.set(0, true);
     v1.set(2, true);
-    ASSERT_EQ(v1.size(), 8);
-    ASSERT_EQ(v1.num_bytes(), 1);
+    ASSERT_EQ(v1.size(), 8u);
+    ASSERT_EQ(v1.num_bytes(), 1u);
 
     v1.resize(16);
-    ASSERT_EQ(v1.size(), 16);
-    ASSERT_EQ(v1.num_bytes(), 2);
+    ASSERT_EQ(v1.size(), 16u);
+    ASSERT_EQ(v1.num_bytes(), 2u);
 
     v1.resize(9);
-    ASSERT_EQ(v1.size(), 9);
-    ASSERT_EQ(v1.num_bytes(), 2);
+    ASSERT_EQ(v1.size(), 9u);
+    ASSERT_EQ(v1.num_bytes(), 2u);
 
     ASSERT_TRUE(v1[0]);
     ASSERT_TRUE(v1[2]);
@@ -95,7 +95,7 @@ TEST_F(BitsetTests, CopyOperators) {
 
     v1.resize(16);
     
-    ASSERT_EQ(8, v2.size());
+    ASSERT_EQ(8u, v2.size());
     
     v1.set(10);
     compressor::bitset v3(v1);
@@ -104,7 +104,7 @@ TEST_F(BitsetTests, CopyOperators) {
     ASSERT_TRUE(v3.test(10));
     
     compressor::bitset v4 = v1;
-    ASSERT_EQ(16, v4.size());
+    ASSERT_EQ(v4.size(), 16u);
     ASSERT_TRUE(v4.test(0));
     ASSERT_TRUE(v4.test(7));
 }
@@ -119,16 +119,16 @@ TEST_F(BitsetTests, MoveOperators) {
     // Move constructor
     compressor::bitset v2(std::move(v1));
 
-    ASSERT_EQ(0, v1.size());
+    ASSERT_EQ(v1.size(), 0u);
 
-    ASSERT_EQ(9, v2.size());
+    ASSERT_EQ(v2.size(), 9u);
     ASSERT_TRUE(v2.test(0));
     ASSERT_TRUE(v2.test(5));
    
     // Move assignment
     compressor::bitset v3(1);
     v3 = std::move(v2);
-    ASSERT_EQ(9, v3.size());
+    ASSERT_EQ(v3.size(), 9u);
     ASSERT_TRUE(v3.test(0));
     ASSERT_TRUE(v3.test(5));
 }
