@@ -9,6 +9,7 @@ set(SRC_DIR ${PROJECT_SOURCE_DIR}/src)
 set(SRC_FILES
     "${SRC_DIR}/compressor/test.cpp"
     "${SRC_DIR}/compressor/compressor.cpp"
+    "${SRC_DIR}/compressor/engine.cpp"
     "${SRC_DIR}/bitset/bitset.cpp"
     "${SRC_DIR}/bitset/bitset_iterator.cpp"
     "${SRC_DIR}/tree/binary/node.cpp"
@@ -29,8 +30,15 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${INCLUDE_FILES})
 target_include_directories(${PROJECT_NAME}
     PUBLIC ${Boost_INCLUDE_DIR}
 )
+
+# Force load argparser_test lib
+SET(ARGPARSER_TEST_LIB
+    -Wl,-force_load argparser_test
+)
+
 target_link_libraries(${PROJECT_NAME}
     compressor
+    ${ARGPARSER_TEST_LIB}
     GTest::GTest
     GMock::GMock
     GMock::Main

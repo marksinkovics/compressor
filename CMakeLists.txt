@@ -6,7 +6,7 @@ enable_testing()
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
-set(CMAKE_CXX_FLAGS "-std=c++1z -Wall -Wextra -Werror")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++1z -Wall -Wextra -Werror")
 
 if(ENABLE_ASAN)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
@@ -19,6 +19,9 @@ endif()
 
 add_subdirectory(3rd_party/boost)
 add_subdirectory(compressor)
+
+add_subdirectory(argparser)
+
 add_subdirectory(compressor_app)
 add_subdirectory(3rd_party/google-test)
 add_subdirectory(compressor_test)
