@@ -15,6 +15,7 @@ set(INCLUDE_FILES
     "${COMPRESSOR_INCLUDE_DIR}/data/data.h"
     "${COMPRESSOR_INCLUDE_DIR}/compressor.h"
     "${COMPRESSOR_INCLUDE_DIR}/decompressor.h"
+    "${COMPRESSOR_INCLUDE_DIR}/engine.h"
 )
 
 set(SRC_DIR ${PROJECT_SOURCE_DIR}/src)
@@ -30,6 +31,7 @@ set(SRC_FILES
     "${COMPRESSOR_SRC_DIR}/data/data.cpp"
     "${COMPRESSOR_SRC_DIR}/compressor.cpp"
     "${COMPRESSOR_SRC_DIR}/decompressor.cpp"
+    "${COMPRESSOR_SRC_DIR}/engine.cpp"
 )
 
 add_library(${PROJECT_NAME} ${SRC_FILES} ${INCLUDE_FILES})

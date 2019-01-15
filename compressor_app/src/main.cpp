@@ -1,7 +1,9 @@
 #include <iostream>
 #include <fstream>
 
+#include <compressor/engine.h>
 #include <compressor/compressor.h>
+#include <compressor/decompressor.h>
 #include <compressor/bitset/bitset.h>
 
 #include <boost/dynamic_bitset/dynamic_bitset.hpp>
@@ -10,6 +12,7 @@
 #include <algorithm>
 #include <limits>
 
+#include <argparser/argparser.h>
 
 std::string lorem() {
     return std::string("Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.");
@@ -35,7 +38,7 @@ void compress()
     istream >> data;
     istream.close();
     
-    compressor::Compressor compressor(data);
+    compressor::Engine compressor(data);
     auto encoded_data = compressor.encode();
     
     std::ofstream ostream;
@@ -64,7 +67,7 @@ void decompress()
     istream >> encoded_data;
     istream.close();
     
-    compressor::Compressor compressor(encoded_data);
+    compressor::Engine compressor(encoded_data);
     auto data = compressor.decode();
     
     std::ofstream ostream;
@@ -77,10 +80,49 @@ void decompress()
     ostream.close();
 }
 
-int main(__attribute__((unused)) int argc, __attribute__((unused)) char** argv) {
+int main(__attribute__((unused)) int argc, __attribute__((unused)) char *argv[]) {
     
-    compress();
-    decompress();
+    argparser::Argparser parser(argc, argv);
+    parser.add_argument("encode", false, "Compress the given file.");
+    parser.add_argument("decode", false, "Decompress the given file.");
+    parser.add_argument("--input", std::string(), "Input file path");
+    parser.add_argument("--output", std::string(), "Output file path");
+
+    auto options = parser.parse();
+    std::string input_file, output_file;
+    if (parser.has_argument("--input") && std::any_cast<std::string>(options["--input"]).size() > 0)
+    {
+        input_file = std::any_cast<std::string>(options["--input"]);
+        std::cout << "Input file: "<< input_file << '\n';
+    }
+
+    if (parser.has_argument("--output") && std::any_cast<std::string>(options["--output"]).size() > 0)
+    {
+        output_file = std::any_cast<std::string>(options["--output"]);
+        std::cout << "Output file: "<< output_file << '\n';
+    }
+
+    if (parser.has_argument("encode") && std::any_cast<bool>(options["encode"]))
+    {
+        std::cout << "Encode\n";
+        compressor::Compressor compressor(input_file, output_file);
+        compressor.encode();
+    }
+    else if (parser.has_argument("decode") && std::any_cast<bool>(options["decode"]))
+    {
+        std::cout << "Decode\n";
+        compressor::Decompressor decompressor(input_file, output_file);
+        decompressor.decode();
+    }
+    
+//    compressor::Compressor compressor("/tmp/original.txt", "/tmp/encoded.txt");
+//    compressor.encode();
+//
+//    compressor::Decompressor decompressor("/tmp/encoded.txt", "/tmp/decoded.txt");
+//    decompressor.decode();
+    
+//    compress();
+//    decompress();
     
 	return 0;
 }
