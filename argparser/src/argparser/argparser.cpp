@@ -1,8 +1,12 @@
 #include <argparser/argparser.h>
 
+#include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <memory>
+
+#include <argparser/arg.h>
 
 namespace argparser
 {
@@ -14,7 +18,6 @@ Argparser::Argparser(int argc, char** argv)
     
 void Argparser::unify_input_arguments(int argc, char** argv)
 {
-    
     // arg[0] is always the name of the program
     program_name_ = argv[0];
     // Skip element 0 and start from 1
@@ -41,8 +44,22 @@ void Argparser::unify_input_arguments(int argc, char** argv)
         }
     }
 }
+    
+std::string Argparser::simplify_arg_name(const std::string& argument)
+{
+    auto has_prefix = [](std::string str, std::string_view prefix) -> decltype(str.find(prefix) == 0) {
+        return str.find(prefix, 0) == 0;
+    };
+    
+    std::string arg = argument;
+    while (has_prefix(arg, "-") || has_prefix(arg, "_")) {
+        arg.erase(arg.begin());
+    }
+    
+    return arg;
+}
 
-std::map<std::string, std::any> Argparser::parse()
+Argparser::container_type Argparser::parse()
 {
     for(std::size_t i = 0; i < inputs_.size(); ++i)
     {
@@ -53,50 +70,54 @@ std::map<std::string, std::any> Argparser::parse()
             return {};
         }
         
-        if (arguments_.find(str) != arguments_.end())
+        auto simplified_argument = simplify_arg_name(str);
+        // arg is exists
+        auto arg = args_.find(simplified_argument);
+        if(arg != args_.end())
         {
-            if (auto ptr = std::any_cast<bool>(&arguments_[str]))
+            auto base = arg->second;
+            if(Arg<bool> *bool_arg = dynamic_cast<Arg<bool>*>(base.get()))
             {
-                options_[str] = true;
-            }
-            else if (auto ptr = std::any_cast<std::string>(&arguments_[str]))
-            {
-                options_[str] = std::string(inputs_[++i]);
-            }
-            else if (auto ptr = std::any_cast<int>(&arguments_[str]))
-            {
-                options_[str] = std::stoi(inputs_[++i]);
-            }
-            else if (auto ptr = std::any_cast<float>(&arguments_[str]))
-            {
-                options_[str] = std::stof(inputs_[++i]);
-            }
-            else if (auto ptr = std::any_cast<double>(&arguments_[str]))
-            {
-                options_[str] = std::stod(inputs_[++i]);
+                auto option = std::make_shared<Arg<bool>>(*bool_arg);
+                option->setValue(true);
+                options_[simplified_argument] = option;
             }
             else
             {
-                options_[str] = arguments_[str];
+                options_[simplified_argument] = base->clone(inputs_[++i]);
             }
         }
     }
     return options_;
 }
-
-bool Argparser::has_argument(const std::string& argument)
+    
+bool Argparser::has_argument(const std::string &argument)
 {
-    return options_.find(argument) != options_.end();
+    auto symplified_arg = simplify_arg_name(argument);
+    return options_.find(symplified_arg) != options_.end();
 }
     
 void Argparser::print_help() const
 {
+    auto print_line = [](std::ostream& ostream, const std::string& arg, const std::string& desc) {
+        std::ios::fmtflags os_flags (ostream.flags());
+        ostream.setf(std::ios::hex);
+
+        ostream << std::setfill(' ') << std::setw(5) << ""
+            << std::left << std::setw(10) << arg
+            << std::setw(5) << ""
+            << std::right << desc << '\n';
+
+        ostream.flags(os_flags);
+    };
+    
     std::cout << "Usage: " << program_name_ << " [options]\n\n";
-    for(auto it = descriptions_.begin(); it != descriptions_.end(); ++it)
+    for(auto it = args_.begin(); it != args_.end(); ++it)
     {
-        std::cout << "\t" << it->first << "\t\t\t" << it->second << '\n';
+        print_line(std::cout, it->second->arg(), it->second->description());
     }
-    std::cout << "\n\t-h, --help\t\tshow this help message and exit\n";
+    
+    print_line(std::cout, "-h, --help", "Show this help message and exit");
 }
     
 }

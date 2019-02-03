@@ -7,6 +7,8 @@ set(INCLUDE_FILES)
 
 set(SRC_DIR ${PROJECT_SOURCE_DIR}/src)
 set(SRC_FILES
+    "${SRC_DIR}/valueparser.cpp"
+    "${SRC_DIR}/arg.cpp"
     "${SRC_DIR}/argparser.cpp"
 )
 

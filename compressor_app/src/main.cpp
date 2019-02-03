@@ -83,46 +83,38 @@ void decompress()
 int main(__attribute__((unused)) int argc, __attribute__((unused)) char *argv[]) {
     
     argparser::Argparser parser(argc, argv);
-    parser.add_argument("encode", false, "Compress the given file.");
-    parser.add_argument("decode", false, "Decompress the given file.");
-    parser.add_argument("--input", std::string(), "Input file path");
-    parser.add_argument("--output", std::string(), "Output file path");
-
+    parser.add_argument("encode", "Compress the given file.", false);
+    parser.add_argument("decode", "Decompress the given file.", false);
+    parser.add_argument("--input", "Input file path", std::string(""));
+    parser.add_argument("--output", "Output file path", std::string(""));
+    
     auto options = parser.parse();
+    
     std::string input_file, output_file;
-    if (parser.has_argument("--input") && std::any_cast<std::string>(options["--input"]).size() > 0)
+    if (parser.has_argument("input"))
     {
-        input_file = std::any_cast<std::string>(options["--input"]);
+        input_file = std::dynamic_pointer_cast<argparser::Arg<std::string>>(options["input"])->value();
         std::cout << "Input file: "<< input_file << '\n';
     }
 
-    if (parser.has_argument("--output") && std::any_cast<std::string>(options["--output"]).size() > 0)
+    if (parser.has_argument("output"))
     {
-        output_file = std::any_cast<std::string>(options["--output"]);
+        output_file = std::dynamic_pointer_cast<argparser::Arg<std::string>>(options["output"])->value();
         std::cout << "Output file: "<< output_file << '\n';
     }
 
-    if (parser.has_argument("encode") && std::any_cast<bool>(options["encode"]))
+    if (parser.has_argument("encode"))
     {
         std::cout << "Encode\n";
         compressor::Compressor compressor(input_file, output_file);
         compressor.encode();
     }
-    else if (parser.has_argument("decode") && std::any_cast<bool>(options["decode"]))
+    else if (parser.has_argument("decode"))
     {
         std::cout << "Decode\n";
         compressor::Decompressor decompressor(input_file, output_file);
         decompressor.decode();
     }
-    
-//    compressor::Compressor compressor("/tmp/original.txt", "/tmp/encoded.txt");
-//    compressor.encode();
-//
-//    compressor::Decompressor decompressor("/tmp/encoded.txt", "/tmp/decoded.txt");
-//    decompressor.decode();
-    
-//    compress();
-//    decompress();
-    
-	return 0;
+
+    return 0;
 }

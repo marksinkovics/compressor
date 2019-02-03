@@ -1,121 +1,218 @@
 #include <gtest/gtest.h>
 #include <argparser/argparser.h>
 
-#include <any>
 #include <string>
 #include <map>
+
+namespace argparser
+{
 
 class ArgParserTests : public ::testing::Test
 {
 
 };
-
-TEST_F(ArgParserTests, StringArguments)
+    
+TEST_F(ArgParserTests, has_argument)
 {
     std::vector<char*> argv {
         (char*)"program_name",
-        (char*)"key1",
-        (char*)"value1",
-        (char*)"key2=value2"
+        (char*)"--key1"
     };
     
     argparser::Argparser parser(argv.size(), &argv[0]);
-    parser.add_argument("key1", std::string(), "Description for key1");
-    parser.add_argument("key2", std::string(), "Description for key2");
+    parser.add_argument("--key1", "desc", false);
     auto options = parser.parse();
-
     EXPECT_TRUE(parser.has_argument("key1"));
-    EXPECT_TRUE(parser.has_argument("key2"));
-    
-    EXPECT_STREQ("value1", std::any_cast<std::string>(options["key1"]).c_str());
-    EXPECT_STREQ("value2", std::any_cast<std::string>(options["key2"]).c_str());
 }
-
-TEST_F(ArgParserTests, VariedArguments)
+    
+TEST_F(ArgParserTests, has_argument_with_equal_sign)
 {
     std::vector<char*> argv {
-        (char*)"alma",
-        (char*)"key1",
-        (char*)"value1",
-        (char*)"key2",
-        (char*)"key3",
-        (char*)"1",
-        (char*)"key4",
+        (char*)"program_name",
+        (char*)"--key1=true"
+    };
+    
+    argparser::Argparser parser(argv.size(), &argv[0]);
+    parser.add_argument("--key1", "desc", false);
+    auto options = parser.parse();
+    EXPECT_TRUE(parser.has_argument("key1"));
+}
+    
+TEST_F(ArgParserTests, has_multiple_arguments)
+{
+    std::vector<char*> argv {
+        (char*)"program_name",
+        (char*)"--key1=true",
+        (char*)"--key2=false"
+    };
+    
+    argparser::Argparser parser(argv.size(), &argv[0]);
+    parser.add_argument("--key1", "desc", false);
+    parser.add_argument("--key2", "desc", false);
+    auto options = parser.parse();
+    EXPECT_TRUE(parser.has_argument("key1"));
+    EXPECT_TRUE(parser.has_argument("key2"));
+}
+
+TEST_F(ArgParserTests, value_bool)
+{
+    std::vector<char*> argv {
+        (char*)"program_name",
+        (char*)"--key1"
+    };
+    
+    argparser::Argparser parser(argv.size(), &argv[0]);
+    parser.add_argument("--key1", "desc", false);
+    auto options = parser.parse();
+    EXPECT_TRUE(std::dynamic_pointer_cast<Arg<bool>>(options["key1"])->value());
+}
+
+TEST_F(ArgParserTests, value_uint8_t)
+{
+    std::vector<char*> argv {
+        (char*)"program_name",
+        (char*)"--key1",
+        (char*)"42"
+    };
+    
+    argparser::Argparser parser(argv.size(), &argv[0]);
+    parser.add_argument("--key1", "desc", uint8_t(0));
+    auto options = parser.parse();
+    EXPECT_EQ(42, std::dynamic_pointer_cast<Arg<uint8_t>>(options["key1"])->value());
+}
+    
+TEST_F(ArgParserTests, value_uint16_t)
+{
+    std::vector<char*> argv {
+        (char*)"program_name",
+        (char*)"--key1",
+        (char*)"42"
+    };
+    
+    argparser::Argparser parser(argv.size(), &argv[0]);
+    parser.add_argument("--key1", "desc", uint16_t(0));
+    auto options = parser.parse();
+    EXPECT_EQ(42, std::dynamic_pointer_cast<Arg<uint16_t>>(options["key1"])->value());
+}
+
+TEST_F(ArgParserTests, value_uint32_t)
+{
+    std::vector<char*> argv {
+        (char*)"program_name",
+        (char*)"--key1",
+        (char*)"42"
+    };
+    
+    argparser::Argparser parser(argv.size(), &argv[0]);
+    parser.add_argument("--key1", "desc", uint32_t(0));
+    auto options = parser.parse();
+    EXPECT_EQ(uint32_t(42), std::dynamic_pointer_cast<Arg<uint32_t>>(options["key1"])->value());
+}
+
+TEST_F(ArgParserTests, value_uint64_t)
+{
+    std::vector<char*> argv {
+        (char*)"program_name",
+        (char*)"--key1",
+        (char*)"42"
+    };
+    
+    argparser::Argparser parser(argv.size(), &argv[0]);
+    parser.add_argument("--key1", "desc", uint64_t(0));
+    auto options = parser.parse();
+    EXPECT_EQ(uint64_t(42), std::dynamic_pointer_cast<Arg<uint64_t>>(options["key1"])->value());
+}
+    
+TEST_F(ArgParserTests, value_int)
+{
+    std::vector<char*> argv {
+        (char*)"program_name",
+        (char*)"--key1",
+        (char*)"42",
+        (char*)"--key2",
+        (char*)"-42"
+    };
+    
+    argparser::Argparser parser(argv.size(), &argv[0]);
+    parser.add_argument("--key1", "desc", int(0));
+    parser.add_argument("--key2", "desc", int(0));
+    auto options = parser.parse();
+    EXPECT_EQ(42, std::dynamic_pointer_cast<Arg<int>>(options["key1"])->value());
+    EXPECT_EQ(-42, std::dynamic_pointer_cast<Arg<int>>(options["key2"])->value());
+}
+
+
+TEST_F(ArgParserTests, value_float)
+{
+    std::vector<char*> argv {
+        (char*)"program_name",
+        (char*)"--key1",
+        (char*)"3.14"
+    };
+    
+    argparser::Argparser parser(argv.size(), &argv[0]);
+    parser.add_argument("--key1", "desc", float(0));
+    auto options = parser.parse();
+    EXPECT_FLOAT_EQ(3.14, std::dynamic_pointer_cast<Arg<float>>(options["key1"])->value());
+}
+    
+TEST_F(ArgParserTests, value_double)
+{
+    std::vector<char*> argv {
+        (char*)"program_name",
+        (char*)"--key1",
+        (char*)"3.14"
+    };
+    
+    argparser::Argparser parser(argv.size(), &argv[0]);
+    parser.add_argument("--key1", "desc", double(0));
+    auto options = parser.parse();
+    EXPECT_DOUBLE_EQ(3.14, std::dynamic_pointer_cast<Arg<double>>(options["key1"])->value());
+}
+
+TEST_F(ArgParserTests, value_string)
+{
+    std::vector<char*> argv {
+        (char*)"program_name",
+        (char*)"--key1",
+        (char*)"sample_text"
+    };
+    
+    argparser::Argparser parser(argv.size(), &argv[0]);
+    parser.add_argument("--key1", "desc", std::string(""));
+    auto options = parser.parse();
+    EXPECT_STREQ("sample_text", std::dynamic_pointer_cast<Arg<std::string>>(options["key1"])->value().c_str());
+}
+    
+TEST_F(ArgParserTests, value_varied_types)
+{
+    std::vector<char*> argv {
+        (char*)"program_name",
+        (char*)"--bool_key",
+        (char*)"--str_key",
+        (char*)"sample_text",
+        (char*)"--int_key",
+        (char*)"42",
+        (char*)"--float_key",
         (char*)"3.14",
-        (char*)"key5=korte",
-        (char*)"key6=2"
+        (char*)"--double_key",
+        (char*)"3.14"
     };
-    
+
     argparser::Argparser parser(argv.size(), &argv[0]);
-    parser.add_argument("key1", std::string(), "Description for key1");
-    parser.add_argument("key2", bool(false), "Description for key2");
-    parser.add_argument("key3", int(0), "Description for key3");
-    parser.add_argument("key4", float(0), "Description for key4");
-    parser.add_argument("key5", std::string(), "Description for key5");
-    parser.add_argument("key6", int(0), "Description for key6");
+    parser.add_argument("--bool_key", "", bool(false));
+    parser.add_argument("--str_key", "", std::string(""));
+    parser.add_argument("--int_key", "", int(42));
+    parser.add_argument("--float_key", "", float(3.14));
+    parser.add_argument("--double_key", "", double(3.14));
+
     auto options = parser.parse();
-    
-    EXPECT_TRUE(parser.has_argument("key1"));
-    EXPECT_TRUE(parser.has_argument("key2"));
-    EXPECT_TRUE(parser.has_argument("key3"));
-    EXPECT_TRUE(parser.has_argument("key4"));
-    EXPECT_TRUE(parser.has_argument("key5"));
-    EXPECT_TRUE(parser.has_argument("key6"));
 
-    EXPECT_STREQ("value1", std::any_cast<std::string>(options["key1"]).c_str());
-    EXPECT_TRUE(std::any_cast<bool>(options["key2"]));
-    EXPECT_EQ(1, std::any_cast<int>(options["key3"]));
-    EXPECT_NEAR(3.14, std::any_cast<float>(options["key4"]), 0.1);
-    EXPECT_STREQ("korte", std::any_cast<std::string>(options["key5"]).c_str());
-    EXPECT_EQ(2, std::any_cast<int>(options["key6"]));
+    EXPECT_TRUE(std::dynamic_pointer_cast<Arg<bool>>(options["bool_key"])->value());
+    EXPECT_STREQ("sample_text", std::dynamic_pointer_cast<Arg<std::string>>(options["str_key"])->value().c_str());
+    EXPECT_EQ(42, std::dynamic_pointer_cast<Arg<int>>(options["int_key"])->value());
+    EXPECT_FLOAT_EQ(3.14, std::dynamic_pointer_cast<Arg<float>>(options["float_key"])->value());
+    EXPECT_DOUBLE_EQ(3.14, std::dynamic_pointer_cast<Arg<double>>(options["double_key"])->value());
 }
 
-TEST_F(ArgParserTests, Help1)
-{
-    std::vector<char*> argv {
-        (char*)"program_name",
-        (char*)"-h"
-    };
-    
-    argparser::Argparser parser(argv.size(), &argv[0]);
-    parser.add_argument("key1", std::string(), "Description for key1");
-    parser.add_argument("key2", std::string(), "Description for key2");
-    
-    testing::internal::CaptureStdout();
-    
-    parser.parse();
-    
-    std::string help_message = ::testing::internal::GetCapturedStdout();
-    std::stringstream expected_help_message;
-    expected_help_message << "Usage: program_name [options]\n\n";
-    expected_help_message << "\tkey1\t\t\tDescription for key1\n";
-    expected_help_message << "\tkey2\t\t\tDescription for key2\n";
-    expected_help_message << "\n\t-h, --help\t\tshow this help message and exit\n";
-    ASSERT_STREQ(help_message.c_str(), expected_help_message.str().c_str());
-
-}
-
-TEST_F(ArgParserTests, Help2)
-{
-    std::vector<char*> argv {
-        (char*)"program_name",
-        (char*)"--help"
-    };
-    
-    argparser::Argparser parser(argv.size(), &argv[0]);
-    parser.add_argument("key1", std::string(), "Description for key1");
-    parser.add_argument("key2", std::string(), "Description for key2");
-    
-    testing::internal::CaptureStdout();
-    
-    parser.parse();
-    
-    std::string help_message = ::testing::internal::GetCapturedStdout();
-    std::stringstream expected_help_message;
-    expected_help_message << "Usage: program_name [options]\n\n";
-    expected_help_message << "\tkey1\t\t\tDescription for key1\n";
-    expected_help_message << "\tkey2\t\t\tDescription for key2\n";
-    expected_help_message << "\n\t-h, --help\t\tshow this help message and exit\n";
-    ASSERT_STREQ(help_message.c_str(), expected_help_message.str().c_str());
-}
-
+} // argparser
