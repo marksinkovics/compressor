@@ -25,7 +25,7 @@ TEST_F(CompressorDataTests, DataStream)
     stream >> output_data;
     
     EXPECT_EQ(input_data.data_, output_data.data_);
-    ASSERT_THAT(output_data.data_, testing::ElementsAre(1, 2, 3, 4, 5));
+    EXPECT_THAT(output_data.data_, testing::ElementsAre(1, 2, 3, 4, 5));
 }
 
 TEST_F(CompressorDataTests, EncodedDataStream)

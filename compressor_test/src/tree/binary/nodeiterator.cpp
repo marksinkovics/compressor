@@ -67,37 +67,37 @@ TEST_F(BinaryNodeIteratorTests, Equality)
     auto iterBegin = _tree->preOrderBegin();
     auto iterEnd = _tree->preOrderEnd();
 
-    ASSERT_EQ(iterBegin, iterBegin);
-    ASSERT_EQ(iterEnd, iterEnd);
-    ASSERT_NE(iterBegin, iterEnd);
+    EXPECT_EQ(iterBegin, iterBegin);
+    EXPECT_EQ(iterEnd, iterEnd);
+    EXPECT_NE(iterBegin, iterEnd);
 }
 
 TEST_F(BinaryNodeIteratorTests, Relatives)
 {
-    ASSERT_EQ(_tree->root(), node1);
-    ASSERT_EQ(node1->left(), node2);
-    ASSERT_EQ(node1->right(), node3);
-    ASSERT_EQ(node2->left(), node4);
-    ASSERT_EQ(node2->right(), node5);
+    EXPECT_EQ(_tree->root(), node1);
+    EXPECT_EQ(node1->left(), node2);
+    EXPECT_EQ(node1->right(), node3);
+    EXPECT_EQ(node2->left(), node4);
+    EXPECT_EQ(node2->right(), node5);
     
-    ASSERT_EQ(node4->left(), nullptr);
-    ASSERT_EQ(node4->right(), nullptr);
-    ASSERT_EQ(node5->left(), nullptr);
-    ASSERT_EQ(node5->right(), nullptr);
+    EXPECT_EQ(node4->left(), nullptr);
+    EXPECT_EQ(node4->right(), nullptr);
+    EXPECT_EQ(node5->left(), nullptr);
+    EXPECT_EQ(node5->right(), nullptr);
     
-    ASSERT_EQ(node3->left(), node6);
-    ASSERT_EQ(node3->right(), node7);
+    EXPECT_EQ(node3->left(), node6);
+    EXPECT_EQ(node3->right(), node7);
 
-    ASSERT_EQ(node6->left(), node8);
-    ASSERT_EQ(node6->right(), node9);
-    ASSERT_EQ(node8->left(), nullptr);
-    ASSERT_EQ(node8->right(), nullptr);
+    EXPECT_EQ(node6->left(), node8);
+    EXPECT_EQ(node6->right(), node9);
+    EXPECT_EQ(node8->left(), nullptr);
+    EXPECT_EQ(node8->right(), nullptr);
     
-    ASSERT_EQ(node9->left(), nullptr);
-    ASSERT_EQ(node9->right(), nullptr);
+    EXPECT_EQ(node9->left(), nullptr);
+    EXPECT_EQ(node9->right(), nullptr);
 
-    ASSERT_EQ(node7->left(), nullptr);
-    ASSERT_EQ(node7->right(), nullptr);
+    EXPECT_EQ(node7->left(), nullptr);
+    EXPECT_EQ(node7->right(), nullptr);
     
 }
 
@@ -111,7 +111,7 @@ TEST_F(BinaryNodeIteratorTests, ForIterator)
         auto node = std::dynamic_pointer_cast<compressor::SymbolNode>(*iter);
         ss << node->value();
     }
-    ASSERT_STREQ(ss.str().c_str(), "124536897");
+    EXPECT_STREQ(ss.str().c_str(), "124536897");
     std::cout << '\n';
 }
 
@@ -124,7 +124,7 @@ TEST_F(BinaryNodeIteratorTests, ForEachIterator)
         auto node = std::dynamic_pointer_cast<compressor::SymbolNode>(bin_node);
         ss << node->value();
     });
-    ASSERT_STREQ(ss.str().c_str(), "124536897");
+    EXPECT_STREQ(ss.str().c_str(), "124536897");
     std::cout << '\n';
 }
 

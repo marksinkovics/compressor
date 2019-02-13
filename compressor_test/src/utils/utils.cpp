@@ -22,17 +22,17 @@ TEST_F(UtilsTests, calc_num_blocks)
 TEST_F(UtilsTests, block_to_bit_string)
 {
     uint8_t bit8 = 1;
-    ASSERT_EQ("00000001", compressor::utils::block_to_bit_string(bit8));
-    ASSERT_EQ("01", compressor::utils::block_to_bit_string(bit8, uint8_t(2)));
+    EXPECT_EQ("00000001", compressor::utils::block_to_bit_string(bit8));
+    EXPECT_EQ("01", compressor::utils::block_to_bit_string(bit8, uint8_t(2)));
 
     uint16_t bit16 = 1;
-    ASSERT_EQ("0000000000000001", compressor::utils::block_to_bit_string(bit16));
+    EXPECT_EQ("0000000000000001", compressor::utils::block_to_bit_string(bit16));
 
     uint32_t bit32 = 1;
-    ASSERT_EQ("00000000000000000000000000000001", compressor::utils::block_to_bit_string(bit32));
+    EXPECT_EQ("00000000000000000000000000000001", compressor::utils::block_to_bit_string(bit32));
 
     uint64_t bit64 = 1;
-    ASSERT_EQ("0000000000000000000000000000000000000000000000000000000000000001", compressor::utils::block_to_bit_string(bit64));
-    ASSERT_EQ("01", compressor::utils::block_to_bit_string(bit64, uint64_t(2)));
+    EXPECT_EQ("0000000000000000000000000000000000000000000000000000000000000001", compressor::utils::block_to_bit_string(bit64));
+    EXPECT_EQ("01", compressor::utils::block_to_bit_string(bit64, uint64_t(2)));
 
 }

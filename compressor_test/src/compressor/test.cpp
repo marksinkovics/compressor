@@ -10,6 +10,6 @@ TEST(Arithmetic, Mod)
     for (uint8_t v : numbers) {
         int a = v % 8;
         int b = v & 7;
-        ASSERT_EQ(a, b);
+        EXPECT_EQ(a, b);
     }
 }

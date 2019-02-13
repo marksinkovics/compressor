@@ -9,9 +9,9 @@ class BinaryNodeTests : public ::testing::Test {};
 TEST_F(BinaryNodeTests, Alloc)
 {
     compressor::BinaryNode node;
-    ASSERT_EQ(node.left(), nullptr);
-    ASSERT_EQ(node.right(), nullptr);
-    ASSERT_FALSE(node.hasParent());
+    EXPECT_EQ(node.left(), nullptr);
+    EXPECT_EQ(node.right(), nullptr);
+    EXPECT_FALSE(node.hasParent());
 }
 
 TEST_F(BinaryNodeTests, MultipleAllocation)
@@ -24,9 +24,9 @@ TEST_F(BinaryNodeTests, MultipleAllocation)
     parent->setRight(right);
     right->setParent(parent);
     
-    ASSERT_EQ(parent->left(), left);
-    ASSERT_EQ(parent->right(), right);
+    EXPECT_EQ(parent->left(), left);
+    EXPECT_EQ(parent->right(), right);
     
-    ASSERT_TRUE(left->hasParent());
-    ASSERT_TRUE(right->hasParent());
+    EXPECT_TRUE(left->hasParent());
+    EXPECT_TRUE(right->hasParent());
 }

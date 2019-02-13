@@ -148,7 +148,7 @@ void Engine::print_dict() const noexcept
     for(const auto it: bit_dict_)
     {
         std::cout << it.first.str() << " => [";
-        std::cout.operator<<(it.second);
+        std::cout << it.second;
         std::cout << "]\n";
     }
 }
