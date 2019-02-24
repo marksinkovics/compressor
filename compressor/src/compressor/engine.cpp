@@ -33,6 +33,11 @@ Engine::Engine(const EncodedData& data)
 {
     
 }
+    
+Engine::~Engine()
+{
+    
+}
 
 void Engine::build_dictionary() noexcept
 {
@@ -54,11 +59,11 @@ void Engine::build_tree() noexcept
 {
     _tree = std::make_shared<BinaryTree>();
     
-    std::function<std::shared_ptr<SymbolNode>(std::pair<char, std::shared_ptr<SymbolNode>>)> second = [](std::pair<char, std::shared_ptr<SymbolNode>> const &pair) {
+    auto second = [](std::pair<char, std::shared_ptr<SymbolNode>> const &pair) {
         return pair.second;
     };
     
-    std::function<bool(std::shared_ptr<SymbolNode>,std::shared_ptr<SymbolNode>)> lower = [](std::shared_ptr<SymbolNode> const &lhs, std::shared_ptr<SymbolNode> const &rhs) {
+    auto lower = [](std::shared_ptr<SymbolNode> const &lhs, std::shared_ptr<SymbolNode> const &rhs) {
         return lhs->frequency() < rhs->frequency();
     };
     

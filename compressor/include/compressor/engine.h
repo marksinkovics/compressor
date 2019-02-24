@@ -17,24 +17,42 @@ class bitset;
 struct Data;
 struct EncodedData;
     
-class Engine
+class IEngine
+{
+public:
+    virtual ~IEngine() = default;
+
+    virtual void build_dictionary() noexcept = 0;
+    virtual void build_tree() noexcept = 0;
+    virtual void create_hash_table() noexcept = 0;
+    
+    virtual std::shared_ptr<compressor::bitset> find_path(std::shared_ptr<SymbolNode>& node) noexcept = 0;
+    virtual void print_graph() const noexcept = 0;
+    virtual void print_dict() const noexcept = 0;
+    
+    virtual EncodedData encode() = 0;
+    virtual Data decode() = 0;
+};
+    
+class Engine: public IEngine
 {
 public:
     Engine(const std::string& input);
-    
     Engine(const Data& data);
     Engine(const EncodedData& data);
+
+    virtual ~Engine();
     
-    void build_dictionary() noexcept;
-    void build_tree() noexcept;
-    void create_hash_table() noexcept;
+    virtual void build_dictionary() noexcept;
+    virtual void build_tree() noexcept;
+    virtual void create_hash_table() noexcept;
     
-    std::shared_ptr<compressor::bitset> find_path(std::shared_ptr<SymbolNode>& node) noexcept;
-    void print_graph() const noexcept;
-    void print_dict() const noexcept;
+    virtual std::shared_ptr<compressor::bitset> find_path(std::shared_ptr<SymbolNode>& node) noexcept;
+    virtual void print_graph() const noexcept;
+    virtual void print_dict() const noexcept;
     
-    EncodedData encode();
-    Data decode();
+    virtual EncodedData encode();
+    virtual Data decode();
     
 private:
     std::shared_ptr<BinaryTree> _tree;

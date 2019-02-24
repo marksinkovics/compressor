@@ -42,12 +42,12 @@ public:
         return this->arg_ < other.arg_;
     }
     
-    virtual void parse(__attribute__((unused)) const std::string& str)
+    virtual void parse([[maybe_unused]] const std::string& str)
     {
         
     }
     
-    virtual std::shared_ptr<BaseArg> clone(__attribute__((unused)) const std::string& str)
+    virtual std::shared_ptr<BaseArg> clone([[maybe_unused]] const std::string& str)
     {
         return nullptr;
     }

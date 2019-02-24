@@ -7,12 +7,19 @@
 namespace compressor
 {
 
-class Compressor
+class ICompressor
+{
+public:
+    virtual ~ICompressor() = default;
+    virtual void encode() = 0;
+};
+
+class Compressor: public ICompressor
 {
 public:
     Compressor(const std::string& input_file, const std::string& output_file);
-    ~Compressor();
-    void encode();
+    virtual ~Compressor();
+    virtual void encode();
 private:
     std::string input_file_;
     std::string output_file_;
