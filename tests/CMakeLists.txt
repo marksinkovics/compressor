@@ -1,4 +1,4 @@
-project(compressor_test)
+project(tests)
 
 enable_testing()
 
@@ -7,21 +7,12 @@ set(INCLUDE_FILES)
 
 set(SRC_DIR ${PROJECT_SOURCE_DIR}/src)
 set(SRC_FILES
-    "${SRC_DIR}/compressor/test.cpp"
-    "${SRC_DIR}/compressor/compressor.cpp"
-    "${SRC_DIR}/compressor/engine.cpp"
-    "${SRC_DIR}/bitset/bitset.cpp"
-    "${SRC_DIR}/bitset/bitset_iterator.cpp"
-    "${SRC_DIR}/tree/binary/node.cpp"
-    "${SRC_DIR}/tree/binary/tree.cpp"
-    "${SRC_DIR}/tree/binary/nodeiterator.cpp"
-    "${SRC_DIR}/utils/utils.cpp"
-    "${SRC_DIR}/data/data.cpp"
+    "${SRC_DIR}/empty.cpp"
 )
 
 add_executable(${PROJECT_NAME}
-    ${SRC_FILES}
     ${INCLUDE_FILES}
+    ${SRC_FILES}
 )
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SRC_FILES})
@@ -36,15 +27,24 @@ SET(ARGPARSER_TEST_LIB
     -Wl,-force_load argparser_test
 )
 
+# Force load compressor_cli_test lib
+SET(COMPRESSOR_CLI_TEST_LIB
+    -Wl,-force_load compressor_cli_test
+)
+
+# Force load compressor_cli_test lib
+SET(COMPRESSOR_TEST_LIB
+    -Wl,-force_load compressor_test
+)
+
 target_link_libraries(${PROJECT_NAME}
-    compressor
     ${ARGPARSER_TEST_LIB}
-    GTest::GTest
-    GMock::GMock
+    ${COMPRESSOR_CLI_TEST_LIB}
+    ${COMPRESSOR_TEST_LIB}
     GMock::Main
 )
 
-include(GoogleTest)
-gtest_discover_tests(${PROJECT_NAME})
+# include(GoogleTest)
+# gtest_discover_tests(${PROJECT_NAME})
 # add_test(test_all ${PROJECT_NAME})
 # add_test(NAME ${PROJECT_NAME} COMMAND ${PROJECT_NAME})

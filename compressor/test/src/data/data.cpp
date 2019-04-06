@@ -17,11 +17,11 @@ protected:
 
 TEST_F(CompressorDataTests, DataStream)
 {
-    compressor::Data input_data;
+    compressor::DecodedData input_data;
     input_data.data_ = {1, 2, 3, 4, 5};
     stream << input_data;
     
-    compressor::Data output_data;
+    compressor::DecodedData output_data;
     stream >> output_data;
     
     EXPECT_EQ(input_data.data_, output_data.data_);

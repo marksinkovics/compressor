@@ -1,23 +1,17 @@
-project(argparser)
+project(compressor_cli)
 
 set(INCLUDE_DIR ${PROJECT_SOURCE_DIR}/include)
 
-SET(ARGPARSER_INCLUDE_DIR "${INCLUDE_DIR}/argparser")
+SET(COMPRESSOR_INCLUDE_DIR "${INCLUDE_DIR}/compressor")
 
 set(INCLUDE_FILES
-    "${ARGPARSER_INCLUDE_DIR}/valueparser.h"
-    "${ARGPARSER_INCLUDE_DIR}/basearg.h"
-    "${ARGPARSER_INCLUDE_DIR}/arg.h"
-    "${ARGPARSER_INCLUDE_DIR}/argparser.h"
+    "${COMPRESSOR_INCLUDE_DIR}/cli.h"
 )
 
 set(SRC_DIR ${PROJECT_SOURCE_DIR}/src)
-SET(ARGPARSER_SRC_DIR "${SRC_DIR}/argparser")
+SET(COMPRESSOR_SRC_DIR "${SRC_DIR}/compressor")
 set(SRC_FILES
-    "${ARGPARSER_SRC_DIR}/valueparser.cpp"
-    "${ARGPARSER_SRC_DIR}/basearg.cpp"
-    "${ARGPARSER_SRC_DIR}/arg.cpp"
-    "${ARGPARSER_SRC_DIR}/argparser.cpp"
+    "${COMPRESSOR_SRC_DIR}/cli.cpp"
 )
 
 add_library(${PROJECT_NAME} ${INCLUDE_FILES} ${SRC_FILES})
@@ -30,6 +24,11 @@ target_include_directories(${PROJECT_NAME}
         ${INCLUDE_DIR}
     PRIVATE
         ${SRC_DIR}
+)
+
+target_link_libraries(${PROJECT_NAME}
+    compressor
+    argparser
 )
 
 add_subdirectory(test)

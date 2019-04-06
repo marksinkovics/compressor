@@ -4,6 +4,9 @@
 #include <fstream>
 #include <string>
 
+#include <compressor/task/encoder.h>
+#include <compressor/task/decoder.h>
+
 namespace compressor
 {
 
@@ -11,18 +14,16 @@ class ICompressor
 {
 public:
     virtual ~ICompressor() = default;
-    virtual void encode() = 0;
+    virtual void encode(IEncoderTask &task) = 0;
+    virtual void decode(IDecoderTask& task) = 0;
 };
 
 class Compressor: public ICompressor
 {
 public:
-    Compressor(const std::string& input_file, const std::string& output_file);
-    virtual ~Compressor();
-    virtual void encode();
-private:
-    std::string input_file_;
-    std::string output_file_;
+    virtual ~Compressor() = default;
+    virtual void encode(IEncoderTask &task);
+    virtual void decode(IDecoderTask& task);
 };
     
 }

@@ -1,48 +1,35 @@
 #include <compressor/compressor.h>
 
 #include <compressor/data/data.h>
-#include <compressor/engine.h>
+#include <compressor/engine/engine.h>
 
 namespace compressor
 {
 
-Compressor::Compressor(const std::string& input_file, const std::string& output_file)
-    : input_file_(input_file)
-    , output_file_(output_file)
+void Compressor::encode(IEncoderTask &task)
 {
+    task.reader().open(task.input_file());
+    auto decoded_data = task.reader().read();
+    task.reader().close();
     
+    auto encoded_data = task.engine().encode(decoded_data);
+
+    task.writer().open(task.output_file());
+    task.writer().write(encoded_data);
+    task.writer().close();
 }
-    
-Compressor::~Compressor()
+
+void Compressor::decode(IDecoderTask& task)
 {
-
-}
-
-void Compressor::encode()
-{
-    std::ifstream input_stream;
-    input_stream.open(input_file_, std::ios::in | std::ios::binary);
-    if (input_stream.fail()) {
-        std::cerr << "Cannot open file: " << input_file_ << '\n';
-        return;
-    }
-
-    compressor::Data data;
-    input_stream >> data;
-    input_stream.close();
+    task.reader().open(task.input_file());
+    auto encoded_data = task.reader().read();
+    task.reader().close();
     
-    compressor::Engine compressor(data);
-    auto encoded_data = compressor.encode();
-
-    std::ofstream output_stream;
-    output_stream.open(output_file_, std::ios::out | std::ios::binary);
-    if (output_stream.fail()) {
-        std::cerr << "Cannot open file: " << output_file_ << '\n';
-        return;
-    }
-
-    output_stream << encoded_data;
-    output_stream.close();
+    auto decoded_data = task.engine().decode(encoded_data);
+    
+    task.writer().open(task.output_file());
+    task.writer().write(decoded_data);
+    task.writer().close();
 }
 
 }

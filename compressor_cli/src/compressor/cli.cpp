@@ -1,21 +1,22 @@
-#include "cli.h"
+#include <compressor/cli.h>
 
 #include <iostream>
 
 #include <argparser/argparser.h>
 #include <compressor/compressor.h>
-#include <compressor/decompressor.h>
 
 namespace compressor
 {
     
-CLI::CLI(int argc, char *argv[])
-    : parser_(std::make_shared<argparser::Argparser>(argc, argv))
+CLI::CLI(std::unique_ptr<argparser::IArgparser>&& parser,
+         std::unique_ptr<compressor::ICompressor>&& compressor)
+: parser_(std::move(parser))
+, compressor_(std::move(compressor))
 {
-    parser_->add_argument("encode", "Compress the given file.", false);
-    parser_->add_argument("decode", "Decompress the given file.", false);
-    parser_->add_argument("--input", "Input file path", std::string(""));
-    parser_->add_argument("--output", "Output file path", std::string(""));
+    parser_->add_argument(argparser::CreateArg("encode", "Compress the given file.", false));
+    parser_->add_argument(argparser::CreateArg("decode", "Decompress the given file.", false));
+    parser_->add_argument(argparser::CreateArg("--input", "Input file path", std::string("")));
+    parser_->add_argument(argparser::CreateArg("--output", "Output file path", std::string("")));
     options_ = parser_->parse();
 }
 
@@ -37,15 +38,15 @@ void CLI::run()
     if (parser_->has_argument("encode"))
     {
         std::cout << "Encode\n";
-        compressor::Compressor compressor(input_file, output_file);
-        compressor.encode();
+        EncoderTask task(input_file, output_file);
+        compressor_->encode(task);
     }
     else if (parser_->has_argument("decode"))
     {
         std::cout << "Decode\n";
-        compressor::Decompressor decompressor(input_file, output_file);
-        decompressor.decode();
+        DecoderTask task(input_file, output_file);
+        compressor_->decode(task);
     }
 }
-
+    
 } // compressor

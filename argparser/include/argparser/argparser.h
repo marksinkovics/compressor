@@ -10,27 +10,35 @@
 
 namespace argparser
 {
-
-class Argparser {
-
+    
+class IArgparser
+{
 public:
     using container_type = std::map<std::string, std::shared_ptr<BaseArg>>;
-    
-    Argparser(int argc, char** argv);
-    
-    container_type parse();
-    
-    template<typename T>
-    void add_argument(const std::string& argument, const std::string& description, const T default_value = T())
-    {
-        auto simplified_argument = simplify_arg_name(argument);
-        args_[simplified_argument] = std::make_shared<Arg<T>>(argument, description, default_value);
-    }
-    
-    bool has_argument(const std::string& argument);
-    
-    void print_help() const;
 
+    virtual ~IArgparser() = default;
+
+    virtual void add_argument(std::shared_ptr<BaseArg> arg) = 0;
+    virtual container_type parse() = 0;
+    virtual bool has_argument(const std::string& argument) const = 0;
+    virtual void print_help() const = 0;
+};
+
+class Argparser: public IArgparser
+{
+public:
+    Argparser(int argc, char** argv);
+    virtual ~Argparser();
+    
+    virtual void add_argument(std::shared_ptr<BaseArg> arg)
+    {
+        auto simplified_argument = simplify_arg_name(arg->arg());
+        args_[simplified_argument] = arg;
+    }
+
+    virtual container_type parse();
+    virtual bool has_argument(const std::string& argument) const;
+    virtual void print_help() const;
 private:
     void unify_input_arguments(int argc, char** argv);
     static std::string simplify_arg_name(const std::string& argument);
@@ -42,6 +50,14 @@ private:
     
     std::string program_name_;
 };
+    
+template<typename T>
+static std::shared_ptr<BaseArg> CreateArg(const std::string& argument,
+                                          const std::string& description,
+                                          const T default_value = T())
+{
+    return std::make_shared<Arg<T>>(argument, description, default_value);
+}
 
 } // argparser
 

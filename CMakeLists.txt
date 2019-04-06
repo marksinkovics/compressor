@@ -18,15 +18,20 @@ if(ENABLE_ASAN)
 endif()
 
 add_subdirectory(3rd_party/boost)
-add_subdirectory(compressor)
+add_subdirectory(3rd_party/google-test)
+add_subdirectory(3rd_party/google-benchmark)
 
 add_subdirectory(argparser)
 
+add_subdirectory(compressor)
+
+add_subdirectory(compressor_cli)
+
 add_subdirectory(compressor_app)
-add_subdirectory(3rd_party/google-test)
-add_subdirectory(compressor_test)
-add_subdirectory(3rd_party/google-benchmark)
+
 add_subdirectory(compressor_benchmark)
+
+add_subdirectory(tests)
 
 if(NOT ENABLE_ASAN)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")

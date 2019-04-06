@@ -15,6 +15,11 @@ Argparser::Argparser(int argc, char** argv)
 {
     unify_input_arguments(argc, argv);
 }
+ 
+Argparser::~Argparser()
+{
+    
+}
     
 void Argparser::unify_input_arguments(int argc, char** argv)
 {
@@ -91,7 +96,7 @@ Argparser::container_type Argparser::parse()
     return options_;
 }
     
-bool Argparser::has_argument(const std::string &argument)
+bool Argparser::has_argument(const std::string &argument) const
 {
     auto symplified_arg = simplify_arg_name(argument);
     return options_.find(symplified_arg) != options_.end();

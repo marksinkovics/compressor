@@ -8,7 +8,7 @@
 #include <compressor/bitset/bitset.h>
 #include <compressor/bitset/bitset_iterator.h>
 #include <compressor/tree/binary/tree.h>
-#include <compressor/engine.h>
+#include <compressor/engine/engine.h>
 #include <compressor/tree/symbolnode.h>
 #include <compressor/tree/binary/nodeiterator.h>
 
@@ -16,30 +16,12 @@
 
 namespace compressor
 {
-    
-Engine::Engine(const std::string& input)
-{
-    std::vector<uint8_t> input_data(input.begin(), input.end());
-    this->data_.data_ = std::move(input_data);
-}
 
-Engine::Engine(const Data& data)
-{
-    this->data_ = data;
-}
-
-Engine::Engine(const EncodedData& data)
-    : encoded_data_(data)
-{
-    
-}
-    
 Engine::~Engine()
 {
-    
 }
 
-void Engine::build_dictionary() noexcept
+void Engine::build_dictionary()
 {
     for (const char& symbol : data_.data_)
     {
@@ -55,7 +37,7 @@ void Engine::build_dictionary() noexcept
     }
 }
 
-void Engine::build_tree() noexcept
+void Engine::build_tree()
 {
     _tree = std::make_shared<BinaryTree>();
     
@@ -86,7 +68,7 @@ void Engine::build_tree() noexcept
     _tree->setRoot(_nodes.front());
 }
 
-void Engine::create_hash_table() noexcept
+void Engine::create_hash_table()
 {
     std::for_each(_tree->preOrderBegin(), _tree->preOrderEnd(), [](std::shared_ptr<BinaryNode> bin_node) {
         auto node = std::dynamic_pointer_cast<SymbolNode>(bin_node);
@@ -112,7 +94,7 @@ void Engine::create_hash_table() noexcept
     }
 }
 
-std::shared_ptr<compressor::bitset> Engine::find_path(std::shared_ptr<SymbolNode>& node) noexcept
+std::shared_ptr<compressor::bitset> Engine::find_path(std::shared_ptr<SymbolNode>& node)
 {
     std::shared_ptr<SymbolNode> innerNode = node;
     auto vector = std::make_shared<compressor::bitset>(0);
@@ -125,7 +107,7 @@ std::shared_ptr<compressor::bitset> Engine::find_path(std::shared_ptr<SymbolNode
     return vector;
 }
 
-void Engine::print_graph() const noexcept
+void Engine::print_graph() const
 {
     std::cout << "digraph G {\n";
     std::for_each(_tree->preOrderBegin(), _tree->preOrderEnd(), [](std::shared_ptr<BinaryNode> bin_node) {
@@ -148,7 +130,7 @@ void Engine::print_graph() const noexcept
     std::cout << "}\n";
 }
 
-void Engine::print_dict() const noexcept
+void Engine::print_dict() const
 {
     for(const auto it: bit_dict_)
     {
@@ -158,8 +140,9 @@ void Engine::print_dict() const noexcept
     }
 }
 
-EncodedData Engine::encode()
+EncodedData Engine::encode(const DecodedData& data)
 {
+    this->data_ = data;
     this->encoded_data_ = EncodedData();
     
     build_dictionary();
@@ -185,8 +168,9 @@ EncodedData Engine::encode()
     return encoded_data_;
 }
 
-Data Engine::decode()
+DecodedData Engine::decode(const EncodedData& data)
 {
+    this->encoded_data_ = data;
     auto current = std::make_unique<bitset>();
     std::string str;
     for (const bool bit : encoded_data_.data_)
@@ -200,7 +184,7 @@ Data Engine::decode()
         }
     }
     std::vector<uint8_t> result_data(str.begin(), str.end());
-    Data result;
+    DecodedData result;
     result.data_ = std::move(result_data);
     return result;
 }

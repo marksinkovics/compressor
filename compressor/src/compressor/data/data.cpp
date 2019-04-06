@@ -1,21 +1,26 @@
 #include <compressor/data/data.h>
+#include <compressor/engine/engine.h>
 
 namespace compressor
 {
 
-std::ostream& operator<<(std::ostream& ostream, const Data& data)
+std::ostream& operator<<(std::ostream& ostream, const DecodedData& data)
 {
     std::ostream_iterator<uint8_t> output_iterator(ostream);
     std::copy(data.data_.begin(), data.data_.end(), output_iterator);
     return ostream;
 }
 
-std::istream& operator>>(std::istream& istream, Data& data)
+std::istream& operator>>(std::istream& istream, DecodedData& data)
 {
-    std::vector<uint8_t> input_data((std::istreambuf_iterator<char>(istream)),
-                    std::istreambuf_iterator<char>());
+    std::vector<uint8_t> input_data((std::istreambuf_iterator<char>(istream)), std::istreambuf_iterator<char>());
     data.data_ = std::move(input_data);
     return istream;
+}
+    
+bool operator==(const DecodedData& lhs, const DecodedData& rhs)
+{
+    return lhs.data_ == rhs.data_;
 }
 
 std::ostream& operator<<(std::ostream& ostream, const EncodedData& data)
@@ -45,6 +50,11 @@ std::istream& operator>>(std::istream& istream, EncodedData& data)
     }
     istream >> data.data_;
     return istream;
+}
+    
+bool operator==(const EncodedData& lhs, const EncodedData& rhs)
+{
+    return lhs.bit_dict_ == rhs.bit_dict_ && lhs.data_ == rhs.data_;
 }
 
 }
