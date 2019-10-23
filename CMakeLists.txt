@@ -41,9 +41,3 @@ add_subdirectory(tests)
 if(NOT ENABLE_ASAN)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
 endif()
-
-if (CMAKE_BUILD_TYPE MATCHES "^[Rr]elease")
-    set(BUILD_DOCUMENTATION 1)
-endif()
-
-add_subdirectory(docs/doxygen)
