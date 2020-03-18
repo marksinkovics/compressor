@@ -8,12 +8,17 @@ The project uses [CMake](https://cmake.org) for managing dependencies, configura
 * Clang (Apple LLVM version 10.0.1 (clang-1001.0.46.4))
 * Xcode v10.2.1
 * C++ (c++1z)
-* Boost v1.68.0 has to be installed and make it visible for CMake
+* Ninja
+* Boost v1.71.0 has to be installed and make it visible for CMake
     * boost::dynamic_bitset, as a header only class, is used to benchmarking bit storing
 
 ## Compile
 
-### Debug build
+### Clone
+
+This project manages google dependencies via submodule. Please clone the repository with `--recursive` flag or install submodules right after cloning `git submodule update --init`
+
+### Debug build (with Ninja)
 
 1. Create a build folder (move into the project)
     `mkdir -p build/debug && cd build/debug`
@@ -23,7 +28,7 @@ The project uses [CMake](https://cmake.org) for managing dependencies, configura
     `ninja`
 4. Binary files can be found under _build/debug_
 
-### Release build
+### Release build (with Ninja)
 
 1. Create a build folder (move into the project)
     `mkdir -p build/release && cd build/release`
@@ -44,7 +49,7 @@ Of course CMake has various options for project generation that can be used unde
 
 Tool: [Google test framework](https://github.com/google/googletest) v1.8.0
 
-After the project is compiled sucessfully, the unit test can be found under _build/debug/compressor_test_ folder where `compressor_test` run tests
+After the project is compiled sucessfully, the unit test can be found under _build/debug/tests folder where `tests` run tests
 
 ## Run benchmark
 

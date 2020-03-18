@@ -22,9 +22,10 @@ if(ENABLE_ASAN)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=leak")
 endif()
 
-add_subdirectory(3rd_party/boost)
-add_subdirectory(3rd_party/google-test)
-add_subdirectory(3rd_party/google-benchmark)
+add_subdirectory(dependencies/boostorg/boost)
+add_subdirectory(dependencies/google/googletest)
+set(BENCHMARK_ENABLE_GTEST_TESTS OFF)
+add_subdirectory(dependencies/google/benchmark)
 
 add_subdirectory(argparser)
 

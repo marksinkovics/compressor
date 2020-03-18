@@ -27,6 +27,6 @@ target_link_libraries(${PROJECT_NAME}
     compressor_test
     argparser_test
     compressor_cli
-    GTest::GTest
-    GMock::GMock
+    gtest
+    gmock
 )

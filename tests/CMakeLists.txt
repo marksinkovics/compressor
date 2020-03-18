@@ -41,7 +41,7 @@ target_link_libraries(${PROJECT_NAME}
     ${ARGPARSER_TEST_LIB}
     ${COMPRESSOR_CLI_TEST_LIB}
     ${COMPRESSOR_TEST_LIB}
-    GMock::Main
+    gmock_main
 )
 
 # include(GoogleTest)

@@ -44,6 +44,6 @@ target_include_directories(${PROJECT_NAME}
 
 target_link_libraries(${PROJECT_NAME}
     compressor
-    GTest::GTest
-    GMock::GMock
+    gtest
+    gmock
 )
