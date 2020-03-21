@@ -7,7 +7,7 @@
 
 namespace compressor
 {
-    
+
 CLI::CLI(std::unique_ptr<argparser::IArgparser>&& parser,
          std::unique_ptr<compressor::ICompressor>&& compressor)
 : parser_(std::move(parser))
@@ -28,13 +28,13 @@ void CLI::run()
         input_file = std::dynamic_pointer_cast<argparser::Arg<std::string>>(options_["input"])->value();
         std::cout << "Input file: "<< input_file << '\n';
     }
-    
+
     if (parser_->has_argument("output"))
     {
         output_file = std::dynamic_pointer_cast<argparser::Arg<std::string>>(options_["output"])->value();
         std::cout << "Output file: "<< output_file << '\n';
     }
-    
+
     if (parser_->has_argument("encode"))
     {
         std::cout << "Encode\n";
@@ -48,5 +48,5 @@ void CLI::run()
         compressor_->decode(task);
     }
 }
-    
+
 } // compressor

@@ -39,6 +39,8 @@ add_subdirectory(compressor_benchmark)
 
 add_subdirectory(tests)
 
+add_subdirectory(example)
+
 if(NOT ENABLE_ASAN)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
 endif()
