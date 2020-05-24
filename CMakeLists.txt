@@ -9,6 +9,11 @@ mark_as_advanced(VERSION_MAJOR VERSION_MINOR VERSION_PATCH)
 
 enable_testing()
 
+#
+# Enable profiling globally
+#
+add_compile_definitions(PROFILING=0)
+
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++1z -Wall -Wextra -Werror")
@@ -26,20 +31,14 @@ add_subdirectory(dependencies/boostorg/boost)
 add_subdirectory(dependencies/google/googletest)
 set(BENCHMARK_ENABLE_GTEST_TESTS OFF)
 add_subdirectory(dependencies/google/benchmark)
-
 add_subdirectory(argparser)
-
 add_subdirectory(compressor)
-
 add_subdirectory(compressor_cli)
-
 add_subdirectory(compressor_app)
-
 add_subdirectory(compressor_benchmark)
-
 add_subdirectory(tests)
-
-add_subdirectory(example)
+add_subdirectory(compressor_example)
+add_subdirectory(lib/instrumentor)
 
 if(NOT ENABLE_ASAN)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")

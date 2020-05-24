@@ -1,9 +1,7 @@
 project(compressor)
 
 set(INCLUDE_DIR ${PROJECT_SOURCE_DIR}/include)
-
-SET(COMPRESSOR_INCLUDE_DIR "${INCLUDE_DIR}/compressor")
-
+set(COMPRESSOR_INCLUDE_DIR "${INCLUDE_DIR}/compressor")
 set(INCLUDE_FILES
     "${COMPRESSOR_INCLUDE_DIR}/utils/utils.h"
     "${COMPRESSOR_INCLUDE_DIR}/tree/binary/node.h"
@@ -23,7 +21,7 @@ set(INCLUDE_FILES
 )
 
 set(SRC_DIR ${PROJECT_SOURCE_DIR}/src)
-SET(COMPRESSOR_SRC_DIR "${SRC_DIR}/compressor")
+set(COMPRESSOR_SRC_DIR "${SRC_DIR}/compressor")
 set(SRC_FILES
     "${COMPRESSOR_SRC_DIR}/utils/utils.cpp"
     "${COMPRESSOR_SRC_DIR}/tree/binary/node.cpp"
@@ -54,5 +52,8 @@ target_include_directories(${PROJECT_NAME}
         ${SRC_DIR}
 )
 
-add_subdirectory(test)
+target_link_libraries(${PROJECT_NAME}
+    instrumentor
+)
 
+add_subdirectory(test)

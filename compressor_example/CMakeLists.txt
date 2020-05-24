@@ -1,4 +1,4 @@
-project(example)
+project(compressor_example)
 
 set(INCLUDE_DIR ${PROJECT_SOURCE_DIR}/include)
 set(INCLUDE_FILES)
