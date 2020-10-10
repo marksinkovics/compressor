@@ -39,7 +39,7 @@ TEST_F(CompressorTests, Encoding)
     EXPECT_CALL(writer, write(testing::Eq(encoded_data))).Times(1);
     EXPECT_CALL(writer, close()).Times(1);
     
-    auto task = MockIEncoderTask();
+    testing::NiceMock<MockIEncoderTask> task;
     ON_CALL(task, input_file()).WillByDefault(testing::Return(input_file));
     ON_CALL(task, output_file()).WillByDefault(testing::Return(output_file));
     ON_CALL(task, engine()).WillByDefault(testing::ReturnRef(engine));
@@ -70,7 +70,7 @@ TEST_F(CompressorTests, Decoding)
     EXPECT_CALL(writer, write(testing::Eq(decoded_data))).Times(1);
     EXPECT_CALL(writer, close()).Times(1);
 
-    auto task = MockIDecoderTask();
+    testing::NiceMock<MockIDecoderTask> task;
     ON_CALL(task, input_file()).WillByDefault(testing::Return(input_file));
     ON_CALL(task, output_file()).WillByDefault(testing::Return(output_file));
     ON_CALL(task, engine()).WillByDefault(testing::ReturnRef(engine));

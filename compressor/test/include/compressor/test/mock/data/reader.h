@@ -10,9 +10,9 @@
 template <typename T>
 class MockIDataReader : public compressor::IDataReader<T> {
 public:
-    MOCK_METHOD1_T(open, bool(const std::string& file));
-    MOCK_METHOD0_T(read, T());
-    MOCK_METHOD0_T(close, void());
+    MOCK_METHOD(bool, open, (const std::string& file), (override));
+    MOCK_METHOD(T, read, (), (override));
+    MOCK_METHOD(void, close, (), (override));
 };
 
 #endif /* MockIDataReader_h */

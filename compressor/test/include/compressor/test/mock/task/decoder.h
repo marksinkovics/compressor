@@ -15,12 +15,12 @@
 
 class MockIDecoderTask: public compressor::IDecoderTask {
 public:
-    MOCK_METHOD0(input_file, std::string());
-    MOCK_METHOD0(output_file, std::string());
-    MOCK_METHOD0(engine, compressor::IEngine&());
-    MOCK_METHOD0(data, compressor::EncodedData&());
-    MOCK_METHOD0(reader, compressor::IDataReader<compressor::EncodedData>&());
-    MOCK_METHOD0(writer, compressor::IDataWriter<compressor::DecodedData>&());
+    MOCK_METHOD(std::string, input_file, (), (override));
+    MOCK_METHOD(std::string, output_file, (), (override));
+    MOCK_METHOD(compressor::IEngine&, engine, (), (override));
+    MOCK_METHOD(compressor::EncodedData&, data, (), (override));
+    MOCK_METHOD(compressor::IDataReader<compressor::EncodedData>&, reader, (), (override));
+    MOCK_METHOD(compressor::IDataWriter<compressor::DecodedData>&, writer, (), (override));
 };
 
 #endif /* MockIDecoderTask_h */

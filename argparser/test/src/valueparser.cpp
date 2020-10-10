@@ -11,7 +11,7 @@ class ValueParserTests : public ::testing::Test {};
 
 class BoolValueParserTests : public ValueParserTests, public ::testing::WithParamInterface<std::tuple<std::string, bool>> {};
     
-INSTANTIATE_TEST_CASE_P(TrueValueParserTestsParametersTrue, BoolValueParserTests, ::testing::Values(
+INSTANTIATE_TEST_SUITE_P(TrueValueParserTestsParametersTrue, BoolValueParserTests, ::testing::Values(
     std::make_tuple("true", true),
     std::make_tuple("True", true),
     std::make_tuple("t", true),
@@ -22,7 +22,7 @@ INSTANTIATE_TEST_CASE_P(TrueValueParserTestsParametersTrue, BoolValueParserTests
     std::make_tuple("T", true)
 ));
 
-INSTANTIATE_TEST_CASE_P(FalseValueParserTestsParametersTrue, BoolValueParserTests, ::testing::Values(
+INSTANTIATE_TEST_SUITE_P(FalseValueParserTestsParametersTrue, BoolValueParserTests, ::testing::Values(
     std::make_tuple("false", false),
     std::make_tuple("False", false),
     std::make_tuple("f", false),

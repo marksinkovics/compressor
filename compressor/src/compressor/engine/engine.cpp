@@ -25,7 +25,7 @@ Engine::~Engine()
 
 void Engine::build_dictionary()
 {
-    for (const char& symbol : data_.data_)
+    for (const auto& symbol : data_.data_)
     {
         auto pos = _symbols_dict.find(symbol);
         if (pos != _symbols_dict.end())
@@ -134,7 +134,7 @@ void Engine::print_graph() const
 
 void Engine::print_dict() const
 {
-    for(const auto it: bit_dict_)
+    for(const auto& it: bit_dict_)
     {
         std::cout << it.first.str() << " => [";
         std::cout << it.second;
@@ -165,7 +165,7 @@ EncodedData Engine::encode(const DecodedData& data)
     {
 
         bitset vector(0);
-        for (const char& symbol : data_.data_)
+        for (const auto& symbol : data_.data_)
         {
             PROFILE_START(symbol_timer, "Symbol")
             auto node = _symbols_dict[symbol];

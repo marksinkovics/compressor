@@ -4,8 +4,8 @@
 
 class MockIArgparser : public argparser::IArgparser {
 public:
-    MOCK_METHOD1(add_argument, void(std::shared_ptr<argparser::BaseArg> arg));
-    MOCK_METHOD0(parse, container_type());
-    MOCK_CONST_METHOD1(has_argument, bool(const std::string& argument));
-    MOCK_CONST_METHOD0(print_help, void());
+    MOCK_METHOD(void, add_argument, (std::shared_ptr<argparser::BaseArg>), (override));
+    MOCK_METHOD(container_type, parse, (), (override));
+    MOCK_METHOD(bool, has_argument, (const std::string& argument), (const, override));
+    MOCK_METHOD(void, print_help, (), (const, override));
 };

@@ -10,9 +10,9 @@
 template <typename T>
 class MockIDataWriter : public compressor::IDataWriter<T> {
 public:
-    MOCK_METHOD1_T(open, bool(const std::string& file));
-    MOCK_METHOD1_T(write, void(const T& data));
-    MOCK_METHOD0_T(close, void());
+    MOCK_METHOD(bool, open, (const std::string&), (override));
+    MOCK_METHOD(void, write, (const T&), (override));
+    MOCK_METHOD(void, close, (), (override));
 };
 
 #endif /* MockIDataWriter_h */

@@ -11,14 +11,16 @@
 
 class MockIEngine: public compressor::IEngine {
 public:
-    MOCK_METHOD0(build_dictionary, void());
-    MOCK_METHOD0(build_tree, void());
-    MOCK_METHOD0(create_hash_table, void());
-    MOCK_METHOD1(find_path, std::shared_ptr<compressor::bitset>(std::shared_ptr<compressor::SymbolNode>& node));
-    MOCK_CONST_METHOD0(print_graph, void());
-    MOCK_CONST_METHOD0(print_dict, void());
-    MOCK_METHOD1(encode, compressor::EncodedData(const compressor::DecodedData& data));
-    MOCK_METHOD1(decode, compressor::DecodedData(const compressor::EncodedData& data));
+    MOCK_METHOD(void, build_dictionary,(), (override));
+    MOCK_METHOD(void, build_tree, (), (override));
+    MOCK_METHOD(void, create_hash_table, (), (override));
+    using SharedPtrBitset = std::shared_ptr<compressor::bitset>;
+    using SharedNode = std::shared_ptr<compressor::SymbolNode>;
+    MOCK_METHOD(SharedPtrBitset, find_path, (SharedNode&), (override));
+    MOCK_METHOD(void, print_graph, (), (override, const));
+    MOCK_METHOD(void, print_dict, (), (override, const));
+    MOCK_METHOD(compressor::EncodedData, encode, (const compressor::DecodedData&), (override));
+    MOCK_METHOD(compressor::DecodedData, decode, (const compressor::EncodedData&), (override));
 };
 
 #endif /* MockIEngine_h */

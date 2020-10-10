@@ -2,7 +2,7 @@
 
 This project is a basic implementation of [Huffman coding](https://en.wikipedia.org/wiki/Huffman_coding).
 
-**:warning: It is only tested on macOS (v10.14) with Clang.**
+**:warning: It is only tested on macOS (v10.15.7) with Clang.**
 
 ## Usage
 

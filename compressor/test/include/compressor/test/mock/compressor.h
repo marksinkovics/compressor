@@ -9,8 +9,8 @@
 
 class MockICompressor : public compressor::ICompressor {
 public:
-    MOCK_METHOD1(encode, void(compressor::IEncoderTask& task));
-    MOCK_METHOD1(decode, void(compressor::IDecoderTask& task));
+    MOCK_METHOD(void, encode, (compressor::IEncoderTask&), (override));
+    MOCK_METHOD(void, decode, (compressor::IDecoderTask&), (override));
 };
 
 #endif /* MockICompressor_h */

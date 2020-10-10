@@ -4,12 +4,12 @@ The project uses [CMake](https://cmake.org) for managing dependencies, configura
 
 ### Prerequisite
 
-* CMake v3,10
-* Clang (Apple LLVM version 10.0.1 (clang-1001.0.46.4))
-* Xcode v10.2.1
+* CMake v3.10
+* Clang (Apple LLVM version 12.0.0 (clang-1200.0.32.2))
+* Xcode v12.0.1 (12A7300)
 * C++ (c++1z)
 * Ninja
-* Boost v1.71.0 has to be installed and make it visible for CMake
+* Boost v1.72.0 has to be installed and make it visible for CMake
     * boost::dynamic_bitset, as a header only class, is used to benchmarking bit storing
 
 ## Compile
@@ -26,7 +26,6 @@ This project manages google dependencies via submodule. Please clone the reposit
    `cmake ../.. -G Ninja`
 3.  Build the project (all targets)
     `ninja`
-4. Binary files can be found under _build/debug_
 
 ### Release build (with Ninja)
 
@@ -47,9 +46,16 @@ Of course CMake has various options for project generation that can be used unde
 
 ## Run tests
 
-Tool: [Google test framework](https://github.com/google/googletest) v1.8.0
+Tool
+* [Google test framework](https://github.com/google/googletest) v1.10.0
+* [CTest](https://cmake.org/cmake/help/latest/module/CTest.html)
 
-After the project is compiled sucessfully, the unit test can be found under _build/debug/tests folder where `tests` run tests
+1. Create a build folder (move into the project)
+    `mkdir -p build/debug && cd build/debug`
+2. Generate the project (with Ninja)
+   `cmake ../.. -G Ninja`
+3. Run unit tests with CTest
+	`ctest`
 
 ## Run benchmark
 
