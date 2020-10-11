@@ -18,7 +18,7 @@ public:
 private:
     std::unique_ptr<argparser::IArgparser> parser_;
     std::unique_ptr<compressor::ICompressor> compressor_;
-    argparser::IArgparser::container_type options_;
+    argparser::IArgparser::result_type options_;
 };
     
 } // compressor

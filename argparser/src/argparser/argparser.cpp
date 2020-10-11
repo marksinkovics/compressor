@@ -13,6 +13,7 @@ namespace argparser
 
 Argparser::Argparser(int argc, char** argv)
 {
+    add_option(CreateArg("--help", "-h", "Show this help message and exit", false));
     unify_input_arguments(argc, argv);
 }
  
@@ -50,56 +51,49 @@ void Argparser::unify_input_arguments(int argc, char** argv)
     }
 }
     
-std::string Argparser::simplify_arg_name(const std::string& argument)
+Argparser::result_type Argparser::parse()
 {
-    auto has_prefix = [](std::string str, std::string_view prefix) -> decltype(str.find(prefix) == 0) {
-        return str.find(prefix, 0) == 0;
+    auto arg_matcher = [](const std::string str) {
+        return [str](const std::shared_ptr<BaseArg> arg) {
+            bool result = arg->is_match(str);
+            return result;
+        };
     };
     
-    std::string arg = argument;
-    while (has_prefix(arg, "-") || has_prefix(arg, "_")) {
-        arg.erase(arg.begin());
-    }
-    
-    return arg;
-}
-
-Argparser::container_type Argparser::parse()
-{
     for(std::size_t i = 0; i < inputs_.size(); ++i)
     {
         std::string str = inputs_[i];
-        if (str == "-h" || str == "--help")
-        {
+        
+        auto it = std::find_if(options_.begin(), options_.end(), arg_matcher(str));
+        
+        if (it == std::end(options_)) {
+            continue;
+        }
+        
+        if ((*it)->key() == "help") {
             print_help();
             return {};
         }
         
-        auto simplified_argument = simplify_arg_name(str);
-        // arg is exists
-        auto arg = args_.find(simplified_argument);
-        if(arg != args_.end())
+        if(Arg<bool> *bool_arg = dynamic_cast<Arg<bool>*>(it->get()))
         {
-            auto base = arg->second;
-            if(Arg<bool> *bool_arg = dynamic_cast<Arg<bool>*>(base.get()))
-            {
-                auto option = std::make_shared<Arg<bool>>(*bool_arg);
-                option->setValue(true);
-                options_[simplified_argument] = option;
-            }
-            else
-            {
-                options_[simplified_argument] = base->clone(inputs_[++i]);
-            }
+            auto option = std::make_shared<Arg<bool>>(*bool_arg);
+            option->setValue(true);
+            args_[bool_arg->key()] = option;
         }
+        else
+        {
+            args_[(*it)->key()] = (*it)->clone(inputs_[++i]);
+        }
+        
     }
-    return options_;
+    return args_;
 }
     
 bool Argparser::has_argument(const std::string &argument) const
 {
-    auto symplified_arg = simplify_arg_name(argument);
-    return options_.find(symplified_arg) != options_.end();
+    auto symplified_arg = simplify_option(argument);
+    return args_.find(symplified_arg) != args_.end();
 }
     
 void Argparser::print_help() const
@@ -117,12 +111,10 @@ void Argparser::print_help() const
     };
     
     std::cout << "Usage: " << program_name_ << " [options]\n\n";
-    for(auto it = args_.begin(); it != args_.end(); ++it)
+    for(auto it = options_.begin(); it != options_.end(); ++it)
     {
-        print_line(std::cout, it->second->arg(), it->second->description());
+        print_line(std::cout, (*it)->arg(), (*it)->description());
     }
-    
-    print_line(std::cout, "-h, --help", "Show this help message and exit");
 }
     
 }

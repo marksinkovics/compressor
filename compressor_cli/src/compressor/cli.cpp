@@ -13,10 +13,10 @@ CLI::CLI(std::unique_ptr<argparser::IArgparser>&& parser,
 : parser_(std::move(parser))
 , compressor_(std::move(compressor))
 {
-    parser_->add_argument(argparser::CreateArg("encode", "Compress the given file.", false));
-    parser_->add_argument(argparser::CreateArg("decode", "Decompress the given file.", false));
-    parser_->add_argument(argparser::CreateArg("--input", "Input file path", std::string("")));
-    parser_->add_argument(argparser::CreateArg("--output", "Output file path", std::string("")));
+    parser_->add_option(argparser::CreateArg("encode", "", "Compress the given file.", false));
+    parser_->add_option(argparser::CreateArg("decode", "", "Decompress the given file.", false));
+    parser_->add_option(argparser::CreateArg("--input", "", "Input file path", std::string("")));
+    parser_->add_option(argparser::CreateArg("--output", "", "Output file path", std::string("")));
     options_ = parser_->parse();
 }
 

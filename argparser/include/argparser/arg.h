@@ -10,15 +10,23 @@
 namespace argparser
 {
 
+std::string simplify_option(const std::string& argument);
+
 template<typename T>
 class Arg : public BaseArg {
 public:
     using value_type = T;
     
-    explicit Arg(const std::string arg, const std::string description, const T default_value)
-    : BaseArg(arg, description)
+    explicit Arg(std::string key, std::string arg, std::string short_arg, std::string description, const T default_value)
+    : BaseArg(key, arg, short_arg, description)
     , value_(default_value)
     { }
+    
+    explicit Arg(std::string arg, std::string short_arg, std::string description, const T default_value)
+    : BaseArg(simplify_option(arg), arg, short_arg, description)
+    , value_(default_value)
+    { }
+
     
     Arg(const Arg& other)
     : BaseArg(other)
@@ -57,7 +65,6 @@ public:
             return nullptr;
         }            
     }
-
     
 private:
     value_type value_;

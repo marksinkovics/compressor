@@ -46,7 +46,8 @@ Of course CMake has various options for project generation that can be used unde
 
 ## Run tests
 
-Tool
+Tools
+
 * [Google test framework](https://github.com/google/googletest) v1.10.0
 * [CTest](https://cmake.org/cmake/help/latest/module/CTest.html)
 
