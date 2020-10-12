@@ -32,11 +32,7 @@ public:
     Argparser(int argc, char** argv);
     virtual ~Argparser();
     
-    virtual void add_option(std::shared_ptr<BaseArg> arg)
-    {
-        options_.push_back(arg);
-    }
-
+    virtual void add_option(std::shared_ptr<BaseArg> arg);
     virtual result_type parse();
     virtual bool has_argument(const std::string& argument) const;
     virtual void print_help() const;

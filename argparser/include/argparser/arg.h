@@ -51,21 +51,36 @@ public:
     
     template <typename P>
     struct parse_impl {
-        static P parse(const std::string& str) {
-            return ValueParser<P>::parse(str);
+        static P parse(const std::vector<std::string>& values) {
+            return ValueParser<P>::parse(values.front());
+        }
+    };
+    
+    template<>
+    struct parse_impl<bool> {
+        static bool parse(const std::vector<std::string>& values) {
+            if (values.size() == 0) {
+                return true;
+            }
+            auto value = ValueParser<bool>::parse(values.front());
+            return value;
         }
     };
 
     template <typename P>
     struct parse_impl<std::vector<P>> {
-        static std::vector<P> parse(const std::string& str) {
-            auto value = ValueParser<P>::parse(str);
-            return {value};
+        static std::vector<P> parse(const std::vector<std::string>& values) {
+            std::vector<P> result;
+            std::transform(std::begin(values),
+                           std::end(values),
+                           std::back_inserter(result),
+                           ValueParser<P>::parse);
+            return result;
         }
     };
 
-    void parse(const std::string str) {
-        value_ = parse_impl<value_type>::parse(str);
+    void parse(const std::vector<std::string>& values) {
+        value_ = parse_impl<value_type>::parse(values);
     }
 
     virtual std::shared_ptr<BaseArg> clone(const std::string& str)
@@ -73,13 +88,27 @@ public:
         if (Arg<T> *current = dynamic_cast<Arg<T>*>(this))
         {
             auto new_arg = std::make_shared<Arg<T>>(*current);
-            new_arg->parse(str);
+            new_arg->parse({str});
             return new_arg;
         }
         else
         {
             return nullptr;
         }            
+    }
+    
+    virtual std::shared_ptr<BaseArg> clone(const std::vector<std::string>& values)
+    {
+        if (Arg<T> *current = dynamic_cast<Arg<T>*>(this))
+        {
+            auto new_arg = std::make_shared<Arg<T>>(*current);
+            new_arg->parse(values);
+            return new_arg;
+        }
+        else
+        {
+            return nullptr;
+        }
     }
     
 private:

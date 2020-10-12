@@ -5,6 +5,7 @@
 #include <sstream>
 #include <string>
 #include <memory>
+#include <vector>
 
 #include <argparser/arg.h>
 
@@ -21,7 +22,12 @@ Argparser::~Argparser()
 {
     
 }
-    
+
+void Argparser::add_option(std::shared_ptr<BaseArg> arg)
+{
+    options_.push_back(arg);
+}
+
 void Argparser::unify_input_arguments(int argc, char** argv)
 {
     // arg[0] is always the name of the program
@@ -50,39 +56,49 @@ void Argparser::unify_input_arguments(int argc, char** argv)
         }
     }
 }
+
+struct RawArg {
+    std::shared_ptr<BaseArg> option;
+    std::vector<std::string> values;
+};
     
 Argparser::result_type Argparser::parse()
-{    
-    for(std::size_t i = 0; i < inputs_.size(); ++i)
-    {
-        std::string str = inputs_[i];
-        
-        auto it = std::find_if( options_.begin(), options_.end(), ArgMatcher(str));
-        
-        if (it == std::end(options_)) {
-            continue;
+{
+    std::vector<std::shared_ptr<RawArg>> raw_args;
+    
+    std::shared_ptr<RawArg> current_raw_arg = nullptr;
+    for(std::size_t index = 0; index < inputs_.size(); ++index) {
+        std::string str = inputs_[index];
+        auto it = std::find_if(std::begin(options_), std::end(options_), ArgMatcher(str));
+        if (it != std::end(options_)) {
+            if (current_raw_arg != nullptr) {
+                raw_args.push_back(current_raw_arg);
+            }
+            current_raw_arg = std::make_shared<RawArg>();
+            current_raw_arg->option = (*it);
+        } else {
+            if (current_raw_arg != nullptr) {
+                current_raw_arg->values.push_back(str);
+            }
         }
-        
-        if ((*it)->key() == "help") {
-            print_help();
-            return {};
-        }
-        
-        if(Arg<bool> *bool_arg = dynamic_cast<Arg<bool>*>(it->get()))
-        {
-            auto option = std::make_shared<Arg<bool>>(*bool_arg);
-            option->setValue(true);
-            args_[bool_arg->key()] = option;
-        }
-        else
-        {
-            args_[(*it)->key()] = (*it)->clone(inputs_[++i]);
-        }
-        
     }
+    
+    if (current_raw_arg != nullptr) {
+        raw_args.push_back(current_raw_arg);
+    }
+    
+    for (auto raw_arg: raw_args) {
+        args_[raw_arg->option->key()] = raw_arg->option->clone(raw_arg->values);
+    }
+    
+    if (args_.find("help") != std::end(args_)) {
+        print_help();
+        return {};
+    }
+    
     return args_;
 }
-    
+
 bool Argparser::has_argument(const std::string &argument) const
 {
     auto symplified_arg = simplify_option(argument);
