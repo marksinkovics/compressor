@@ -52,19 +52,12 @@ void Argparser::unify_input_arguments(int argc, char** argv)
 }
     
 Argparser::result_type Argparser::parse()
-{
-    auto arg_matcher = [](const std::string str) {
-        return [str](const std::shared_ptr<BaseArg> arg) {
-            bool result = arg->is_match(str);
-            return result;
-        };
-    };
-    
+{    
     for(std::size_t i = 0; i < inputs_.size(); ++i)
     {
         std::string str = inputs_[i];
         
-        auto it = std::find_if(options_.begin(), options_.end(), arg_matcher(str));
+        auto it = std::find_if( options_.begin(), options_.end(), ArgMatcher(str));
         
         if (it == std::end(options_)) {
             continue;

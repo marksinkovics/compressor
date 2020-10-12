@@ -5,6 +5,7 @@
 
 namespace argparser
 {
+
 class BaseArg
 {
 public:
@@ -40,6 +41,13 @@ public:
                 && short_arg_ == other.short_arg_);
     }
     
+    virtual bool operator==(const std::string str)
+    {
+        return (key_ == str
+                || arg_ == str
+                || short_arg_ == str);
+    }
+
     virtual bool operator!=(const BaseArg& other)
     {
         return !(*this == other);
@@ -50,20 +58,9 @@ public:
         return this->arg_ < other.arg_;
     }
     
-    virtual void parse([[maybe_unused]] const std::string& str)
-    {
-        
-    }
-    
     virtual std::shared_ptr<BaseArg> clone([[maybe_unused]] const std::string& str)
     {
         return nullptr;
-    }
-    
-    virtual bool is_match(const std::string str) {
-        return (key_ == str
-                || arg_ == str
-                || short_arg_ == str);        
     }
     
 private:
@@ -72,6 +69,22 @@ private:
     std::string short_arg_;
     std::string description_;
 };
+
+
+class ArgMatcher {
+private:
+    std::string str_;
+public:
+    ArgMatcher(const std::string str)
+    : str_(str)
+    {}
+    
+    bool operator()(std::shared_ptr<BaseArg> arg) const
+    {
+        return (*arg) == str_;
+    }
+};
+
 
 } //argparser
 

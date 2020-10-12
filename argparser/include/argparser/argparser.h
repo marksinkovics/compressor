@@ -43,7 +43,7 @@ public:
 private:
     void unify_input_arguments(int argc, char** argv);
 
-    input_type inputs_;    
+    input_type inputs_;
     container_type options_;
     result_type args_;
     

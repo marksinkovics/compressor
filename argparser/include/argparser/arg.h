@@ -3,6 +3,7 @@
 
 #include <string>
 #include <memory>
+#include <vector>
 
 #include <argparser/basearg.h>
 #include <argparser/valueparser.h>
@@ -47,17 +48,32 @@ public:
     void setValue(const T& value) {
         value_ = value;
     }
-
-    virtual void parse(const std::string& str) {
-        value_ = ValueParser<value_type>::parse(str);
-    }
     
+    template <typename P>
+    struct parse_impl {
+        static P parse(const std::string& str) {
+            return ValueParser<P>::parse(str);
+        }
+    };
+
+    template <typename P>
+    struct parse_impl<std::vector<P>> {
+        static std::vector<P> parse(const std::string& str) {
+            auto value = ValueParser<P>::parse(str);
+            return {value};
+        }
+    };
+
+    void parse(const std::string str) {
+        value_ = parse_impl<value_type>::parse(str);
+    }
+
     virtual std::shared_ptr<BaseArg> clone(const std::string& str)
     {
         if (Arg<T> *current = dynamic_cast<Arg<T>*>(this))
         {
             auto new_arg = std::make_shared<Arg<T>>(*current);
-            new_arg->setValue(ValueParser<T>::parse(str));
+            new_arg->parse(str);
             return new_arg;
         }
         else
@@ -70,6 +86,6 @@ private:
     value_type value_;
 };
 
-}
 
+}
 #endif /* arg_h */
