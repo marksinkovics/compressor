@@ -41,13 +41,74 @@ TEST_P(BoolValueParserTests, Bool)
     EXPECT_EQ(expected, ValueParser<bool>::parse(str));
 }
 
-TEST_F(ValueParserTests, Int)
+TEST_F(ValueParserTests, uint8_t)
 {
-    EXPECT_EQ(uint8_t(42), ValueParser<uint8_t>::parse("42"));
-    EXPECT_EQ(uint16_t(42), ValueParser<uint16_t>::parse("42"));
-    EXPECT_EQ(uint32_t(42), ValueParser<uint32_t>::parse("42"));
-    EXPECT_EQ(uint64_t(42), ValueParser<uint64_t>::parse("42"));
+    EXPECT_EQ(std::numeric_limits<uint8_t>::min(),
+              ValueParser<uint8_t>::parse(std::to_string(std::numeric_limits<uint8_t>::min())));
+
+    EXPECT_EQ(std::numeric_limits<uint8_t>::max(),
+              ValueParser<uint8_t>::parse(std::to_string(std::numeric_limits<uint8_t>::max())));
 }
+
+TEST_F(ValueParserTests, uint16_t)
+{
+    EXPECT_EQ(std::numeric_limits<uint16_t>::min(),
+              ValueParser<uint16_t>::parse(std::to_string(std::numeric_limits<uint16_t>::min())));
+    EXPECT_EQ(std::numeric_limits<uint16_t>::max(),
+              ValueParser<uint16_t>::parse(std::to_string(std::numeric_limits<uint16_t>::max())));
+
+}
+
+TEST_F(ValueParserTests, uint32_t)
+{
+    EXPECT_EQ(std::numeric_limits<uint32_t>::min(),
+              ValueParser<uint32_t>::parse(std::to_string(std::numeric_limits<uint32_t>::min())));
+    EXPECT_EQ(std::numeric_limits<uint32_t>::max(),
+              ValueParser<uint32_t>::parse(std::to_string(std::numeric_limits<uint32_t>::max())));
+}
+
+TEST_F(ValueParserTests, uint64_t)
+{
+    EXPECT_EQ(std::numeric_limits<uint64_t>::min(),
+              ValueParser<uint64_t>::parse(std::to_string(std::numeric_limits<uint64_t>::min())));
+    EXPECT_EQ(std::numeric_limits<uint64_t>::max(),
+              ValueParser<uint64_t>::parse(std::to_string(std::numeric_limits<uint64_t>::max())));
+}
+
+TEST_F(ValueParserTests, int8_t)
+{
+    EXPECT_EQ(std::numeric_limits<int8_t>::min(),
+              ValueParser<int8_t>::parse(std::to_string(std::numeric_limits<int8_t>::min())));
+
+    EXPECT_EQ(std::numeric_limits<int8_t>::max(),
+              ValueParser<int8_t>::parse(std::to_string(std::numeric_limits<int8_t>::max())));
+}
+
+TEST_F(ValueParserTests, int16_t)
+{
+    EXPECT_EQ(std::numeric_limits<int16_t>::min(),
+              ValueParser<int16_t>::parse(std::to_string(std::numeric_limits<int16_t>::min())));
+    EXPECT_EQ(std::numeric_limits<int16_t>::max(),
+              ValueParser<int16_t>::parse(std::to_string(std::numeric_limits<int16_t>::max())));
+
+}
+
+TEST_F(ValueParserTests, int32_t)
+{
+    EXPECT_EQ(std::numeric_limits<int32_t>::min(),
+              ValueParser<int32_t>::parse(std::to_string(std::numeric_limits<int32_t>::min())));
+    EXPECT_EQ(std::numeric_limits<int32_t>::max(),
+              ValueParser<int32_t>::parse(std::to_string(std::numeric_limits<int32_t>::max())));
+}
+
+TEST_F(ValueParserTests, int64_t)
+{
+    EXPECT_EQ(std::numeric_limits<int64_t>::min(),
+              ValueParser<int64_t>::parse(std::to_string(std::numeric_limits<int64_t>::min())));
+    EXPECT_EQ(std::numeric_limits<int64_t>::max(),
+              ValueParser<int64_t>::parse(std::to_string(std::numeric_limits<int64_t>::max())));
+}
+
     
 TEST_F(ValueParserTests, Float)
 {

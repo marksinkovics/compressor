@@ -148,6 +148,7 @@ TEST_F(ArgParserTests, value_uint64_t)
     auto options = parser.parse();
     EXPECT_EQ(uint64_t(42), std::dynamic_pointer_cast<Arg<uint64_t>>(options["key1"])->value());
 }
+
     
 TEST_F(ArgParserTests, value_int)
 {
@@ -166,7 +167,6 @@ TEST_F(ArgParserTests, value_int)
     EXPECT_EQ(42, std::dynamic_pointer_cast<Arg<int>>(options["key1"])->value());
     EXPECT_EQ(-42, std::dynamic_pointer_cast<Arg<int>>(options["key2"])->value());
 }
-
 
 TEST_F(ArgParserTests, value_float)
 {
