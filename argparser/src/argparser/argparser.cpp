@@ -11,7 +11,7 @@
 namespace argparser
 {
 
-Argparser::Argparser(int argc, char** argv)
+Argparser::Argparser(size_t argc, char** argv)
 {
     unify_input_arguments(argc, argv);
 }
@@ -21,12 +21,12 @@ Argparser::~Argparser()
     
 }
     
-void Argparser::unify_input_arguments(int argc, char** argv)
+void Argparser::unify_input_arguments(size_t argc, char** argv)
 {
     // arg[0] is always the name of the program
     program_name_ = argv[0];
     // Skip element 0 and start from 1
-    for(int i = 1; i < argc; ++i)
+    for(size_t i = 1; i < argc; ++i)
     {
         std::string value = argv[i];
         std::string delimiter = "=";
@@ -37,8 +37,8 @@ void Argparser::unify_input_arguments(int argc, char** argv)
         }
         else
         {
-            auto start = 0U;
-            auto end = value.find(delimiter);
+            uint64_t start = 0U;
+            uint64_t end = value.find(delimiter);
             while (end != std::string::npos)
             {
                 inputs_.push_back(value.substr(start, end - start));

@@ -13,9 +13,8 @@ namespace argparser
 template<typename T>
 class Arg : public BaseArg {
 public:
-    using value_type = T;
     
-    explicit Arg(const std::string arg, const std::string description, const T default_value)
+    explicit Arg(const std::string arg, const std::string description, T default_value)
     : BaseArg(arg, description)
     , value_(default_value)
     { }
@@ -32,7 +31,7 @@ public:
     Arg& operator=(const Arg& other) = default;
     Arg& operator=(Arg&& other) = default;
 
-    value_type value() const {
+    T value() const {
         return value_;
     }
     
@@ -41,7 +40,7 @@ public:
     }
 
     virtual void parse(const std::string& str) {
-        value_ = ValueParser<value_type>::parse(str);
+        value_ = ValueParser<T>::parse(str);
     }
     
     virtual std::shared_ptr<BaseArg> clone(const std::string& str)
@@ -60,7 +59,7 @@ public:
 
     
 private:
-    value_type value_;
+    T value_;
 };
 
 }

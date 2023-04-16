@@ -27,7 +27,7 @@ public:
 class Argparser: public IArgparser
 {
 public:
-    Argparser(int argc, char** argv);
+    Argparser(size_t argc, char** argv);
     virtual ~Argparser();
     
     virtual void add_argument(std::shared_ptr<BaseArg> arg)
@@ -40,7 +40,7 @@ public:
     virtual bool has_argument(const std::string& argument) const;
     virtual void print_help() const;
 private:
-    void unify_input_arguments(int argc, char** argv);
+    void unify_input_arguments(size_t argc, char** argv);
     static std::string simplify_arg_name(const std::string& argument);
 
     std::vector<std::string> inputs_;

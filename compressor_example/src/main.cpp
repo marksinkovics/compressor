@@ -33,7 +33,7 @@ int main([[maybe_unused]] int argc, char** argv) {
         for (const auto& arg : arguments)
             command_arguments.push_back((char*)arg.data());
         command_arguments.push_back(nullptr);
-        int command_arguments_count = command_arguments.size() - 1;
+        size_t command_arguments_count = command_arguments.size() - 1;
 
         compressor::CLI cmd(std::make_unique<argparser::Argparser>(command_arguments_count, command_arguments.data()),
                             std::make_unique<compressor::Compressor>());

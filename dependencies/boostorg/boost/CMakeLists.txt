@@ -12,9 +12,9 @@ set (Boost_USE_STATIC_LIBS ON) # enable dynamic linking
 set (Boost_USE_MULTITHREAD ON)  # enable multithreading
 set (Boost_USE_STATIC_RUNTIME OFF)
 list(APPEND CMAKE_MODULE_PATH ./cmake)
-set(BOOST_REQUESTED_VERSION 1.72)
+set(BOOST_REQUESTED_VERSION 1.81.0)
 
-find_package (Boost 1.72.0 REQUIRED)
+find_package (Boost 1.81.0 REQUIRED)
 
 IF (Boost_FOUND)
     include_directories(${Boost_INCLUDE_DIR})

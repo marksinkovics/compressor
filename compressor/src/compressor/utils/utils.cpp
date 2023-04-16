@@ -3,7 +3,10 @@
 #include <iostream>
 #include <sstream>
 
-namespace compressor::utils
+namespace compressor
+{
+
+namespace utils
 {
 
 void handle_illegal_position(const std::size_t& pos) noexcept
@@ -11,4 +14,6 @@ void handle_illegal_position(const std::size_t& pos) noexcept
     std::cerr << "Attempted to access an illegal position (" << pos << ")." << std::endl;
 }
 
-} // compressor::utils
+} //utils
+
+} // compressor

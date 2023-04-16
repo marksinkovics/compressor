@@ -204,9 +204,9 @@ TEST_F(BitsetTests, bitsets)
     EXPECT_EQ(stream1.str(), stream2.str());
     
     boost::dynamic_bitset<> db1(11);
-    db1[2] = 1;
-    db1[4] = 1;
-    db1[10] = 1;
+    db1.flip(2);
+    db1.flip(4);
+    db1.flip(10);
     std::stringstream stream3;
     stream3 << db1;
     
