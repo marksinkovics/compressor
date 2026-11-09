@@ -53,19 +53,25 @@ Set up before any other coding, following FeatherOS (`tools/quality.sh` with one
 
 Done when `pre-commit install` is in place and `pre-commit run --all-files` passes.
 
-### Phase 1: Safety-net tests
+### Phase 1: Safety-net tests (done)
+
+End-to-end round-trip tests over the sample files pass, and every Phase 2 correctness bug has a `DISABLED_` test that fails today; 81/81 tests pass with 7 disabled.
 
 - [x] **Round-trip test (done):** `compressor/test/src/roundtrip/roundtrip.cpp`. `RoundTripTests` is parameterized over every regular file in `compressor_example/samples/raw/` (listed at static initialization with the `error_code` overloads, sorted; test names are the file names with non-alphanumerics replaced by `_`, e.g. `Samples/RoundTripTests.Encode_then_decode_restores_the_file/lena_jpg`), so a new sample gets a test without code changes. Each test goes end to end through `Compressor` with a real `EncoderTask` and `DecoderTask` and files in `$TMPDIR/compressor_roundtrip_<name>/`, then compares the decoded file with the original byte for byte. `RoundTripSamplesTests.Samples_directory_is_not_empty` fails if the directory is missing or empty. The path comes from the `COMPRESSOR_SAMPLES_DIR` compile definition in `compressor/test/CMakeLists.txt`.
   - The test creates both output files before encoding, because `DataWriter::open` can't create one yet (known issue below). When Phase 2 fixes it, remove `touch()`; the edge-case test covers the missing-output case.
   - All six samples (two images, four lorem texts) round-trip; 81/81 tests pass, the whole suite in about 7 s.
-- [ ] **Edge-case tests**, added as `DISABLED_` until Phase 2 fixes them: empty input, single-symbol input (`aaaa`), a missing input file, an output file that doesn't exist yet.
+- [x] **Edge-case tests (done):** seven `DISABLED_` tests, each failing today (checked with `--gtest_also_run_disabled_tests --gtest_filter=<name>`, one at a time, because two crash). Phase 2 enables the matching test with each fix.
+  - `EdgeCaseTests` in `roundtrip.cpp` (real files in `$TMPDIR/compressor_edgecase_<test>/`): `Empty_input_round_trips_to_an_empty_file` (segfault), `Single_symbol_input_round_trips` (`aaaa`), `Encoding_a_missing_input_leaves_the_output_untouched` (segfault), `Output_files_are_created_when_missing`, `Existing_longer_output_files_are_truncated`.
+  - `CompressorTests` in `compressor/compressor.cpp` (mocks): `Encoding_stops_when_the_input_cannot_be_opened` and `Decoding_stops_when_the_input_cannot_be_opened`. They expect no `read()`, no engine call and no writer `open()`/`write()` after the reader's `open()` returns `false`. An end-to-end test for decoding a missing input passed by accident (empty data written over an existing file leaves it unchanged), so the mock test covers that case.
+  - `Output_files_are_created_when_missing` asserts that the encoded file exists before it decodes, because decoding a missing file currently hangs: `operator>>(istream&, EncodedData&)` loops over a `dict_size` that was never read.
+  - When Phase 2 makes `Compressor` check `open()`, the existing `CompressorTests.Encoding`/`Decoding` need `WillOnce(Return(true))` on the reader and writer `open()`: the mock default `false` would stop the pipeline.
 
 ### Phase 2: Bug fixes
 
 Fix only the issues in code that survives the modernization. Each fix enables the matching `DISABLED_` test.
 
 - [ ] `DataWriter::open`: use `std::ios::out | std::ios::trunc | std::ios::binary`.
-- [ ] `Compressor::encode/decode`: check the result of `open()`, print an error, return a non-zero exit code.
+- [ ] `Compressor::encode/decode`: check the result of `open()`, print an error, return a non-zero exit code. Stop before reading or writing anything when an open fails, including the writer's.
 - [ ] CLI with neither `encode` nor `decode`: print the help, return non-zero.
 - [ ] Empty input: return early with an empty dictionary and payload.
 - [ ] Single-symbol input: when the root is a leaf, give it the code `0`.
@@ -118,6 +124,7 @@ Each issue names the phase that handles it.
 
 - [ ] **Output file must already exist** (Phase 2). `DataWriter::open` ([writer.h](../compressor/include/compressor/data/writer.h)) opens its `std::ofstream` with `std::ios::in | std::ios::binary`. Because of `in`, the open fails when the output file doesn't exist, and an existing file isn't truncated, so leftover bytes from a longer earlier file stay at the end.
 - [ ] **Open failures are ignored** (Phase 2). `Compressor::encode/decode` ([compressor.cpp](../compressor/src/compressor/compressor.cpp)) ignore the `bool` that `open()` returns and go on to read from or write to a stream that failed to open.
+- [ ] **Truncated or corrupt encoded input isn't detected** (Phase 5 and the container format). `operator>>(istream&, EncodedData&)` ([data.cpp](../compressor/src/compressor/data/data.cpp)) doesn't check its reads, so a short file leaves `dict_size` uninitialized and decoding can hang or crash. The decoder fuzzing feature would catch it.
 - [ ] **Empty input is undefined behaviour** (Phase 2). If the input is empty, `Engine::build_tree` ([engine.cpp](../compressor/src/compressor/engine/engine.cpp)) calls `_nodes.front()` on an empty vector.
 - [ ] **Input with only one distinct byte is lost** (Phase 2). For input like `aaaa`, the root is the only node and its code is an empty bitset. The encoded payload is 0 bits and decoding returns nothing.
 - [ ] **`Engine::find_path` returns wrong codes** (Phase 2, delete). Inside the loop it checks `node` instead of `innerNode`, so every step pushes the same bit. Nothing calls it, but it is part of `IEngine`.
