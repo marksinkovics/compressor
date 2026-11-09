@@ -5,7 +5,8 @@
 #   tools/quality.sh check [stage...] -- file...
 #                                       clang-tidy only on the sources those files affect
 #   tools/quality.sh --fix              apply fixes, then run every stage
-#   tools/quality.sh format             apply formatting only
+#   tools/quality.sh format [-- file...]
+#                                       apply formatting only, to every file or to the given ones
 #   tools/quality.sh stages             list the stage names
 #
 # Running more than one stage prints one line per stage with its elapsed time; a single stage
@@ -94,10 +95,21 @@ shell_files() {
     repo_files '*.sh'
 }
 
-# shfmt takes its options from .editorconfig.
+# shfmt takes its options from .editorconfig. Given files are formatted only if they are among
+# the files the checks cover (not ignored by git).
 format_sources() {
-    cpp_files | xargs -0 clang-format -i
-    shell_files | xargs -0 shfmt -w
+    local file
+    if (($# == 0)); then
+        cpp_files | xargs -0 clang-format -i
+        shell_files | xargs -0 shfmt -w
+        return
+    fi
+    repo_files "$@" | while IFS= read -r -d '' file; do
+        case "$file" in
+            *.cpp | *.h | *.hpp) clang-format -i "$file" ;;
+            *.sh) shfmt -w "$file" ;;
+        esac
+    done
 }
 
 check_clang_format() {
@@ -327,8 +339,13 @@ check_stages() {
 
 case "${1:-}" in
     format)
+        shift
+        if [[ "${1:-}" == "--" ]]; then
+            shift
+            (($# > 0)) || exit 0
+        fi
         require_tools clang-format shfmt
-        format_sources
+        format_sources "$@"
         ;;
     check)
         shift
@@ -343,6 +360,6 @@ case "${1:-}" in
         printf '%s\n' "${STAGES[@]}"
         ;;
     *)
-        fail "usage: $0 {check [stage...] [-- file...]|--fix|format|stages}"
+        fail "usage: $0 {check [stage...] [-- file...]|--fix|format [-- file...]|stages}"
         ;;
 esac

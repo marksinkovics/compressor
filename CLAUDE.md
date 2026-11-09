@@ -6,7 +6,7 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 
 ## Status (keep current)
 
-- **Next:** Phase 0, pre-commit hooks and code quality: the "Claude format hook" step (`docs/roadmap.md`). The hooks are installed and `pre-commit run --all-files` passes.
+- **Next:** Phase 0, pre-commit hooks and code quality: the "Docs" step, the last one of the phase (`docs/roadmap.md`). The pre-commit hooks are installed, and `.claude/settings.json` formats every C++ or shell file Claude edits.
 
 ## Commands
 
