@@ -75,8 +75,8 @@ pre-commit install
 git config blame.ignoreRevsFile .git-blame-ignore-revs
 ```
 
-- clang-format must be version 20 (20.1.7 is tested). Every major version formats a little differently, so `quality.sh` stops if `clang-format --version` reports another one. Homebrew's `clang-format` formula moves on to newer versions; `pipx install clang-format==20.1.7` (PyPI) installs the right one on any platform.
-- clang-tidy comes from Homebrew's `llvm`, which is keg-only. `quality.sh` calls it by full path (`$(brew --prefix llvm)/bin/clang-tidy`). Don't put llvm's `bin` on `PATH`: it also contains a newer clang-format, which would shadow version 20.
+- clang-format and clang-tidy both come from Homebrew's `llvm`, which is keg-only (not on `PATH`). `quality.sh` calls them by full path (`$(brew --prefix llvm)/bin/...`), so another clang-format on `PATH` doesn't matter. Without Homebrew (Linux, CI) both come from `PATH`; PyPI has matching `clang-format` and `clang-tidy` wheels.
+- clang-format must be major version 23 (`CLANG_FORMAT_MAJOR` in `quality.sh`; 23.1.3 is tested). Every major version formats a little differently, so `quality.sh` stops if it finds another one. When `brew upgrade llvm` moves to a new major version, bump `CLANG_FORMAT_MAJOR`, run `tools/quality.sh format`, commit the result on its own, and add that commit to `.git-blame-ignore-revs`.
 - clang-tidy reads `build/debug/compile_commands.json`, so run `./generate.sh` first.
 - `.git-blame-ignore-revs` lists the commit that reformatted the whole tree. The `git config` line is needed once per clone, so that `git blame` skips that commit.
 

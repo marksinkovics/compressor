@@ -18,17 +18,17 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 BUILD_DIR="$REPO_ROOT/build/debug"
 
-# Homebrew's llvm is keg-only and also ships a clang-format of a different version than the
-# pinned one, so only its clang-tidy is taken, by full path.
+# Homebrew's llvm is keg-only, so its tools are taken by full path; elsewhere (Linux, CI) they come
+# from PATH.
+CLANG_FORMAT=clang-format
 CLANG_TIDY=clang-tidy
 if command -v brew > /dev/null 2>&1; then
     LLVM_BIN="$(brew --prefix llvm 2> /dev/null)/bin"
-    if [[ -x "$LLVM_BIN/clang-tidy" ]]; then
-        CLANG_TIDY="$LLVM_BIN/clang-tidy"
-    fi
+    [[ -x "$LLVM_BIN/clang-format" ]] && CLANG_FORMAT="$LLVM_BIN/clang-format"
+    [[ -x "$LLVM_BIN/clang-tidy" ]] && CLANG_TIDY="$LLVM_BIN/clang-tidy"
 fi
 
-CLANG_FORMAT_MAJOR=20
+CLANG_FORMAT_MAJOR=23
 
 STAGES=(clang-format clang-tidy shellcheck shfmt)
 
@@ -48,7 +48,7 @@ require_tools() {
         fail "missing tools: ${missing[*]}"
     fi
     for tool in "$@"; do
-        [[ "$tool" == clang-format ]] && require_clang_format_version
+        [[ "$tool" == "$CLANG_FORMAT" ]] && require_clang_format_version
     done
     return 0
 }
@@ -57,7 +57,7 @@ require_tools() {
 # the same one.
 require_clang_format_version() {
     local version pattern='version ([0-9]+)\.'
-    version="$(clang-format --version)"
+    version="$("$CLANG_FORMAT" --version)"
     [[ "$version" =~ $pattern ]] || fail "unrecognized clang-format version: $version"
     if [[ "${BASH_REMATCH[1]}" != "$CLANG_FORMAT_MAJOR" ]]; then
         fail "clang-format $CLANG_FORMAT_MAJOR is required, found: $version"
@@ -100,20 +100,20 @@ shell_files() {
 format_sources() {
     local file
     if (($# == 0)); then
-        cpp_files | xargs -0 clang-format -i
+        cpp_files | xargs -0 "$CLANG_FORMAT" -i
         shell_files | xargs -0 shfmt -w
         return
     fi
     repo_files "$@" | while IFS= read -r -d '' file; do
         case "$file" in
-            *.cpp | *.h | *.hpp) clang-format -i "$file" ;;
+            *.cpp | *.h | *.hpp) "$CLANG_FORMAT" -i "$file" ;;
             *.sh) shfmt -w "$file" ;;
         esac
     done
 }
 
 check_clang_format() {
-    cpp_files | xargs -0 clang-format --dry-run --Werror
+    cpp_files | xargs -0 "$CLANG_FORMAT" --dry-run --Werror
 }
 
 # Each clang-tidy run compiles its file, so files are checked in parallel.
@@ -233,6 +233,7 @@ stage_label() {
 
 stage_tool() {
     case "$1" in
+        clang-format) echo "$CLANG_FORMAT" ;;
         clang-tidy) echo "$CLANG_TIDY" ;;
         *) echo "$1" ;;
     esac
@@ -344,7 +345,7 @@ case "${1:-}" in
             shift
             (($# > 0)) || exit 0
         fi
-        require_tools clang-format shfmt
+        require_tools "$CLANG_FORMAT" shfmt
         format_sources "$@"
         ;;
     check)
@@ -352,7 +353,7 @@ case "${1:-}" in
         check_stages "$@"
         ;;
     --fix)
-        require_tools clang-format "$CLANG_TIDY" shellcheck shfmt
+        require_tools "$CLANG_FORMAT" "$CLANG_TIDY" shellcheck shfmt
         apply_fixes
         check_stages "${STAGES[@]}"
         ;;
