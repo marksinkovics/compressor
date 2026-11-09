@@ -6,7 +6,7 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 
 ## Status (keep current)
 
-- **Next:** Phase 0, pre-commit hooks and code quality: the "Install the hooks" step (`docs/roadmap.md`). The tree is reformatted and every hook passes; once the reformat commit exists, `pre-commit install` and `.git-blame-ignore-revs` follow.
+- **Next:** Phase 0, pre-commit hooks and code quality: the "Claude format hook" step (`docs/roadmap.md`). The hooks are installed and `pre-commit run --all-files` passes.
 
 ## Commands
 
