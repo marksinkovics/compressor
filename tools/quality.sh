@@ -27,6 +27,8 @@ if command -v brew > /dev/null 2>&1; then
     fi
 fi
 
+CLANG_FORMAT_MAJOR=20
+
 STAGES=(clang-format clang-tidy shellcheck shfmt)
 
 fail() {
@@ -43,6 +45,21 @@ require_tools() {
 
     if ((${#missing[@]} > 0)); then
         fail "missing tools: ${missing[*]}"
+    fi
+    for tool in "$@"; do
+        [[ "$tool" == clang-format ]] && require_clang_format_version
+    done
+    return 0
+}
+
+# Each clang-format major version formats a little differently, so every machine and CI must use
+# the same one.
+require_clang_format_version() {
+    local version pattern='version ([0-9]+)\.'
+    version="$(clang-format --version)"
+    [[ "$version" =~ $pattern ]] || fail "unrecognized clang-format version: $version"
+    if [[ "${BASH_REMATCH[1]}" != "$CLANG_FORMAT_MAJOR" ]]; then
+        fail "clang-format $CLANG_FORMAT_MAJOR is required, found: $version"
     fi
 }
 

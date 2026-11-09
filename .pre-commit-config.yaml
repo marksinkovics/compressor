@@ -1,0 +1,58 @@
+# Install once: brew install pre-commit llvm shellcheck shfmt && pre-commit install
+minimum_pre_commit_version: "3.0.0"
+
+# Sample inputs for the example app: binary files and text whose exact bytes matter.
+exclude: ^compressor_example/samples/
+
+# Each quality.sh stage is its own hook, so a commit shows which one runs, fails or takes the
+# time, and skips the ones whose files it does not touch. `verbose` makes pre-commit print each
+# hook's duration. clang-tidy gets the staged files and checks the sources they affect, headers
+# included; the other checks are fast and cover the whole tree.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: check-executables-have-shebangs
+      - id: detect-private-key
+
+  - repo: local
+    hooks:
+      - id: clang-format
+        name: clang-format
+        entry: bash tools/quality.sh check clang-format
+        language: system
+        pass_filenames: false
+        files: (\.(cpp|h|hpp)|^\.clang-format)$
+        verbose: true
+      - id: clang-tidy
+        name: clang-tidy
+        entry: bash tools/quality.sh check clang-tidy --
+        language: system
+        require_serial: true
+        files: (\.(cpp|h|hpp)|\.clang-tidy|CMakeLists\.txt|\.cmake)$
+        verbose: true
+      - id: shellcheck
+        name: ShellCheck
+        entry: bash tools/quality.sh check shellcheck
+        language: system
+        pass_filenames: false
+        files: (\.sh|^\.shellcheckrc)$
+        verbose: true
+      - id: shfmt
+        name: shfmt check
+        entry: bash tools/quality.sh check shfmt
+        language: system
+        pass_filenames: false
+        files: (\.sh|^\.editorconfig)$
+        verbose: true
