@@ -32,5 +32,7 @@ else()
 endif()
 
 target_link_libraries(${PROJECT_NAME}
-    compressor_cli
+    PRIVATE
+        compressor_cli
+        compressor_warnings
 )

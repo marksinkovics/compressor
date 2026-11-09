@@ -1,12 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 enable_testing()
 
-message(STATUS "Current generator: ${CMAKE_GENERATOR}")
-
-if (CMAKE_GENERATOR MATCHES "Xcode")
-    set(CMAKE_OSX_ARCHITECTURES "x86_64")
-endif()
-
 project(CompressionProject CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -18,24 +12,21 @@ set(VERSION_MINOR 0 CACHE STRING "Project minor version number.")
 set(VERSION_PATCH 1 CACHE STRING "Project patch version number.")
 mark_as_advanced(VERSION_MAJOR VERSION_MINOR VERSION_PATCH)
 
-set (CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+option(COMPRESSOR_WERROR "Treat warnings in our own targets as errors." OFF)
+option(COMPRESSOR_ASAN "Build everything with AddressSanitizer." OFF)
+option(COMPRESSOR_PROFILING "Make the PROFILE_* macros write result.json." OFF)
 
-#
-# Enable profiling globally
-#
-add_compile_definitions(PROFILING=0)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+include(Warnings)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror")
-
-if(ENABLE_ASAN)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O1")
-    # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fuse-ld=gold")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-omit-frame-pointer")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=leak")
+# Global on purpose: googletest and benchmark must be instrumented too, or libc++'s
+# container-overflow checks report false positives across the boundary.
+# No -fsanitize=leak: Apple Clang rejects it on arm64, and on Linux ASan already includes LSan.
+if(COMPRESSOR_ASAN)
+    add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address)
 endif()
 
 add_subdirectory(dependencies/google/googletest)
@@ -63,7 +54,3 @@ set_target_properties(gmock PROPERTIES FOLDER "dependencies")
 set_target_properties(gmock_main PROPERTIES FOLDER "dependencies")
 set_target_properties(benchmark PROPERTIES FOLDER "dependencies")
 set_target_properties(benchmark_main PROPERTIES FOLDER "dependencies")
-
-if(NOT ENABLE_ASAN)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
-endif()

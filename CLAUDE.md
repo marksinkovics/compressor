@@ -9,8 +9,8 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 - Phase 0 (pre-commit hooks and code quality) is done: `tools/quality.sh`, pre-commit hooks installed, Claude format hook in `.claude/settings.json`.
 - Phase 1 (safety-net tests) is done: round-trip tests over `compressor_example/samples/raw/` and 7 `DISABLED_` edge-case tests for the Phase 2 bugs.
 - Phase 2 (bug fixes) is done: all edge-case tests enabled, 91/91 pass; `compressor_app` returns non-zero on failure.
-- Phase 3 (build, tooling and platforms) in progress: step "CMake" is done (CMake 3.25+, C++23 via `target_compile_features`).
-- **Next:** Phase 3 step "Flags per target": warnings through an interface target, `-Werror` and `PROFILING` as options, no global `-O3`, no forced Xcode `x86_64` (`docs/roadmap.md`).
+- Phase 3 (build, tooling and platforms) in progress: steps "CMake" (CMake 3.25+, C++23) and "Flags per target" (`compressor_warnings` interface target, `COMPRESSOR_*` options, native arm64 Xcode) are done.
+- **Next:** Phase 3 step "vcpkg": `vcpkg.json` with gtest, benchmark and boost-dynamic-bitset; delete `dependencies/` (`docs/roadmap.md`).
 
 ## Commands
 
@@ -25,7 +25,7 @@ bash tools/quality.sh check   # clang-format, clang-tidy, shellcheck, shfmt (see
 ```
 
 - Needs Boost 1.81+ installed (`brew install boost`; headers only, found in CONFIG mode). googletest and benchmark are downloaded during configure.
-- `-Werror` is on globally. `-DENABLE_ASAN=ON` for ASan/LSan. Set `PROFILING=1` in the root `CMakeLists.txt` to make the `PROFILE_*` macros write `result.json`.
+- Options: `COMPRESSOR_WERROR` (`generate.sh` sets it), `COMPRESSOR_ASAN`, `COMPRESSOR_PROFILING` (`PROFILE_*` macros write `result.json`). New targets link `compressor_warnings` `PRIVATE` (`docs/development.md`).
 
 ## Architecture
 

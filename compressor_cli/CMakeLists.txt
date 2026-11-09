@@ -29,8 +29,11 @@ target_include_directories(${PROJECT_NAME}
 )
 
 target_link_libraries(${PROJECT_NAME}
-    compressor
-    argparser
+    PUBLIC
+        compressor
+        argparser
+    PRIVATE
+        compressor_warnings
 )
 
 add_subdirectory(test)

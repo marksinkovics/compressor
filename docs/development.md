@@ -29,7 +29,7 @@ This project manages 3rd party dependencies via CMake ExternalProject.
 ### Debug build (with Ninja)
 
 1. Generate the project (with Ninja)
-   `cmake -S . -B build/debug -DCMAKE_BUILD_TYPE=Debug -G Ninja`
+   `cmake -S . -B build/debug -DCMAKE_BUILD_TYPE=Debug -DCOMPRESSOR_WERROR=ON -G Ninja`
 2. Build the project (all targets)
     `cmake --build build/debug` or `./build.sh`
 3. Binary files can be found under _build/debug_
@@ -37,7 +37,7 @@ This project manages 3rd party dependencies via CMake ExternalProject.
 ### Release build (with Ninja)
 
 1. Generate the project (with Ninja)
-   `cmake -S . -B build/release -DCMAKE_BUILD_TYPE=Release -G Ninja`
+   `cmake -S . -B build/release -DCMAKE_BUILD_TYPE=Release -DCOMPRESSOR_WERROR=ON -G Ninja`
 2. Build the project (all targets)
     `cmake --build build/release`
 3. Binary files can be found under _build/release_
@@ -48,6 +48,16 @@ Of course CMake has various options for project generation that can be used unde
 * Unix Makefiles
 * Ninja
 * etc.
+
+### Build options
+
+| Option | Default | Effect |
+| --- | --- | --- |
+| `COMPRESSOR_WERROR` | `OFF` | Warnings are errors in our own targets (`-Werror`, `/WX` on MSVC). `./generate.sh` turns it on. |
+| `COMPRESSOR_ASAN` | `OFF` | AddressSanitizer for every target, dependencies included. Use with `CMAKE_BUILD_TYPE=Debug`. On Linux it also finds leaks; Apple Clang has no LeakSanitizer on arm64. |
+| `COMPRESSOR_PROFILING` | `OFF` | The `PROFILE_*` macros write `result.json` (Chrome trace format) to the working directory. |
+
+Our targets get `-Wall -Wextra -Wpedantic` (`/W4` on MSVC) by linking the `compressor_warnings` interface target from `cmake/Warnings.cmake`; a new target should link it `PRIVATE` as well. Optimization comes from the build type only (Release: `-O3 -DNDEBUG`). Tests are discovered when `ctest` runs (`DISCOVERY_MODE PRE_TEST`), not at build time.
 
 ## Run tests
 

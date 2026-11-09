@@ -4,7 +4,7 @@ The phased plan for getting the basics right, the known issues it addresses, and
 
 ## Decisions
 
-- **Dependencies:** vcpkg in manifest mode (`vcpkg.json` with a pinned `builtin-baseline`), using the toolchain file from `$VCPKG_ROOT`.
+- **Dependencies:** vcpkg in manifest mode (`vcpkg.json` with a pinned `builtin-baseline`), using the toolchain file from `$VCPKG_ROOT`. Third-party code comes only through vcpkg, not `FetchContent` or `add_subdirectory`, so every target built in this tree is ours and can take global compile flags. A library vcpkg lacks gets an overlay port.
 - **Language:** C++23. Apple Clang 17 (Xcode 26) supports `<expected>`, `<print>` and `<span>`; checked 2026-11-08.
 - **Argument parsing:** CLI11 replaces our own `argparser/`.
 - **Platforms:** macOS first, then Linux and Windows.
@@ -89,9 +89,15 @@ Behaviour stays the same; the Phase 1 tests prove it.
   - libc++ in C++23 mode drops transitive includes: added `<memory>` to `tree/binary/node.h`, `<algorithm>` and `<iterator>` to `data/data.cpp`, `<algorithm>` to the `nodeiterator.cpp` test.
   - C++20/23 turns on more `modernize-*` checks; fixed with `quality.sh --fix`: `std::ranges::{copy,sort,transform,replace,replace_if}` in `data.cpp`, `engine.cpp`, `valueparser.cpp`, `instrumentor.cpp` and `roundtrip.cpp`; `starts_with` in `argparser.cpp`; designated initializers for `ProfileResult` in `instrumentationtimer.cpp`.
   - `BitsetTests.Copying` keeps `std::copy` with a `NOLINT(modernize-use-ranges)`: `bitset_iterator` has no `difference_type`/`value_type`, so `bitset` isn't a `std::ranges::range`. Phase 5's bitset rewrite should make it one and drop the NOLINT.
-- [ ] **Flags per target:** warnings go on our own targets only, through an interface target (`-Wall -Wextra -Wpedantic`, `/W4` on MSVC). `-Werror` becomes an option, on in CI. Remove the global `-O3` so Debug builds aren't optimized. ASan becomes a preset. `PROFILING` becomes a CMake option. Remove the forced `x86_64` architecture for Xcode.
+- [x] **Flags per target (done):** `cmake/Warnings.cmake` defines the `compressor_warnings` interface target (`-Wall -Wextra -Wpedantic`, `/W4` on MSVC, plus `-Werror`/`/WX` with `COMPRESSOR_WERROR`), linked `PRIVATE` into every one of our targets, including both targets of `package_add_test`. googletest gets no warning flags; benchmark keeps its own (including its own `-Werror`). The code was already `-Wpedantic` clean. Root options: `COMPRESSOR_WERROR` (off; `generate.sh` turns it on, CI will too), `COMPRESSOR_ASAN`, and `COMPRESSOR_PROFILING`, which becomes `PROFILING=0/1` as a `PUBLIC` definition on `instrumentor` (no more global `add_compile_definitions`). The forced Xcode `x86_64` is gone, so Xcode builds native arm64. Debug, Release and Xcode Debug pass 91/91, `quality.sh check` passes, and a `COMPRESSOR_PROFILING=ON` `compressor_app` writes `result.json`.
+  - All `target_link_libraries` calls use the keyword form now (CMake doesn't allow mixing it with the plain one): `PUBLIC` for library dependencies as before, `PRIVATE` in executables.
+  - The global `-O3` never had any effect: it was appended to `CMAKE_CXX_FLAGS` after every `add_subdirectory`, and the root directory has no targets. Debug was already `-g` only; Release gets `-O3 -DNDEBUG` from the build type.
+  - `ENABLE_ASAN` became `COMPRESSOR_ASAN` with `add_compile_options`/`add_link_options` (global on purpose, so the dependencies are instrumented too). `-fsanitize=leak` is dropped: Apple Clang 17 rejects it on arm64 (so the old `ENABLE_ASAN` didn't build here), and on Linux `-fsanitize=address` already includes LSan. The old `-g -O1` is gone too; the build type decides. **Not verified:** the ASan build compiles and links, but its tests weren't run, because in Claude's sandbox every ASan binary hangs at startup (even a two-line program). Run `ctest` in an ASan build outside the sandbox; the Presets step's `asan` preset needs that anyway.
+  - Native arm64 broke Xcode builds: `gtest_discover_tests` ran its `POST_BUILD` discovery before Xcode's code-signing phase, and macOS kills unsigned arm64 binaries ("Subprocess killed"). `package_add_test` now uses `DISCOVERY_MODE PRE_TEST`, so tests are listed when `ctest` runs.
 - [ ] **vcpkg:** `vcpkg.json` with `gtest`, `benchmark` and `boost-dynamic-bitset`. Link Boost only into `compressor_benchmark` and `compressor_test` (`bitset.cpp` compares against `boost::dynamic_bitset`). Delete `dependencies/` and the ExternalProject downloads.
-- [ ] **Presets:** `CMakePresets.json` with `debug`, `release`, `asan` and `xcode` configure presets, plus matching build and test presets. Replace `generate.sh` and `build.sh`, and update `docs/development.md` and `CLAUDE.md`.
+  - Then go back to global flags: `add_compile_options(-Wall -Wextra -Wpedantic)` (`/W4` on MSVC) in the root, `CMAKE_COMPILE_WARNING_AS_ERROR` (CMake 3.24+, `-Werror`/`/WX`; `--compile-no-warning-as-error` overrides it) instead of `COMPRESSOR_WERROR`, and delete `cmake/Warnings.cmake` and the `compressor_warnings` links.
+  - ASan: overlay triplets (`VCPKG_OVERLAY_TRIPLETS`), one per platform such as `arm64-osx-asan`, with `-fsanitize=address -fno-omit-frame-pointer` in `VCPKG_C_FLAGS`/`VCPKG_CXX_FLAGS` and `-fsanitize=address` in `VCPKG_LINKER_FLAGS`, so gtest and benchmark stay instrumented. `COMPRESSOR_ASAN` then covers only our code.
+- [ ] **Presets:** `CMakePresets.json` with `debug`, `release`, `asan` and `xcode` configure presets, plus matching build and test presets. Presets set `CMAKE_COMPILE_WARNING_AS_ERROR=ON`; `asan` is Debug with `COMPRESSOR_ASAN=ON` and the ASan triplet in `VCPKG_TARGET_TRIPLET`, and its tests must be run once outside Claude's sandbox (see the step above). Replace `generate.sh` and `build.sh`, and update `docs/development.md` and `CLAUDE.md`.
 - [ ] **Quality tools on the new build:** point `tools/quality.sh` and the clang-tidy hook at the preset build directory.
 - [ ] **CI:** GitHub Actions on macOS first, then Linux (GCC and Clang) and Windows (MSVC), all through the presets, plus `pre-commit run --all-files`. Expect MSVC to need its own warning flags and fixes for binary-mode file I/O.
 
@@ -153,8 +159,8 @@ Each issue names the phase that handles it.
 - [ ] **Benchmark builds aren't reproducible** (Phase 3). google benchmark is downloaded from `master.zip`, not a pinned tag.
 - [ ] **Dependencies are downloaded during configure** (Phase 3). googletest and benchmark come from ExternalProject; Boost (1.81 or later) must be installed separately (`brew install boost`).
 - [x] **`Testing/` isn't gitignored** (Phase 2).
-- [ ] **Global compiler flags** (Phase 3). `-Wall -Wextra -Werror` go into the global `CMAKE_CXX_FLAGS`, so `-Werror` also applies to googletest and benchmark. `-O3` is added globally, even to Debug builds, when ASan is off.
-- [ ] **Hard-coded Xcode architecture** (Phase 3). With the Xcode generator, `CMAKE_OSX_ARCHITECTURES` is forced to `x86_64`, so Apple Silicon Macs build Intel code that runs under Rosetta.
+- [x] **Global compiler flags** (Phase 3). `-Wall -Wextra -Werror` go into the global `CMAKE_CXX_FLAGS`, so `-Werror` also applies to googletest and benchmark. `-O3` is added globally, even to Debug builds, when ASan is off.
+- [x] **Hard-coded Xcode architecture** (Phase 3). With the Xcode generator, `CMAKE_OSX_ARCHITECTURES` is forced to `x86_64`, so Apple Silicon Macs build Intel code that runs under Rosetta.
 
 ## Features
 
