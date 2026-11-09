@@ -17,7 +17,6 @@ package_add_test(
         ${PROJECT_NAME}
     HEADERS
         ${INCLUDE_DIR}
-        ${Boost_INCLUDE_DIR}
     SOURCES
         ${INCLUDE_FILES}
         ${SRC_FILES}

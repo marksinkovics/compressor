@@ -19,7 +19,6 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${INCLUDE_FILES})
 target_include_directories(${PROJECT_NAME}
     PUBLIC
         ${INCLUDE_DIR}
-        ${Boost_INCLUDE_DIR}
     PRIVATE
         ${SRC_DIR}
 )

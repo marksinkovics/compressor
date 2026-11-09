@@ -9,6 +9,8 @@ endif()
 
 project(CompressionProject CXX)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 set(VERSION_MAJOR 0 CACHE STRING "Project major version number.")
 set(VERSION_MINOR 0 CACHE STRING "Project minor version number.")
 set(VERSION_PATCH 1 CACHE STRING "Project patch version number.")
@@ -37,7 +39,8 @@ endif()
 add_subdirectory(dependencies/google/googletest)
 set(BENCHMARK_ENABLE_GTEST_TESTS OFF)
 add_subdirectory(dependencies/google/benchmark)
-add_subdirectory(dependencies/boostorg/boost)
+# Headers only (dynamic_bitset). CONFIG mode because CMake 4 removed the FindBoost module (CMP0167).
+find_package(Boost 1.81.0 REQUIRED CONFIG)
 add_subdirectory(argparser)
 add_subdirectory(compressor)
 add_subdirectory(compressor_cli)

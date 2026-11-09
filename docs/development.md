@@ -1,16 +1,17 @@
 # Development
 
-The project uses [CMake](https://cmake.org) for managing dependencies, configurations and building. Currently v3.10 is required for this project. In addition, [ninja build system](https://ninja-build.org) is used for development.
+The project uses [CMake](https://cmake.org) for managing dependencies, configurations and building. CMake 3.25 or later is required. In addition, [ninja build system](https://ninja-build.org) is used for development.
 
 ## Prerequisite
 
-* CMake v3.25.1
-* Clang (Apple LLVM version 14.0.0 (clang-1400.0.29.202))
-* Xcode v 14.2 (14C18)
-* C++ (c++1z)
+Last checked with CMake 4.4.5, Apple Clang 17 (Xcode 26.2) and Boost 1.92 on macOS (2026-11-09).
+
+* CMake 3.25 or later
+* Clang (C++17, `-std=c++1z`)
 * Ninja
-* Boost v1.81.0 has to be installed and make it visible for CMake
-  * boost::dynamic_bitset, as a header only class, is used to benchmarking bit storing
+* Boost 1.81 or later (`brew install boost`), found through its `BoostConfig.cmake`
+  * `boost::dynamic_bitset`, header only, used by the bitset benchmark and the bitset tests
+* `build/debug/compile_commands.json` is generated for clang-tidy and editors
 
 ## Compile
 

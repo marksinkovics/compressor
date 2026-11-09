@@ -18,7 +18,11 @@ Each phase is one or more steps, and every step should end with tests passing. W
 
 Set up before any other coding, following FeatherOS (`tools/quality.sh` with one pre-commit hook per stage, a Claude format hook) and Runlight (the generic `pre-commit-hooks` set). Already installed: `pre-commit`, `clang-format` 20.1.7, `shellcheck`, `shfmt`. Missing: `clang-tidy` (`brew install llvm`).
 
-- [ ] **Build check:** confirm the current tree configures and builds with CMake 4.4 and Apple Clang 17, and record any change it needed (CMake 4 rejects old `cmake_minimum_required` policies). Turn on `CMAKE_EXPORT_COMPILE_COMMANDS`, since clang-tidy needs `build/debug/compile_commands.json`.
+- [x] **Build check (done):** CMake 4.4.5 and Apple Clang 17 configure and build Debug, Release and the Xcode project with `-Werror`; 74/74 tests pass. `cmake_minimum_required(VERSION 3.10)` is still accepted. Changes needed:
+  - Boost: CMake 4 removed the `FindBoost` module (CMP0167), so the root `CMakeLists.txt` now calls `find_package(Boost 1.81.0 REQUIRED CONFIG)` and `compressor_benchmark` and `compressor_test` link `Boost::headers`. The `dependencies/boostorg/` wrapper and the unused `${Boost_INCLUDE_DIR}` on other targets are gone. Homebrew ships Boost 1.92, which works.
+  - `CMAKE_EXPORT_COMPILE_COMMANDS ON` in the root `CMakeLists.txt`; `build/debug/compile_commands.json` exists after `./generate.sh`.
+  - The googletest/benchmark download templates (`dependencies/google/*/CMakeLists.txt.in`) set `DOWNLOAD_EXTRACT_TIMESTAMP TRUE` (CMP0135) and require CMake 3.25 (CMP0114 warning under Xcode).
+  - Left as is: googletest 1.13's own `cmake_minimum_required` deprecation warnings and `ld: warning: ignoring duplicate libraries` (gtest and benchmark linked twice via `package_add_test`). Both go away with vcpkg in Phase 3.
 - [ ] **Config files:**
   - `.editorconfig`: UTF-8, LF, final newline, 4-space indent.
   - `.clang-format`: start from FeatherOS's (LLVM base, 4 spaces, 100 columns, Allman braces, `PointerAlignment: Left`), which is close to the current code. Decide whether to sort includes.
@@ -66,7 +70,7 @@ Behaviour stays the same; the Phase 1 tests prove it.
 
 - [ ] **CMake:** raise `cmake_minimum_required` to 3.25 or later (needed for presets v6). Set C++23 with `target_compile_features(... cxx_std_23)` instead of `-std=c++1z` in `CMAKE_CXX_FLAGS`.
 - [ ] **Flags per target:** warnings go on our own targets only, through an interface target (`-Wall -Wextra -Wpedantic`, `/W4` on MSVC). `-Werror` becomes an option, on in CI. Remove the global `-O3` so Debug builds aren't optimized. ASan becomes a preset. `PROFILING` becomes a CMake option. Remove the forced `x86_64` architecture for Xcode.
-- [ ] **vcpkg:** `vcpkg.json` with `gtest`, `benchmark` and `boost-dynamic-bitset`. Link Boost into the benchmark target only. Delete `dependencies/` and the ExternalProject downloads.
+- [ ] **vcpkg:** `vcpkg.json` with `gtest`, `benchmark` and `boost-dynamic-bitset`. Link Boost only into `compressor_benchmark` and `compressor_test` (`bitset.cpp` compares against `boost::dynamic_bitset`). Delete `dependencies/` and the ExternalProject downloads.
 - [ ] **Presets:** `CMakePresets.json` with `debug`, `release`, `asan` and `xcode` configure presets, plus matching build and test presets. Replace `generate.sh` and `build.sh`, and update `docs/development.md` and `CLAUDE.md`.
 - [ ] **Quality tools on the new build:** point `tools/quality.sh` and the clang-tidy hook at the preset build directory.
 - [ ] **CI:** GitHub Actions on macOS first, then Linux (GCC and Clang) and Windows (MSVC), all through the presets, plus `pre-commit run --all-files`. Expect MSVC to need its own warning flags and fixes for binary-mode file I/O.
@@ -125,7 +129,7 @@ Each issue names the phase that handles it.
 
 - [ ] **Wrong script name in the docs** (Phase 2). [development.md](development.md) says `./configure.sh`; the script is `./generate.sh`.
 - [ ] **Benchmark builds aren't reproducible** (Phase 3). google benchmark is downloaded from `master.zip`, not a pinned tag.
-- [ ] **Dependencies are downloaded during configure** (Phase 3). googletest and benchmark come from ExternalProject; Boost 1.81 must be installed separately and is added to almost every target.
+- [ ] **Dependencies are downloaded during configure** (Phase 3). googletest and benchmark come from ExternalProject; Boost (1.81 or later) must be installed separately (`brew install boost`).
 - [ ] **`Testing/` isn't gitignored** (Phase 2).
 - [ ] **Global compiler flags** (Phase 3). `-std=c++1z -Wall -Wextra -Werror` go into the global `CMAKE_CXX_FLAGS`, so `-Werror` also applies to googletest and benchmark. `-O3` is added globally, even to Debug builds, when ASan is off.
 - [ ] **Hard-coded Xcode architecture** (Phase 3). With the Xcode generator, `CMAKE_OSX_ARCHITECTURES` is forced to `x86_64`, so Apple Silicon Macs build Intel code that runs under Rosetta.

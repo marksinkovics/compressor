@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.25)
 
 project(googlebenchmark-download NONE)
 
@@ -6,6 +6,7 @@ include(ExternalProject)
 
 ExternalProject_Add(googlebenchmark
   URL				https://github.com/google/benchmark/archive/master.zip
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
   SOURCE_DIR        "${CMAKE_CURRENT_BINARY_DIR}/googlebenchmark-src"
   BINARY_DIR        "${CMAKE_CURRENT_BINARY_DIR}/googlebenchmark-build"
   CONFIGURE_COMMAND ""

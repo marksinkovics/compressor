@@ -6,7 +6,7 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 
 ## Status (keep current)
 
-- **Next:** Phase 0, pre-commit hooks and code quality, starting with the build check (`docs/roadmap.md`). Then Phase 1, safety-net tests.
+- **Next:** Phase 0, pre-commit hooks and code quality: the config files step (`.editorconfig`, `.clang-format`, `.clang-tidy`, `.shellcheckrc`; `docs/roadmap.md`). The build check is done.
 
 ## Commands
 
@@ -19,7 +19,7 @@ ctest --test-dir build/debug -R BitsetTests
 ./build/debug/compressor/test/compressor_test_app --gtest_filter='BitsetTests.*'
 ```
 
-- Needs Boost 1.81 installed (headers only, used by the benchmark). googletest and benchmark are downloaded during configure.
+- Needs Boost 1.81+ installed (`brew install boost`; headers only, found in CONFIG mode). googletest and benchmark are downloaded during configure.
 - `-Werror` is on globally. `-DENABLE_ASAN=ON` for ASan/LSan. Set `PROFILING=1` in the root `CMakeLists.txt` to make the `PROFILE_*` macros write `result.json`.
 
 ## Architecture
