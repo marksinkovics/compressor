@@ -66,3 +66,13 @@ TEST_F(EngineTests, Stream)
 
     EXPECT_STREQ(input.c_str(), decoded_str.c_str());
 }
+
+TEST_F(EngineTests, Encoding_twice_gives_the_same_result_as_a_fresh_engine)
+{
+    compressor::Engine reused;
+    reused.encode(compressor::DecodedData(longInput));
+    compressor::EncodedData second = reused.encode(compressor::DecodedData(input));
+
+    compressor::Engine fresh;
+    EXPECT_EQ(second, fresh.encode(compressor::DecodedData(input)));
+}

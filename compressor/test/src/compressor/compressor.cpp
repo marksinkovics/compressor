@@ -25,7 +25,7 @@ TEST_F(CompressorTests, Encoding)
     compressor::EncodedData encoded_data;
 
     MockIDataReader<compressor::DecodedData> reader;
-    EXPECT_CALL(reader, open(testing::StrEq(input_file))).Times(1);
+    EXPECT_CALL(reader, open(testing::StrEq(input_file))).WillOnce(testing::Return(true));
     EXPECT_CALL(reader, read()).WillOnce(testing::Return(decoded_data));
     EXPECT_CALL(reader, close()).Times(1);
 
@@ -33,7 +33,7 @@ TEST_F(CompressorTests, Encoding)
     EXPECT_CALL(engine, encode(testing::Eq(decoded_data))).WillOnce(testing::Return(encoded_data));
 
     MockIDataWriter<compressor::EncodedData> writer;
-    EXPECT_CALL(writer, open(testing::StrEq(output_file))).Times(1);
+    EXPECT_CALL(writer, open(testing::StrEq(output_file))).WillOnce(testing::Return(true));
     EXPECT_CALL(writer, write(testing::Eq(encoded_data))).Times(1);
     EXPECT_CALL(writer, close()).Times(1);
 
@@ -45,7 +45,7 @@ TEST_F(CompressorTests, Encoding)
     ON_CALL(task, writer()).WillByDefault(testing::ReturnRef(writer));
 
     compressor::Compressor compressor;
-    compressor.encode(task);
+    EXPECT_TRUE(compressor.encode(task));
 }
 
 TEST_F(CompressorTests, Decoding)
@@ -56,7 +56,7 @@ TEST_F(CompressorTests, Decoding)
     compressor::EncodedData encoded_data;
 
     MockIDataReader<compressor::EncodedData> reader;
-    EXPECT_CALL(reader, open(testing::StrEq(input_file))).Times(1);
+    EXPECT_CALL(reader, open(testing::StrEq(input_file))).WillOnce(testing::Return(true));
     EXPECT_CALL(reader, read()).WillOnce(testing::Return(encoded_data));
     EXPECT_CALL(reader, close()).Times(1);
 
@@ -64,7 +64,7 @@ TEST_F(CompressorTests, Decoding)
     EXPECT_CALL(engine, decode(testing::Eq(encoded_data))).WillOnce(testing::Return(decoded_data));
 
     MockIDataWriter<compressor::DecodedData> writer;
-    EXPECT_CALL(writer, open(testing::StrEq(output_file))).Times(1);
+    EXPECT_CALL(writer, open(testing::StrEq(output_file))).WillOnce(testing::Return(true));
     EXPECT_CALL(writer, write(testing::Eq(decoded_data))).Times(1);
     EXPECT_CALL(writer, close()).Times(1);
 
@@ -76,11 +76,10 @@ TEST_F(CompressorTests, Decoding)
     ON_CALL(task, writer()).WillByDefault(testing::ReturnRef(writer));
 
     compressor::Compressor compressor;
-    compressor.decode(task);
+    EXPECT_TRUE(compressor.decode(task));
 }
 
-// Disabled until Phase 2 checks the result of open().
-TEST_F(CompressorTests, DISABLED_Encoding_stops_when_the_input_cannot_be_opened)
+TEST_F(CompressorTests, Encoding_stops_when_the_input_cannot_be_opened)
 {
     testing::NiceMock<MockIDataReader<compressor::DecodedData>> reader;
     EXPECT_CALL(reader, open(testing::_)).WillOnce(testing::Return(false));
@@ -101,10 +100,10 @@ TEST_F(CompressorTests, DISABLED_Encoding_stops_when_the_input_cannot_be_opened)
     ON_CALL(task, writer()).WillByDefault(testing::ReturnRef(writer));
 
     compressor::Compressor compressor;
-    compressor.encode(task);
+    EXPECT_FALSE(compressor.encode(task));
 }
 
-TEST_F(CompressorTests, DISABLED_Decoding_stops_when_the_input_cannot_be_opened)
+TEST_F(CompressorTests, Decoding_stops_when_the_input_cannot_be_opened)
 {
     testing::NiceMock<MockIDataReader<compressor::EncodedData>> reader;
     EXPECT_CALL(reader, open(testing::_)).WillOnce(testing::Return(false));
@@ -125,5 +124,51 @@ TEST_F(CompressorTests, DISABLED_Decoding_stops_when_the_input_cannot_be_opened)
     ON_CALL(task, writer()).WillByDefault(testing::ReturnRef(writer));
 
     compressor::Compressor compressor;
-    compressor.decode(task);
+    EXPECT_FALSE(compressor.decode(task));
+}
+
+TEST_F(CompressorTests, Encoding_fails_without_writing_when_the_output_cannot_be_opened)
+{
+    testing::NiceMock<MockIDataReader<compressor::DecodedData>> reader;
+    ON_CALL(reader, open(testing::_)).WillByDefault(testing::Return(true));
+
+    testing::NiceMock<MockIEngine> engine;
+
+    MockIDataWriter<compressor::EncodedData> writer;
+    EXPECT_CALL(writer, open(testing::_)).WillOnce(testing::Return(false));
+    EXPECT_CALL(writer, write(testing::_)).Times(0);
+    EXPECT_CALL(writer, close()).Times(0);
+
+    testing::NiceMock<MockIEncoderTask> task;
+    ON_CALL(task, input_file()).WillByDefault(testing::Return("input_file"));
+    ON_CALL(task, output_file()).WillByDefault(testing::Return("output_file"));
+    ON_CALL(task, engine()).WillByDefault(testing::ReturnRef(engine));
+    ON_CALL(task, reader()).WillByDefault(testing::ReturnRef(reader));
+    ON_CALL(task, writer()).WillByDefault(testing::ReturnRef(writer));
+
+    compressor::Compressor compressor;
+    EXPECT_FALSE(compressor.encode(task));
+}
+
+TEST_F(CompressorTests, Decoding_fails_without_writing_when_the_output_cannot_be_opened)
+{
+    testing::NiceMock<MockIDataReader<compressor::EncodedData>> reader;
+    ON_CALL(reader, open(testing::_)).WillByDefault(testing::Return(true));
+
+    testing::NiceMock<MockIEngine> engine;
+
+    MockIDataWriter<compressor::DecodedData> writer;
+    EXPECT_CALL(writer, open(testing::_)).WillOnce(testing::Return(false));
+    EXPECT_CALL(writer, write(testing::_)).Times(0);
+    EXPECT_CALL(writer, close()).Times(0);
+
+    testing::NiceMock<MockIDecoderTask> task;
+    ON_CALL(task, input_file()).WillByDefault(testing::Return("input_file"));
+    ON_CALL(task, output_file()).WillByDefault(testing::Return("output_file"));
+    ON_CALL(task, engine()).WillByDefault(testing::ReturnRef(engine));
+    ON_CALL(task, reader()).WillByDefault(testing::ReturnRef(reader));
+    ON_CALL(task, writer()).WillByDefault(testing::ReturnRef(writer));
+
+    compressor::Compressor compressor;
+    EXPECT_FALSE(compressor.decode(task));
 }

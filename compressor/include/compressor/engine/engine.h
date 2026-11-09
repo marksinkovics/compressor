@@ -26,7 +26,6 @@ public:
     virtual void build_tree() = 0;
     virtual void create_hash_table() = 0;
 
-    virtual std::shared_ptr<compressor::bitset> find_path(std::shared_ptr<SymbolNode>& node) = 0;
     virtual void print_graph() const = 0;
     virtual void print_dict() const = 0;
 
@@ -43,7 +42,6 @@ public:
     void build_tree() override;
     void create_hash_table() override;
 
-    std::shared_ptr<compressor::bitset> find_path(std::shared_ptr<SymbolNode>& node) override;
     void print_graph() const override;
     void print_dict() const override;
 

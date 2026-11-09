@@ -14,16 +14,16 @@ class ICompressor
 {
 public:
     virtual ~ICompressor() = default;
-    virtual void encode(IEncoderTask& task) = 0;
-    virtual void decode(IDecoderTask& task) = 0;
+    virtual bool encode(IEncoderTask& task) = 0;
+    virtual bool decode(IDecoderTask& task) = 0;
 };
 
 class Compressor : public ICompressor
 {
 public:
     ~Compressor() override = default;
-    void encode(IEncoderTask& task) override;
-    void decode(IDecoderTask& task) override;
+    bool encode(IEncoderTask& task) override;
+    bool decode(IDecoderTask& task) override;
 };
 
 } // namespace compressor

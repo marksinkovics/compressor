@@ -80,6 +80,11 @@ void Engine::create_hash_table()
         if (!node->hasParent())
         {
             node->setTag(std::make_shared<compressor::bitset>(0));
+            // A lone leaf root needs a non-empty code, or the payload would be 0 bits.
+            if (!node->left() && !node->right())
+            {
+                node->tag()->push_back(false);
+            }
             return;
         }
 
@@ -96,19 +101,6 @@ void Engine::create_hash_table()
         byte_dict_[c] = *(node->tag());
         bit_dict_[*(node->tag())] = c;
     }
-}
-
-std::shared_ptr<compressor::bitset> Engine::find_path(std::shared_ptr<SymbolNode>& node)
-{
-    std::shared_ptr<SymbolNode> innerNode = node;
-    auto vector = std::make_shared<compressor::bitset>(0);
-    while (!innerNode->parent().expired())
-    {
-        bool isRightChild = (node->parent().lock()->right() == node);
-        vector->push_back(isRightChild);
-        innerNode = std::dynamic_pointer_cast<SymbolNode>(innerNode->parent().lock());
-    }
-    return vector;
 }
 
 void Engine::print_graph() const
@@ -150,6 +142,15 @@ EncodedData Engine::encode(const DecodedData& data)
 {
     this->data_ = data;
     this->encoded_data_ = EncodedData();
+    _tree.reset();
+    _symbols_dict.clear();
+    byte_dict_.clear();
+    bit_dict_.clear();
+
+    if (data_.data_.empty())
+    {
+        return encoded_data_;
+    }
 
     {
         PROFILE_SCOPE("Build dictionary")

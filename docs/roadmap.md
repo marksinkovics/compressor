@@ -66,18 +66,18 @@ End-to-end round-trip tests over the sample files pass, and every Phase 2 correc
   - `Output_files_are_created_when_missing` asserts that the encoded file exists before it decodes, because decoding a missing file currently hangs: `operator>>(istream&, EncodedData&)` loops over a `dict_size` that was never read.
   - When Phase 2 makes `Compressor` check `open()`, the existing `CompressorTests.Encoding`/`Decoding` need `WillOnce(Return(true))` on the reader and writer `open()`: the mock default `false` would stop the pipeline.
 
-### Phase 2: Bug fixes
+### Phase 2: Bug fixes (done)
 
-Fix only the issues in code that survives the modernization. Each fix enables the matching `DISABLED_` test.
+The Phase 2 known issues are fixed, all seven Phase 1 `DISABLED_` tests are enabled and pass, and `compressor_app` returns a non-zero exit code on failure; 91/91 tests pass, none disabled.
 
-- [ ] `DataWriter::open`: use `std::ios::out | std::ios::trunc | std::ios::binary`.
-- [ ] `Compressor::encode/decode`: check the result of `open()`, print an error, return a non-zero exit code. Stop before reading or writing anything when an open fails, including the writer's.
-- [ ] CLI with neither `encode` nor `decode`: print the help, return non-zero.
-- [ ] Empty input: return early with an empty dictionary and payload.
-- [ ] Single-symbol input: when the root is a leaf, give it the code `0`.
-- [ ] `Engine::encode`: clear the dictionaries at the start.
-- [ ] Delete `Engine::find_path` (wrong and unused).
-- [ ] Docs: `configure.sh` → `generate.sh` in `docs/development.md`; add `Testing/` to `.gitignore`.
+- [x] **`DataWriter::open` (done):** opens with `std::ios::out | std::ios::trunc | std::ios::binary`. `DataReader`/`DataWriter::open` no longer print; `Compressor` reports the error. The round-trip tests no longer `touch()` their outputs. Covered by `EdgeCaseTests.Output_files_are_created_when_missing` and `Existing_longer_output_files_are_truncated`.
+- [x] **Open failures (done):** `ICompressor::encode/decode` return `bool`. `Compressor` stops right after a failed reader `open()` (no read, no engine call, no writer call) and prints `Cannot open input file: <path>` to `stderr`; a failed writer `open()` prints `Cannot open output file: <path>` and returns `false` without writing. Unlike the plan, the writer is still opened after reading and encoding, not before reading, so an input given as its own output isn't truncated before it is read. Covered by `CompressorTests.{Encoding,Decoding}_stops_when_the_input_cannot_be_opened`, `{Encoding,Decoding}_fails_without_writing_when_the_output_cannot_be_opened` and `EdgeCaseTests.Encoding_a_missing_input_leaves_the_output_untouched`.
+- [x] **CLI exit codes (done):** `CLI::run()` returns `EXIT_SUCCESS`/`EXIT_FAILURE` and `main` returns it. With neither `encode` nor `decode`, it calls `print_help()` and fails. Covered by `CLITests.EmptyCommand` and `Failed_encoding_gives_a_non_zero_exit_code`; the empty `CLITests.EmptyFiles` was removed. Side effect: `compressor_app --help` now prints the help twice (once in `Argparser::parse`, once in `run`) and exits 1; Phase 4 replaces this.
+- [x] **Empty input (done):** `Engine::encode` returns an empty `EncodedData` (no dictionary, 0-bit payload) before building a tree; decoding it gives an empty file. Covered by `EdgeCaseTests.Empty_input_round_trips_to_an_empty_file`.
+- [x] **Single-symbol input (done):** in `Engine::create_hash_table`, a root that is also a leaf gets the code `0`. Covered by `EdgeCaseTests.Single_symbol_input_round_trips`.
+- [x] **Engine reset (done):** `Engine::encode` resets `_tree`, `_symbols_dict`, `byte_dict_` and `bit_dict_` first. Covered by `EngineTests.Encoding_twice_gives_the_same_result_as_a_fresh_engine` (checked to fail without the reset).
+- [x] **`find_path` (done):** removed from `IEngine`, `Engine` and `MockIEngine`.
+- [x] **Docs (done):** `docs/development.md` says `./generate.sh`; `Testing` is in `.gitignore`.
 
 Not fixed here, because later phases replace the code: the argparser bugs (Phase 4), file-format portability and decoding speed (Phase 5).
 
@@ -94,7 +94,7 @@ Behaviour stays the same; the Phase 1 tests prove it.
 
 ### Phase 4: CLI11
 
-- [ ] Add `cli11` to `vcpkg.json`. `encode` and `decode` become CLI11 subcommands with `-i/--input` (validated with `CLI::ExistingFile`), `-o/--output`, `--help` and `--version`, and proper exit codes.
+- [ ] Add `cli11` to `vcpkg.json`. `encode` and `decode` become CLI11 subcommands with `-i/--input` (validated with `CLI::ExistingFile`), `-o/--output`, `--help` and `--version`, and proper exit codes. `--help` must print once and exit 0 (the old argparser prints it twice and exits 1).
 - [ ] Delete `argparser/`, its tests and the `IArgparser` mock. CLI tests check how a given argv is parsed instead of using mocks.
 
 ### Phase 5: Core codec redesign
@@ -122,16 +122,16 @@ Each issue names the phase that handles it.
 
 ### Correctness
 
-- [ ] **Output file must already exist** (Phase 2). `DataWriter::open` ([writer.h](../compressor/include/compressor/data/writer.h)) opens its `std::ofstream` with `std::ios::in | std::ios::binary`. Because of `in`, the open fails when the output file doesn't exist, and an existing file isn't truncated, so leftover bytes from a longer earlier file stay at the end.
-- [ ] **Open failures are ignored** (Phase 2). `Compressor::encode/decode` ([compressor.cpp](../compressor/src/compressor/compressor.cpp)) ignore the `bool` that `open()` returns and go on to read from or write to a stream that failed to open.
+- [x] **Output file must already exist** (Phase 2). `DataWriter::open` ([writer.h](../compressor/include/compressor/data/writer.h)) opens its `std::ofstream` with `std::ios::in | std::ios::binary`. Because of `in`, the open fails when the output file doesn't exist, and an existing file isn't truncated, so leftover bytes from a longer earlier file stay at the end.
+- [x] **Open failures are ignored** (Phase 2). `Compressor::encode/decode` ([compressor.cpp](../compressor/src/compressor/compressor.cpp)) ignore the `bool` that `open()` returns and go on to read from or write to a stream that failed to open.
 - [ ] **Truncated or corrupt encoded input isn't detected** (Phase 5 and the container format). `operator>>(istream&, EncodedData&)` ([data.cpp](../compressor/src/compressor/data/data.cpp)) doesn't check its reads, so a short file leaves `dict_size` uninitialized and decoding can hang or crash. The decoder fuzzing feature would catch it.
-- [ ] **Empty input is undefined behaviour** (Phase 2). If the input is empty, `Engine::build_tree` ([engine.cpp](../compressor/src/compressor/engine/engine.cpp)) calls `_nodes.front()` on an empty vector.
-- [ ] **Input with only one distinct byte is lost** (Phase 2). For input like `aaaa`, the root is the only node and its code is an empty bitset. The encoded payload is 0 bits and decoding returns nothing.
-- [ ] **`Engine::find_path` returns wrong codes** (Phase 2, delete). Inside the loop it checks `node` instead of `innerNode`, so every step pushes the same bit. Nothing calls it, but it is part of `IEngine`.
-- [ ] **`Engine` state isn't reset** (Phase 2). `_symbols_dict` and the byte/bit dictionaries carry over between `encode()` calls. Each task currently creates its own `Engine`, which hides this.
+- [x] **Empty input is undefined behaviour** (Phase 2). If the input is empty, `Engine::build_tree` ([engine.cpp](../compressor/src/compressor/engine/engine.cpp)) calls `_nodes.front()` on an empty vector.
+- [x] **Input with only one distinct byte is lost** (Phase 2). For input like `aaaa`, the root is the only node and its code is an empty bitset. The encoded payload is 0 bits and decoding returns nothing.
+- [x] **`Engine::find_path` returns wrong codes** (Phase 2, delete). Inside the loop it checks `node` instead of `innerNode`, so every step pushes the same bit. Nothing calls it, but it is part of `IEngine`.
+- [x] **`Engine` state isn't reset** (Phase 2). `_symbols_dict` and the byte/bit dictionaries carry over between `encode()` calls. Each task currently creates its own `Engine`, which hides this.
 - [ ] **Argparser can read past the end of `argv`** (Phase 4, replaced). In `Argparser::parse` ([argparser.cpp](../argparser/src/argparser/argparser.cpp)), a value argument given as the last token (`compressor_app encode --input`) makes `inputs_[++i]` index out of range.
 - [ ] **Numeric parsing is lossy** (Phase 4, replaced). `ValueParser<uint32_t/uint64_t>` ([valueparser.cpp](../argparser/src/argparser/valueparser.cpp)) uses `std::atoi`, which overflows above `INT_MAX` and quietly turns invalid input into 0.
-- [ ] **The CLI does nothing silently** (Phase 2). If neither `encode` nor `decode` is given, `CLI::run` exits with code 0 and prints no error or help.
+- [x] **The CLI does nothing silently** (Phase 2). If neither `encode` nor `decode` is given, `CLI::run` exits with code 0 and prints no error or help.
 
 ### File format
 
@@ -145,11 +145,11 @@ Each issue names the phase that handles it.
 
 ### Build and tooling
 
-- [ ] **Wrong script name in the docs** (Phase 2). [development.md](development.md) says `./configure.sh`; the script is `./generate.sh`.
+- [x] **Wrong script name in the docs** (Phase 2). [development.md](development.md) says `./configure.sh`; the script is `./generate.sh`.
 - [ ] **Bitset benchmarks truncate their size** (Phase 5 benchmarks). `compressor_benchmark/src/bitset/*.cpp` store `state.range(0)` (up to 1024) in a `uint8_t`, so the larger runs measure sizes modulo 256.
 - [ ] **Benchmark builds aren't reproducible** (Phase 3). google benchmark is downloaded from `master.zip`, not a pinned tag.
 - [ ] **Dependencies are downloaded during configure** (Phase 3). googletest and benchmark come from ExternalProject; Boost (1.81 or later) must be installed separately (`brew install boost`).
-- [ ] **`Testing/` isn't gitignored** (Phase 2).
+- [x] **`Testing/` isn't gitignored** (Phase 2).
 - [ ] **Global compiler flags** (Phase 3). `-std=c++1z -Wall -Wextra -Werror` go into the global `CMAKE_CXX_FLAGS`, so `-Werror` also applies to googletest and benchmark. `-O3` is added globally, even to Debug builds, when ASan is off.
 - [ ] **Hard-coded Xcode architecture** (Phase 3). With the Xcode generator, `CMAKE_OSX_ARCHITECTURES` is forced to `x86_64`, so Apple Silicon Macs build Intel code that runs under Rosetta.
 

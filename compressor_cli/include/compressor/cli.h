@@ -14,7 +14,7 @@ class CLI
 public:
     CLI(std::unique_ptr<argparser::IArgparser>&& parser,
         std::unique_ptr<compressor::ICompressor>&& compressor);
-    void run();
+    int run();
 
 private:
     std::unique_ptr<argparser::IArgparser> parser_;

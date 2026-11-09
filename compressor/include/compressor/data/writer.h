@@ -22,13 +22,8 @@ public:
 
     bool open(const std::string& file) override
     {
-        output_stream_.open(file, std::ios::in | std::ios::binary);
-        if (output_stream_.fail())
-        {
-            std::cerr << "Cannot open file: " << file << '\n';
-            return false;
-        }
-        return true;
+        output_stream_.open(file, std::ios::out | std::ios::trunc | std::ios::binary);
+        return !output_stream_.fail();
     }
 
     void write(const T& data) override

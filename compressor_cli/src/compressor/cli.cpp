@@ -1,5 +1,6 @@
 #include <compressor/cli.h>
 
+#include <cstdlib>
 #include <iostream>
 
 #include <argparser/argparser.h>
@@ -20,7 +21,7 @@ CLI::CLI(std::unique_ptr<argparser::IArgparser>&& parser,
     options_ = parser_->parse();
 }
 
-void CLI::run()
+int CLI::run()
 {
     std::string input_file, output_file;
     if (parser_->has_argument("input"))
@@ -41,14 +42,17 @@ void CLI::run()
     {
         std::cout << "Encode\n";
         EncoderTask task(input_file, output_file);
-        compressor_->encode(task);
+        return compressor_->encode(task) ? EXIT_SUCCESS : EXIT_FAILURE;
     }
     else if (parser_->has_argument("decode"))
     {
         std::cout << "Decode\n";
         DecoderTask task(input_file, output_file);
-        compressor_->decode(task);
+        return compressor_->decode(task) ? EXIT_SUCCESS : EXIT_FAILURE;
     }
+
+    parser_->print_help();
+    return EXIT_FAILURE;
 }
 
 } // namespace compressor

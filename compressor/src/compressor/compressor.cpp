@@ -1,5 +1,7 @@
 #include <compressor/compressor.h>
 
+#include <iostream>
+
 #include <compressor/data/data.h>
 #include <compressor/engine/engine.h>
 
@@ -8,12 +10,17 @@
 namespace compressor
 {
 
-void Compressor::encode(IEncoderTask& task)
+// The output is opened only after the input has been read, so encoding a file onto itself works.
+bool Compressor::encode(IEncoderTask& task)
 {
     PROFILE_SESSION("Compressor::Encode")
 
     PROFILE_START(read_timer, "Read")
-    task.reader().open(task.input_file());
+    if (!task.reader().open(task.input_file()))
+    {
+        std::cerr << "Cannot open input file: " << task.input_file() << '\n';
+        return false;
+    }
     auto decoded_data = task.reader().read();
     task.reader().close();
     PROFILE_END(read_timer, "Read")
@@ -23,18 +30,27 @@ void Compressor::encode(IEncoderTask& task)
     PROFILE_END(encode_timer, "Encode")
 
     PROFILE_START(write_timer, "Write")
-    task.writer().open(task.output_file());
+    if (!task.writer().open(task.output_file()))
+    {
+        std::cerr << "Cannot open output file: " << task.output_file() << '\n';
+        return false;
+    }
     task.writer().write(encoded_data);
     task.writer().close();
     PROFILE_END(write_timer, "Write")
+    return true;
 }
 
-void Compressor::decode(IDecoderTask& task)
+bool Compressor::decode(IDecoderTask& task)
 {
     PROFILE_SESSION("Compressor::Decode")
 
     PROFILE_START(read_timer, "Read")
-    task.reader().open(task.input_file());
+    if (!task.reader().open(task.input_file()))
+    {
+        std::cerr << "Cannot open input file: " << task.input_file() << '\n';
+        return false;
+    }
     auto encoded_data = task.reader().read();
     task.reader().close();
     PROFILE_END(read_timer, "Read")
@@ -44,10 +60,15 @@ void Compressor::decode(IDecoderTask& task)
     PROFILE_END(decode_timer, "Decode")
 
     PROFILE_START(write_timer, "Write")
-    task.writer().open(task.output_file());
+    if (!task.writer().open(task.output_file()))
+    {
+        std::cerr << "Cannot open output file: " << task.output_file() << '\n';
+        return false;
+    }
     task.writer().write(decoded_data);
     task.writer().close();
     PROFILE_END(write_timer, "Write")
+    return true;
 }
 
 } // namespace compressor

@@ -23,12 +23,7 @@ public:
     bool open(const std::string& file) override
     {
         input_stream_.open(file, std::ios::in | std::ios::binary);
-        if (input_stream_.fail())
-        {
-            std::cerr << "Cannot open file: " << file << '\n';
-            return false;
-        }
-        return true;
+        return !input_stream_.fail();
     }
 
     T read() override

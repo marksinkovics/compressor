@@ -23,7 +23,7 @@ This project manages 3rd party dependencies via CMake ExternalProject.
 
 1. Go to the root folder of the project
 2. Prepare folders (build/debug, build/release and build/xcode) an generate project files (Ninja, Xcode)
-   Run `./configure.sh`
+   Run `./generate.sh`
 3. Run `./build.sh` to build in debug mode
 
 ### Debug build (with Ninja)

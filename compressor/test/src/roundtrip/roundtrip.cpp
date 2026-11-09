@@ -48,12 +48,6 @@ void write_bytes(const fs::path& file, const std::string& bytes)
     stream << bytes;
 }
 
-// DataWriter::open can't create a file yet (Phase 2), so the outputs are created up front.
-void touch(const fs::path& file)
-{
-    write_bytes(file, "");
-}
-
 void encode(const fs::path& input, const fs::path& output)
 {
     compressor::Compressor compressor;
@@ -114,9 +108,6 @@ TEST_P(RoundTripTests, Encode_then_decode_restores_the_file)
     const fs::path& original = GetParam();
     const fs::path encoded = work_dir_ / "encoded.bin";
     const fs::path decoded = work_dir_ / "decoded.bin";
-    touch(encoded);
-    touch(decoded);
-
     encode(original, encoded);
     decode(encoded, decoded);
 
@@ -129,7 +120,6 @@ TEST_P(RoundTripTests, Encode_then_decode_restores_the_file)
 
 INSTANTIATE_TEST_SUITE_P(Samples, RoundTripTests, testing::ValuesIn(sample_files()), test_name);
 
-// Disabled until Phase 2 fixes the matching known issue in docs/roadmap.md.
 class EdgeCaseTests : public testing::Test
 {
 protected:
@@ -150,8 +140,6 @@ protected:
 
     void round_trip()
     {
-        touch(encoded_);
-        touch(decoded_);
         encode(input_, encoded_);
         decode(encoded_, decoded_);
     }
@@ -162,7 +150,7 @@ protected:
     fs::path decoded_;
 };
 
-TEST_F(EdgeCaseTests, DISABLED_Empty_input_round_trips_to_an_empty_file)
+TEST_F(EdgeCaseTests, Empty_input_round_trips_to_an_empty_file)
 {
     write_bytes(input_, "");
     round_trip();
@@ -171,7 +159,7 @@ TEST_F(EdgeCaseTests, DISABLED_Empty_input_round_trips_to_an_empty_file)
     EXPECT_EQ(fs::file_size(decoded_), 0U);
 }
 
-TEST_F(EdgeCaseTests, DISABLED_Single_symbol_input_round_trips)
+TEST_F(EdgeCaseTests, Single_symbol_input_round_trips)
 {
     write_bytes(input_, "aaaa");
     round_trip();
@@ -180,7 +168,7 @@ TEST_F(EdgeCaseTests, DISABLED_Single_symbol_input_round_trips)
     EXPECT_EQ(read_bytes(decoded_), expected);
 }
 
-TEST_F(EdgeCaseTests, DISABLED_Encoding_a_missing_input_leaves_the_output_untouched)
+TEST_F(EdgeCaseTests, Encoding_a_missing_input_leaves_the_output_untouched)
 {
     write_bytes(encoded_, "keep");
     encode(work_dir_ / "missing.bin", encoded_);
@@ -189,11 +177,10 @@ TEST_F(EdgeCaseTests, DISABLED_Encoding_a_missing_input_leaves_the_output_untouc
     EXPECT_EQ(read_bytes(encoded_), expected);
 }
 
-TEST_F(EdgeCaseTests, DISABLED_Output_files_are_created_when_missing)
+TEST_F(EdgeCaseTests, Output_files_are_created_when_missing)
 {
     write_bytes(input_, "abracadabra");
     encode(input_, encoded_);
-    // Decoding a missing file currently hangs, so stop here if encoding created nothing.
     ASSERT_TRUE(fs::exists(encoded_));
     decode(encoded_, decoded_);
 
@@ -201,7 +188,7 @@ TEST_F(EdgeCaseTests, DISABLED_Output_files_are_created_when_missing)
     EXPECT_EQ(read_bytes(decoded_), std::vector<char>(text.begin(), text.end()));
 }
 
-TEST_F(EdgeCaseTests, DISABLED_Existing_longer_output_files_are_truncated)
+TEST_F(EdgeCaseTests, Existing_longer_output_files_are_truncated)
 {
     const std::string leftover(4096, 'x');
     write_bytes(input_, "abracadabra");

@@ -8,7 +8,8 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 
 - Phase 0 (pre-commit hooks and code quality) is done: `tools/quality.sh`, pre-commit hooks installed, Claude format hook in `.claude/settings.json`.
 - Phase 1 (safety-net tests) is done: round-trip tests over `compressor_example/samples/raw/` and 7 `DISABLED_` edge-case tests for the Phase 2 bugs.
-- **Next:** Phase 2, the bug fixes, each enabling its `DISABLED_` test (`docs/roadmap.md`).
+- Phase 2 (bug fixes) is done: all edge-case tests enabled, 91/91 pass; `compressor_app` returns non-zero on failure.
+- **Next:** Phase 3, first step "CMake": `cmake_minimum_required` 3.25+, C++23 via `target_compile_features` (`docs/roadmap.md`).
 
 ## Commands
 

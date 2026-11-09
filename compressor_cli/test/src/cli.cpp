@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <sstream>
 
 #include <gmock/gmock.h>
@@ -42,10 +43,10 @@ TEST_F(CLITests, Encoding)
     EXPECT_CALL(*argparser_, has_argument(testing::StrEq("encode")))
         .WillOnce(testing::Return(true));
 
-    EXPECT_CALL(*compressor_, encode(testing::_)).Times(testing::AtLeast(1));
+    EXPECT_CALL(*compressor_, encode(testing::_)).WillOnce(testing::Return(true));
 
     auto cli = compressor::CLI(std::move(argparser_), std::move(compressor_));
-    cli.run();
+    EXPECT_EQ(cli.run(), EXIT_SUCCESS);
 }
 
 TEST_F(CLITests, Decoding)
@@ -63,10 +64,10 @@ TEST_F(CLITests, Decoding)
     EXPECT_CALL(*argparser_, has_argument(testing::StrEq("decode")))
         .WillOnce(testing::Return(true));
 
-    EXPECT_CALL(*compressor_, decode(testing::_)).Times(testing::AtLeast(1));
+    EXPECT_CALL(*compressor_, decode(testing::_)).WillOnce(testing::Return(true));
 
     auto cli = compressor::CLI(std::move(argparser_), std::move(compressor_));
-    cli.run();
+    EXPECT_EQ(cli.run(), EXIT_SUCCESS);
 }
 
 TEST_F(CLITests, EmptyCommand)
@@ -83,12 +84,29 @@ TEST_F(CLITests, EmptyCommand)
     EXPECT_CALL(*argparser_, has_argument(testing::StrEq("decode")))
         .WillOnce(testing::Return(false));
 
-    EXPECT_CALL(*compressor_, encode(testing::_)).Times(testing::AtLeast(0));
-
-    EXPECT_CALL(*compressor_, decode(testing::_)).Times(testing::AtLeast(0));
+    EXPECT_CALL(*compressor_, encode(testing::_)).Times(0);
+    EXPECT_CALL(*compressor_, decode(testing::_)).Times(0);
+    EXPECT_CALL(*argparser_, print_help()).Times(1);
 
     auto cli = compressor::CLI(std::move(argparser_), std::move(compressor_));
-    cli.run();
+    EXPECT_NE(cli.run(), EXIT_SUCCESS);
 }
 
-TEST_F(CLITests, EmptyFiles) {}
+TEST_F(CLITests, Failed_encoding_gives_a_non_zero_exit_code)
+{
+    EXPECT_CALL(*argparser_, add_argument(::testing::_)).Times(testing::AtLeast(4));
+
+    options_["encode"] = std::make_shared<argparser::Arg<bool>>("encode", "desc", true);
+
+    EXPECT_CALL(*argparser_, parse()).WillOnce(testing::Return(options_));
+    EXPECT_CALL(*argparser_, has_argument(testing::StrEq("input"))).WillOnce(testing::Return(true));
+    EXPECT_CALL(*argparser_, has_argument(testing::StrEq("output")))
+        .WillOnce(testing::Return(true));
+    EXPECT_CALL(*argparser_, has_argument(testing::StrEq("encode")))
+        .WillOnce(testing::Return(true));
+
+    EXPECT_CALL(*compressor_, encode(testing::_)).WillOnce(testing::Return(false));
+
+    auto cli = compressor::CLI(std::move(argparser_), std::move(compressor_));
+    EXPECT_NE(cli.run(), EXIT_SUCCESS);
+}
