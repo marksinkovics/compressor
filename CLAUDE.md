@@ -6,7 +6,7 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 
 ## Status (keep current)
 
-- **Next:** Phase 0, pre-commit hooks and code quality: the "Reformat the whole tree" step (`docs/roadmap.md`). The build check, config files, `tools/quality.sh` and `.pre-commit-config.yaml` are done; clang-tidy is clean, but the tree isn't clang-formatted and `pre-commit install` hasn't been run yet.
+- **Next:** Phase 0, pre-commit hooks and code quality: the "Install the hooks" step (`docs/roadmap.md`). The tree is reformatted and every hook passes; once the reformat commit exists, `pre-commit install` and `.git-blame-ignore-revs` follow.
 
 ## Commands
 
