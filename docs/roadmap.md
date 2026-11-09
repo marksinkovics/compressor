@@ -14,7 +14,9 @@ The phased plan for getting the basics right, the known issues it addresses, and
 
 Each phase is one or more steps, and every step should end with tests passing. When a step is done, mark it `(done)` and replace its plan text with what was actually built.
 
-### Phase 0: Pre-commit hooks and code quality
+### Phase 0: Pre-commit hooks and code quality (done)
+
+Every commit now runs clang-format, clang-tidy, shellcheck, shfmt and the generic `pre-commit-hooks` through `tools/quality.sh`, the whole tree is formatted and lint-clean, and Claude's edits are formatted by a hook. Setup and usage are in `docs/development.md` ("Code quality").
 
 Set up before any other coding, following FeatherOS (`tools/quality.sh` with one pre-commit hook per stage, a Claude format hook) and Runlight (the generic `pre-commit-hooks` set). Installed: `pre-commit`, `clang-format` 20.1.7, `shellcheck`, `shfmt`, and `clang-tidy` 23.1.3 from `brew install llvm` (`/opt/homebrew/opt/llvm/bin`, not on `PATH`; it also has `run-clang-tidy` and `clang-apply-replacements`).
 
@@ -46,7 +48,7 @@ Set up before any other coding, following FeatherOS (`tools/quality.sh` with one
 - [x] **Claude format hook (done):** `.claude/hooks/format-edited-file.sh` is a `PostToolUse` hook on `Edit|Write` in `.claude/settings.json` (timeout 30 s), which also allows `bash tools/quality.sh check` with or without arguments. The hook reads `tool_input.file_path` with `python3`, skips files outside the repo and anything but `*.cpp *.h *.hpp *.sh`, and runs `quality.sh format -- <file>` with its output hidden; it always exits 0, so it never blocks an edit.
   - Unlike FeatherOS's hook, it doesn't call the formatters itself: FeatherOS's puts llvm's `bin` first on `PATH`, which here would pick clang-format 23, and hard-codes shfmt flags. Instead `quality.sh format` got an optional `-- file...`: it formats only the given files that `repo_files` lists (so not `build/` or other ignored files), C++ with clang-format and `.sh` with shfmt, after the same version check. `format --` with no files does nothing; plain `format` still formats the whole tree.
   - Tested by feeding the hook JSON: a badly formatted `.cpp` (path with spaces) and `.sh` in the repo are formatted; a file under `build/`, one outside the repo, a `.txt`, invalid JSON, and a fake clang-format 23 first on `PATH` all leave the file unchanged and exit 0. It also fired live on a `Write` in the session that added it. Plain `format` on the tree changes nothing. 74/74 tests pass.
-- [ ] **Docs:** a "Code quality" section in `docs/development.md` (`brew install pre-commit llvm shellcheck shfmt`, `pre-commit install`, `git config blame.ignoreRevsFile .git-blame-ignore-revs`, `quality.sh` usage, including `format -- file...`, and the Claude format hook). One line in `CLAUDE.md` Commands. Workflow rule: get the code lint-clean before running tests.
+- [x] **Docs (done):** `docs/development.md` has a "Code quality" section: setup (`brew install pre-commit llvm shellcheck shfmt`, `pre-commit install`, `git config blame.ignoreRevsFile .git-blame-ignore-revs`), why clang-format must be 20 (`pipx install clang-format==20.1.7` when Homebrew's formula has moved on) and why llvm's `bin` stays off `PATH`, `quality.sh` usage including `format -- file...`, the pre-commit hooks, and the Claude format hook. `CLAUDE.md` Commands has `bash tools/quality.sh check`; its Workflow says to get the code lint-clean before running the tests. `pre-commit run --all-files` passes every hook; 74/74 tests pass.
 
 Done when `pre-commit install` is in place and `pre-commit run --all-files` passes.
 

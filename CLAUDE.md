@@ -6,7 +6,8 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 
 ## Status (keep current)
 
-- **Next:** Phase 0, pre-commit hooks and code quality: the "Docs" step, the last one of the phase (`docs/roadmap.md`). The pre-commit hooks are installed, and `.claude/settings.json` formats every C++ or shell file Claude edits.
+- Phase 0 (pre-commit hooks and code quality) is done: `tools/quality.sh`, pre-commit hooks installed, Claude format hook in `.claude/settings.json`.
+- **Next:** Phase 1, safety-net tests: the round-trip test over `compressor_example/samples/raw/` (`docs/roadmap.md`).
 
 ## Commands
 
@@ -17,6 +18,7 @@ Until Phase 3 replaces them with CMake presets and vcpkg:
 ./build.sh                    # cmake --build build/debug
 ctest --test-dir build/debug -R BitsetTests
 ./build/debug/compressor/test/compressor_test_app --gtest_filter='BitsetTests.*'
+bash tools/quality.sh check   # clang-format, clang-tidy, shellcheck, shfmt (see docs/development.md)
 ```
 
 - Needs Boost 1.81+ installed (`brew install boost`; headers only, found in CONFIG mode). googletest and benchmark are downloaded during configure.
@@ -35,3 +37,4 @@ ctest --test-dir build/debug -R BitsetTests
 
 - The conversation is cleared between steps, so this Status section and `docs/roadmap.md` are the handover. At the end of every step, run the `finish-step` skill without being asked.
 - Every fix or feature lands with a test.
+- Get the code lint-clean (`bash tools/quality.sh check`) before running the tests.
