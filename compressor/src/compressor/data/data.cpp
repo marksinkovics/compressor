@@ -1,13 +1,16 @@
 #include <compressor/data/data.h>
 #include <compressor/engine/engine.h>
 
+#include <algorithm>
+#include <iterator>
+
 namespace compressor
 {
 
 std::ostream& operator<<(std::ostream& ostream, const DecodedData& data)
 {
     std::ostream_iterator<uint8_t> output_iterator(ostream);
-    std::copy(data.data_.begin(), data.data_.end(), output_iterator);
+    std::ranges::copy(data.data_, output_iterator);
     return ostream;
 }
 

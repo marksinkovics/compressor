@@ -1,5 +1,6 @@
 #include <instrumentor/instrumentor.h>
 
+#include <algorithm>
 #include <thread>
 
 Instrumentor::Instrumentor() = default;
@@ -43,7 +44,7 @@ void Instrumentor::writeProfile(const ProfileResult& result)
     }
 
     std::string name = result.name;
-    std::replace(name.begin(), name.end(), '"', '\'');
+    std::ranges::replace(name, '"', '\'');
 
     m_outputStream << "{";
     m_outputStream << R"("cat":"function",)";

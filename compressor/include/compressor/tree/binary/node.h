@@ -2,6 +2,7 @@
 #define BinaryNode_hpp
 
 #include <iostream>
+#include <memory>
 
 namespace compressor
 {

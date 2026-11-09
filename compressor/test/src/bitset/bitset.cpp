@@ -295,6 +295,7 @@ TEST_F(BitsetTests, Copying)
 {
     compressor::bitset v1("101");
     compressor::bitset v2;
-    std::copy(v1.begin(), v1.end(), std::back_inserter(v2));
+    // bitset_iterator has no difference_type, so bitset isn't a std::ranges::range yet.
+    std::copy(v1.begin(), v1.end(), std::back_inserter(v2)); // NOLINT(modernize-use-ranges)
     EXPECT_EQ(v1, v2);
 }

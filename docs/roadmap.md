@@ -85,7 +85,10 @@ Not fixed here, because later phases replace the code: the argparser bugs (Phase
 
 Behaviour stays the same; the Phase 1 tests prove it.
 
-- [ ] **CMake:** raise `cmake_minimum_required` to 3.25 or later (needed for presets v6). Set C++23 with `target_compile_features(... cxx_std_23)` instead of `-std=c++1z` in `CMAKE_CXX_FLAGS`.
+- [x] **CMake (done):** the root `CMakeLists.txt` has `cmake_minimum_required(VERSION 3.25)` and `CMAKE_CXX_EXTENSIONS OFF`; `-std=c++1z` is gone from `CMAKE_CXX_FLAGS`. `argparser`, `instrumentor`, `compressor` and `compressor_cli` declare `target_compile_features(... PUBLIC cxx_std_23)`, which reaches every executable and test target through linking, so all 56 of our compile commands get `-std=c++23`. googletest and benchmark keep their own `-std=c++17`. Debug and Release build with `-Werror` and pass 91/91; the Xcode project builds.
+  - libc++ in C++23 mode drops transitive includes: added `<memory>` to `tree/binary/node.h`, `<algorithm>` and `<iterator>` to `data/data.cpp`, `<algorithm>` to the `nodeiterator.cpp` test.
+  - C++20/23 turns on more `modernize-*` checks; fixed with `quality.sh --fix`: `std::ranges::{copy,sort,transform,replace,replace_if}` in `data.cpp`, `engine.cpp`, `valueparser.cpp`, `instrumentor.cpp` and `roundtrip.cpp`; `starts_with` in `argparser.cpp`; designated initializers for `ProfileResult` in `instrumentationtimer.cpp`.
+  - `BitsetTests.Copying` keeps `std::copy` with a `NOLINT(modernize-use-ranges)`: `bitset_iterator` has no `difference_type`/`value_type`, so `bitset` isn't a `std::ranges::range`. Phase 5's bitset rewrite should make it one and drop the NOLINT.
 - [ ] **Flags per target:** warnings go on our own targets only, through an interface target (`-Wall -Wextra -Wpedantic`, `/W4` on MSVC). `-Werror` becomes an option, on in CI. Remove the global `-O3` so Debug builds aren't optimized. ASan becomes a preset. `PROFILING` becomes a CMake option. Remove the forced `x86_64` architecture for Xcode.
 - [ ] **vcpkg:** `vcpkg.json` with `gtest`, `benchmark` and `boost-dynamic-bitset`. Link Boost only into `compressor_benchmark` and `compressor_test` (`bitset.cpp` compares against `boost::dynamic_bitset`). Delete `dependencies/` and the ExternalProject downloads.
 - [ ] **Presets:** `CMakePresets.json` with `debug`, `release`, `asan` and `xcode` configure presets, plus matching build and test presets. Replace `generate.sh` and `build.sh`, and update `docs/development.md` and `CLAUDE.md`.
@@ -150,7 +153,7 @@ Each issue names the phase that handles it.
 - [ ] **Benchmark builds aren't reproducible** (Phase 3). google benchmark is downloaded from `master.zip`, not a pinned tag.
 - [ ] **Dependencies are downloaded during configure** (Phase 3). googletest and benchmark come from ExternalProject; Boost (1.81 or later) must be installed separately (`brew install boost`).
 - [x] **`Testing/` isn't gitignored** (Phase 2).
-- [ ] **Global compiler flags** (Phase 3). `-std=c++1z -Wall -Wextra -Werror` go into the global `CMAKE_CXX_FLAGS`, so `-Werror` also applies to googletest and benchmark. `-O3` is added globally, even to Debug builds, when ASan is off.
+- [ ] **Global compiler flags** (Phase 3). `-Wall -Wextra -Werror` go into the global `CMAKE_CXX_FLAGS`, so `-Werror` also applies to googletest and benchmark. `-O3` is added globally, even to Debug builds, when ASan is off.
 - [ ] **Hard-coded Xcode architecture** (Phase 3). With the Xcode generator, `CMAKE_OSX_ARCHITECTURES` is forced to `x86_64`, so Apple Silicon Macs build Intel code that runs under Rosetta.
 
 ## Features

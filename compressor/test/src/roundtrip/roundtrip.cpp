@@ -32,7 +32,7 @@ std::vector<fs::path> sample_files()
             files.push_back(entry.path());
         }
     }
-    std::sort(files.begin(), files.end());
+    std::ranges::sort(files);
     return files;
 }
 
@@ -73,7 +73,7 @@ fs::path fresh_work_dir(const std::string& name)
 std::string test_name(const testing::TestParamInfo<fs::path>& info)
 {
     std::string name = info.param.filename().string();
-    std::replace_if(name.begin(), name.end(), [](unsigned char c) {
+    std::ranges::replace_if(name, [](unsigned char c) {
         return std::isalnum(c) == 0;
     }, '_');
     return name;

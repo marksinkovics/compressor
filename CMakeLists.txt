@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.25)
 enable_testing()
 
 message(STATUS "Current generator: ${CMAKE_GENERATOR}")
@@ -10,6 +10,8 @@ endif()
 project(CompressionProject CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+# -std=c++23, not gnu++23, for the cxx_std_23 our libraries require.
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(VERSION_MAJOR 0 CACHE STRING "Project major version number.")
 set(VERSION_MINOR 0 CACHE STRING "Project minor version number.")
@@ -25,7 +27,7 @@ add_compile_definitions(PROFILING=0)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++1z -Wall -Wextra -Werror")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror")
 
 if(ENABLE_ASAN)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")

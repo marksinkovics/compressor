@@ -7,7 +7,7 @@ The project uses [CMake](https://cmake.org) for managing dependencies, configura
 Last checked with CMake 4.4.5, Apple Clang 17 (Xcode 26.2) and Boost 1.92 on macOS (2026-11-09).
 
 * CMake 3.25 or later
-* Clang (C++17, `-std=c++1z`)
+* A C++23 compiler (Apple Clang 17 / Xcode 26 or later)
 * Ninja
 * Boost 1.81 or later (`brew install boost`), found through its `BoostConfig.cmake`
   * `boost::dynamic_bitset`, header only, used by the bitset benchmark and the bitset tests

@@ -3,7 +3,7 @@
 #include <thread>
 
 InstrumentationTimer::InstrumentationTimer(const std::string& name)
-    : m_result({name, 0, 0, 0})
+    : m_result({.name = name, .start = 0, .end = 0, .threadID = 0})
 {
     m_startTimepoint = std::chrono::steady_clock::now();
 }

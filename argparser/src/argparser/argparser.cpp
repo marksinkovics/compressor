@@ -50,8 +50,8 @@ void Argparser::unify_input_arguments(size_t argc, char** argv)
 std::string Argparser::simplify_arg_name(const std::string& argument)
 {
     auto has_prefix = [](std::string str,
-                         std::string_view prefix) -> decltype(str.find(prefix) == 0) {
-        return str.find(prefix, 0) == 0;
+                         std::string_view prefix) -> decltype(str.starts_with(prefix)) {
+        return str.starts_with(prefix);
     };
 
     std::string arg = argument;

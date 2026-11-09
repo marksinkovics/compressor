@@ -1,12 +1,14 @@
 #include <argparser/valueparser.h>
 
+#include <algorithm>
+
 namespace argparser
 {
 
 template <> bool ValueParser<bool>::parse(const std::string& str)
 {
     std::string str_data = str;
-    std::transform(str_data.begin(), str_data.end(), str_data.begin(), ::tolower);
+    std::ranges::transform(str_data, str_data.begin(), ::tolower);
     if (str_data == "true" || str_data == "t" || str_data == "yes" || str_data == "y")
     {
         return true;

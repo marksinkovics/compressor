@@ -19,6 +19,8 @@ add_library(${PROJECT_NAME} ${INCLUDE_FILES} ${SRC_FILES})
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${INCLUDE_FILES})
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SRC_FILES})
 
+target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)
+
 target_include_directories(${PROJECT_NAME}
     PUBLIC
         ${INCLUDE_DIR}

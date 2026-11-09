@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <iomanip>
 #include <iostream>
 #include <map>
@@ -52,11 +53,11 @@ void Engine::build_tree()
     };
 
     std::vector<std::shared_ptr<SymbolNode>> _nodes;
-    std::transform(_symbols_dict.begin(), _symbols_dict.end(), std::back_inserter(_nodes), second);
+    std::ranges::transform(_symbols_dict, std::back_inserter(_nodes), second);
 
     while (_nodes.size() > 1)
     {
-        std::sort(_nodes.begin(), _nodes.end(), lower);
+        std::ranges::sort(_nodes, lower);
         auto left = _nodes.front(), right = (*(++_nodes.begin()));
         auto parent = std::make_shared<SymbolNode>(left->value() + right->value(),
                                                    left->frequency() + right->frequency());
