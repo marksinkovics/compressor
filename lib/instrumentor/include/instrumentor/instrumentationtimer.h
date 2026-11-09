@@ -8,7 +8,8 @@ class InstrumentationTimer {
 private:
 	ProfileResult m_result;
 	std::chrono::time_point<std::chrono::steady_clock> m_startTimepoint;
-	bool m_stopped;
+    bool m_stopped{false};
+
 public:
 	InstrumentationTimer(const std::string& name);
 	~InstrumentationTimer();

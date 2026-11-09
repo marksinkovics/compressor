@@ -21,9 +21,9 @@ public:
 class Compressor: public ICompressor
 {
 public:
-    virtual ~Compressor() = default;
-    virtual void encode(IEncoderTask &task);
-    virtual void decode(IDecoderTask& task);
+    ~Compressor() override = default;
+    void encode(IEncoderTask& task) override;
+    void decode(IDecoderTask& task) override;
 };
     
 }

@@ -51,9 +51,9 @@ int main()
     PROFILE_SESSION("test-main")
     std::vector<std::thread> workers;
 
-    workers.push_back(std::thread(f1));
-    workers.push_back(std::thread(f2));
-    workers.push_back(std::thread(f3));
+    workers.emplace_back(f1);
+    workers.emplace_back(f2);
+    workers.emplace_back(f3);
 
     for (auto& w : workers)
     {

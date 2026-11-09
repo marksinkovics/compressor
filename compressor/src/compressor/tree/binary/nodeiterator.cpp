@@ -1,10 +1,12 @@
 #include <compressor/tree/binary/nodeiterator.h>
 
+#include <utility>
+
 namespace compressor
 {
 
 BinaryNodeIterator::BinaryNodeIterator(std::shared_ptr<BinaryNode> node, uint64_t index)
-    : _node(node)
+    : _node(std::move(node))
     , _index(index)
 {
     
@@ -48,8 +50,9 @@ bool BinaryNodeIterator::operator!=(const BinaryNodeIterator& rhs) const
     return !(*this == rhs);
 }
 
-BinaryNodePreOrderIterator::BinaryNodePreOrderIterator(std::shared_ptr<BinaryNode> node, uint64_t index)
-    : BinaryNodeIterator(node, index)
+BinaryNodePreOrderIterator::BinaryNodePreOrderIterator(std::shared_ptr<BinaryNode> node,
+                                                       uint64_t index)
+    : BinaryNodeIterator(std::move(node), index)
 {
     
 }

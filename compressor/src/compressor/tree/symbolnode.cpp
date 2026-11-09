@@ -1,11 +1,13 @@
 #include <compressor/tree/symbolnode.h>
 
+#include <utility>
+
 namespace compressor
 {
 
-SymbolNode::SymbolNode(const std::string &value, uint64_t frequency)
+SymbolNode::SymbolNode(std::string value, uint64_t frequency)
     : BinaryNode()
-    , _value(value)
+    , _value(std::move(value))
     , _frequency(frequency)
 {
 }

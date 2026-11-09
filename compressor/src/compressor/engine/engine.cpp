@@ -1,9 +1,10 @@
+#include <iomanip>
 #include <iostream>
 #include <map>
+#include <memory>
+#include <string>
 #include <utility>
 #include <vector>
-#include <string>
-#include <iomanip>
 
 #include <compressor/bitset/bitset.h>
 #include <compressor/bitset/bitset_iterator.h>
@@ -19,9 +20,7 @@
 namespace compressor
 {
 
-Engine::~Engine()
-{
-}
+Engine::~Engine() = default;
 
 void Engine::build_dictionary()
 {
@@ -72,7 +71,8 @@ void Engine::build_tree()
 
 void Engine::create_hash_table()
 {
-    std::for_each(_tree->preOrderBegin(), _tree->preOrderEnd(), [](std::shared_ptr<BinaryNode> bin_node) {
+    std::for_each(_tree->preOrderBegin(), _tree->preOrderEnd(),
+                  [](const std::shared_ptr<BinaryNode>& bin_node) {
         auto node = std::dynamic_pointer_cast<SymbolNode>(bin_node);
 
         if (!node->hasParent())
@@ -112,11 +112,13 @@ std::shared_ptr<compressor::bitset> Engine::find_path(std::shared_ptr<SymbolNode
 void Engine::print_graph() const
 {
     std::cout << "digraph G {\n";
-    std::for_each(_tree->preOrderBegin(), _tree->preOrderEnd(), [](std::shared_ptr<BinaryNode> bin_node) {
+    std::for_each(_tree->preOrderBegin(), _tree->preOrderEnd(),
+                  [](const std::shared_ptr<BinaryNode>& bin_node) {
         auto node = std::dynamic_pointer_cast<SymbolNode>(bin_node);
         auto vector = node->tag();
         std::cout << "\"" << node->value() << "\""
-        << "[label=\"" << node->value() << "["<< node->frequency() << ", "<< node->tag()->str() << "]" << "\"];\n";
+                  << "[label=\"" << node->value() << "[" << node->frequency() << ", "
+                  << node->tag()->str() << "]" << "\"];\n";
         if (node->left())
         {
             auto leftNode = std::dynamic_pointer_cast<SymbolNode>(node->left());
@@ -137,7 +139,7 @@ void Engine::print_dict() const
     for(const auto& it: bit_dict_)
     {
         std::cout << it.first.str() << " => [";
-        std::cout << it.second;
+        std::cout << static_cast<char>(it.second);
         std::cout << "]\n";
     }
 }
@@ -184,8 +186,9 @@ EncodedData Engine::encode(const DecodedData& data)
     std::size_t original_size = data_.data_.size();
     std::size_t encoded_size = encoded_data_.data_.num_bytes();
 
-    std::cout << "Encoded: " << original_size << " => " << encoded_size
-    << " (" << (double(encoded_size) / double(original_size) * 100.0) << "%)\n";
+    std::cout << "Encoded: " << original_size << " => " << encoded_size << " ("
+              << (static_cast<double>(encoded_size) / static_cast<double>(original_size) * 100.0)
+              << "%)\n";
 
     return encoded_data_;
 }
@@ -202,7 +205,7 @@ DecodedData Engine::decode(const EncodedData& data)
         if (search != encoded_data_.bit_dict_.end()) {
             uint8_t c = search->second;
             str += c;
-            current.reset(new bitset());
+            current = std::make_unique<bitset>();
         }
     }
     std::vector<uint8_t> result_data(str.begin(), str.end());

@@ -27,10 +27,10 @@ std::ostream& operator<<(std::ostream& ostream, const EncodedData& data)
 {
     std::size_t dict_size = data.bit_dict_.size();
     ostream.write(reinterpret_cast<const char*>(&dict_size), sizeof(dict_size));
-    for(auto it = data.bit_dict_.begin(); it != data.bit_dict_.end(); ++it)
+    for (const auto& it : data.bit_dict_)
     {
-        ostream << it->first;
-        ostream.write(reinterpret_cast<const char*>(&it->second), sizeof(it->second));
+        ostream << it.first;
+        ostream.write(reinterpret_cast<const char*>(&it.second), sizeof(it.second));
     }
     ostream << data.data_;
     return ostream;

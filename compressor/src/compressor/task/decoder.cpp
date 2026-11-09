@@ -1,5 +1,7 @@
 #include <compressor/task/decoder.h>
 
+#include <utility>
+
 namespace compressor
 {
 
@@ -9,9 +11,9 @@ DecoderTask::DecoderTask()
 
 }
 
-DecoderTask::DecoderTask(const std::string& input_file, const std::string& output_file)
-    : input_file_(input_file)
-    , output_file_(output_file)
+DecoderTask::DecoderTask(std::string input_file, std::string output_file)
+    : input_file_(std::move(input_file))
+    , output_file_(std::move(output_file))
     , engine_(std::make_shared<Engine>())
 {
 

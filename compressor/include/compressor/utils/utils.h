@@ -5,10 +5,7 @@
 #include <string>
 #include <sstream>
 
-namespace compressor
-{
-
-namespace utils
+namespace compressor::utils
 {
 
 void handle_illegal_position(const std::size_t& pos) noexcept;
@@ -37,8 +34,6 @@ inline constexpr std::size_t calc_num_blocks(std::size_t num_bits, std::size_t b
     return num_bits / bits_per_block + static_cast<std::size_t>(num_bits % bits_per_block != 0);
 }
 
-} //utils
-
-} // compressor
+} // namespace compressor::utils
 
 #endif //Utils_hpp

@@ -20,9 +20,9 @@ template<class T>
 class DataWriter: public IDataWriter<T>
 {
 public:
-    virtual ~DataWriter() = default;
-    
-    virtual bool open(const std::string& file)
+    ~DataWriter() override = default;
+
+    bool open(const std::string& file) override
     {
         output_stream_.open(file, std::ios::in | std::ios::binary);
         if (output_stream_.fail()) {
@@ -32,12 +32,12 @@ public:
         return true;
     }
 
-    virtual void write(const T& data)
+    void write(const T& data) override
     {
         output_stream_ << data;
     }
 
-    virtual void close()
+    void close() override
     {
         output_stream_.close();
     }

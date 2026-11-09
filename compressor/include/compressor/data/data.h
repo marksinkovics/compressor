@@ -16,7 +16,7 @@ struct IData
     
 struct DecodedData : IData
 {
-    DecodedData() {}
+    DecodedData() = default;
     DecodedData(const std::string& input) {
         std::vector<uint8_t> input_data(input.begin(), input.end());
         this->data_ = std::move(input_data);

@@ -12,7 +12,7 @@ namespace compressor
 class IEncoderTask: public ICoderTask
 {
 public:
-    virtual ~IEncoderTask() = default;
+    ~IEncoderTask() override = default;
     virtual DecodedData& data() = 0;
     virtual IDataReader<DecodedData>& reader() = 0;
     virtual IDataWriter<EncodedData>& writer() = 0;
@@ -22,20 +22,21 @@ class EncoderTask: public IEncoderTask
 {
 public:
     EncoderTask();
-    EncoderTask(const std::string& input_file, const std::string& output_file);
-    virtual ~EncoderTask() = default;
+    EncoderTask(std::string input_file, std::string output_file);
+    ~EncoderTask() override = default;
     // input
-    virtual std::string input_file();
+    std::string input_file() override;
     // output
-    virtual std::string output_file();
+    std::string output_file() override;
     // engine
-    virtual IEngine& engine();
+    IEngine& engine() override;
     // data
-    virtual DecodedData& data();
+    DecodedData& data() override;
     // reader
-    virtual IDataReader<DecodedData>& reader();
+    IDataReader<DecodedData>& reader() override;
     // writer
-    virtual IDataWriter<EncodedData>& writer();
+    IDataWriter<EncodedData>& writer() override;
+
 private:
     // input
     std::string input_file_;

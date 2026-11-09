@@ -6,7 +6,7 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 
 ## Status (keep current)
 
-- **Next:** Phase 0, pre-commit hooks and code quality: the config files step (`.editorconfig`, `.clang-format`, `.clang-tidy`, `.shellcheckrc`; `docs/roadmap.md`). The build check is done.
+- **Next:** Phase 0, pre-commit hooks and code quality: the `tools/quality.sh` step (`docs/roadmap.md`). The build check and config files are done; clang-tidy is clean, the tree isn't clang-formatted yet.
 
 ## Commands
 

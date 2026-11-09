@@ -43,10 +43,7 @@ bitset::bitset(bitset&& v) noexcept
     v.blocks.resize(0);
 }
 
-bitset::~bitset()
-{
-    
-}
+bitset::~bitset() = default;
 
 bitset& bitset::operator=(const bitset& rhs)
 {
@@ -58,7 +55,7 @@ bitset& bitset::operator=(const bitset& rhs)
     return *this;
 }
 
-bitset& bitset::operator=(bitset &&rhs)
+bitset& bitset::operator=(bitset&& rhs) noexcept
 {
     if (&rhs == this)
         return *this;

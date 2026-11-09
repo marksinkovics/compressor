@@ -1,0 +1,11 @@
+# Phase 4 deletes argparser/ (replaced by CLI11) together with this file.
+InheritParentConfig: true
+Checks: >
+  -bugprone-unchecked-string-to-number-conversion,
+  -modernize-avoid-c-style-cast,
+  -modernize-loop-convert,
+  -modernize-pass-by-value,
+  -modernize-use-auto,
+  -modernize-use-equals-default,
+  -modernize-use-override,
+  -performance-unnecessary-value-param

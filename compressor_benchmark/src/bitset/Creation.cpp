@@ -11,7 +11,7 @@ static void BM_BoolVectorCreation(benchmark::State& state) {
         std::vector<bool> sample(bit_count);
 }
 
-BENCHMARK(BM_BoolVectorCreation)->RangeMultiplier(2)->Range(8, 1<<10);
+BENCHMARK(BM_BoolVectorCreation)->RangeMultiplier(2)->Range(8, 1024);
 
 static void BM_BoostDynamicBitSetCreation(benchmark::State& state) {
     uint8_t bit_count = state.range(0);
@@ -19,7 +19,7 @@ static void BM_BoostDynamicBitSetCreation(benchmark::State& state) {
         boost::dynamic_bitset<> sample(bit_count);
 }
 
-BENCHMARK(BM_BoostDynamicBitSetCreation)->RangeMultiplier(2)->Range(8, 1<<10);
+BENCHMARK(BM_BoostDynamicBitSetCreation)->RangeMultiplier(2)->Range(8, 1024);
 
 static void BM_BitSetCreation(benchmark::State& state) {
     uint8_t bit_count = state.range(0);
@@ -27,4 +27,4 @@ static void BM_BitSetCreation(benchmark::State& state) {
         compressor::bitset sample(bit_count);
 }
 
-BENCHMARK(BM_BitSetCreation)->RangeMultiplier(2)->Range(8, 1<<10);
+BENCHMARK(BM_BitSetCreation)->RangeMultiplier(2)->Range(8, 1024);

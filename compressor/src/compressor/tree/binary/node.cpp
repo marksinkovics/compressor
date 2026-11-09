@@ -2,6 +2,8 @@
 
 #include <compressor/bitset/bitset.h>
 
+#include <utility>
+
 namespace compressor
 {
 
@@ -12,7 +14,7 @@ std::shared_ptr<BinaryNode> BinaryNode::left() const
 
 void BinaryNode::setLeft(std::shared_ptr<BinaryNode> left)
 {
-    _left = left;
+    _left = std::move(left);
 }
 
 std::shared_ptr<BinaryNode> BinaryNode::right() const
@@ -22,7 +24,7 @@ std::shared_ptr<BinaryNode> BinaryNode::right() const
 
 void BinaryNode::setRight(std::shared_ptr<BinaryNode> right)
 {
-    _right = right;
+    _right = std::move(right);
 }
 
 std::weak_ptr<BinaryNode> BinaryNode::parent() const
@@ -32,7 +34,7 @@ std::weak_ptr<BinaryNode> BinaryNode::parent() const
 
 void BinaryNode::setParent(std::weak_ptr<BinaryNode> parent)
 {
-    _parent = parent;
+    _parent = std::move(parent);
 }
 
 bool BinaryNode::hasParent() const
@@ -42,7 +44,7 @@ bool BinaryNode::hasParent() const
 
 void BinaryNode::setTag(std::shared_ptr<compressor::bitset> tag)
 {
-    _tag = tag;
+    _tag = std::move(tag);
 }
 
 std::shared_ptr<compressor::bitset> BinaryNode::tag() const

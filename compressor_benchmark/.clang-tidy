@@ -1,0 +1,5 @@
+# google benchmark's own idioms: `for (auto _ : state)` and BENCHMARK() static registration.
+InheritParentConfig: true
+Checks: >
+  -clang-analyzer-deadcode.DeadStores,
+  -bugprone-throwing-static-initialization

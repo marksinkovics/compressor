@@ -61,7 +61,8 @@ TEST_F(BitsetTests, Accessors_Invalid) {
     v1.set(-1, true);
     std::string error2 = ::testing::internal::GetCapturedStderr();
     std::stringstream expectedErrorMsgStream;
-    expectedErrorMsgStream << "Attempted to access an illegal position (" <<  (size_t)-1  << ").\n";
+    expectedErrorMsgStream << "Attempted to access an illegal position (" << static_cast<size_t>(-1)
+                           << ").\n";
     EXPECT_STREQ(error2.c_str(), expectedErrorMsgStream.str().c_str());
 }
 
@@ -119,7 +120,7 @@ TEST_F(BitsetTests, MoveOperators) {
     // Move constructor
     compressor::bitset v2(std::move(v1));
 
-    EXPECT_EQ(v1.size(), 0u);
+    EXPECT_EQ(v1.size(), 0u); // NOLINT(bugprone-use-after-move,clang-analyzer-cplusplus.Move)
 
     EXPECT_EQ(v2.size(), 9u);
     EXPECT_TRUE(v2.test(0));
@@ -256,11 +257,11 @@ TEST_F(BitsetTests, File)
     stream << in1;
     stream << in2;
     stream << in3;
-    stream << in4;
-    
+    stream << static_cast<char>(in4);
+
     compressor::bitset out0, out1, out2, out3;
-    int8_t out4;
-    
+    int8_t out4 = 0;
+
     stream >> out0;
     stream >> out1;
     stream >> out2;

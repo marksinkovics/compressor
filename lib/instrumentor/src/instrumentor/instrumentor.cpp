@@ -2,7 +2,7 @@
 
 #include <thread>
 
-Instrumentor::Instrumentor() {}
+Instrumentor::Instrumentor() = default;
 
 Instrumentor::~Instrumentor() {
     endSession();
@@ -29,7 +29,7 @@ void Instrumentor::endSession() {
 }
 
 void Instrumentor::writeProfile(const ProfileResult& result) {
-    std::lock_guard<std::mutex> lock(m_lock);
+    std::scoped_lock lock(m_lock);
 
     if (m_profileCount++ > 0) {
         m_outputStream << ",";
@@ -39,10 +39,10 @@ void Instrumentor::writeProfile(const ProfileResult& result) {
     std::replace(name.begin(), name.end(), '"', '\'');
 
     m_outputStream << "{";
-    m_outputStream << "\"cat\":\"function\",";
+    m_outputStream << R"("cat":"function",)";
     m_outputStream << "\"dur\":" << (result.end - result.start) << ',';
-    m_outputStream << "\"name\":\"" << name << "\",";
-    m_outputStream << "\"ph\":\"X\",";
+    m_outputStream << R"("name":")" << name << "\",";
+    m_outputStream << R"("ph":"X",)";
     m_outputStream << "\"pid\":0,";
     m_outputStream << "\"tid\":" << result.threadID << ",";
     m_outputStream << "\"ts\":" << result.start;
@@ -51,7 +51,7 @@ void Instrumentor::writeProfile(const ProfileResult& result) {
 }
 
 void Instrumentor::writeHeader() {
-    m_outputStream << "{\"otherData\": {},\"traceEvents\":[";
+    m_outputStream << R"({"otherData": {},"traceEvents":[)";
     m_outputStream.flush();
 }
 

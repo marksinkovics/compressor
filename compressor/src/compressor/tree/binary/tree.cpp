@@ -3,12 +3,14 @@
 #include <compressor/tree/binary/node.h>
 #include <compressor/tree/binary/nodeiterator.h>
 
+#include <utility>
+
 namespace compressor
 {
 
 void BinaryTree::setRoot(std::shared_ptr<BinaryNode> root)
 {
-    _root = root;
+    _root = std::move(root);
 }
 
 std::shared_ptr<BinaryNode> BinaryTree::root() const
@@ -16,7 +18,7 @@ std::shared_ptr<BinaryNode> BinaryTree::root() const
     return _root;
 }
 
-uint64_t BinaryTree::numberOfChildren(std::shared_ptr<BinaryNode> node) noexcept
+uint64_t BinaryTree::numberOfChildren(const std::shared_ptr<BinaryNode>& node) noexcept
 {
     uint64_t counter = 1;
     
@@ -31,7 +33,7 @@ uint64_t BinaryTree::numberOfChildren(std::shared_ptr<BinaryNode> node) noexcept
 
 BinaryNodePreOrderIterator BinaryTree::preOrderBegin() const
 {
-    return BinaryNodePreOrderIterator(_root, 1);
+    return {_root, 1};
 }
 
 BinaryNodePreOrderIterator BinaryTree::preOrderEnd() const
@@ -47,8 +49,8 @@ BinaryNodePreOrderIterator BinaryTree::preOrderEnd() const
     }
     
     uint64_t num = numberOfChildren(_root) + 1;
-    
-    return BinaryNodePreOrderIterator(rightestNode, num);
+
+    return {rightestNode, num};
 }
     
 } // compressor

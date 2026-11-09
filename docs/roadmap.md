@@ -16,18 +16,20 @@ Each phase is one or more steps, and every step should end with tests passing. W
 
 ### Phase 0: Pre-commit hooks and code quality
 
-Set up before any other coding, following FeatherOS (`tools/quality.sh` with one pre-commit hook per stage, a Claude format hook) and Runlight (the generic `pre-commit-hooks` set). Already installed: `pre-commit`, `clang-format` 20.1.7, `shellcheck`, `shfmt`. Missing: `clang-tidy` (`brew install llvm`).
+Set up before any other coding, following FeatherOS (`tools/quality.sh` with one pre-commit hook per stage, a Claude format hook) and Runlight (the generic `pre-commit-hooks` set). Installed: `pre-commit`, `clang-format` 20.1.7, `shellcheck`, `shfmt`, and `clang-tidy` 23.1.3 from `brew install llvm` (`/opt/homebrew/opt/llvm/bin`, not on `PATH`; it also has `run-clang-tidy` and `clang-apply-replacements`).
 
 - [x] **Build check (done):** CMake 4.4.5 and Apple Clang 17 configure and build Debug, Release and the Xcode project with `-Werror`; 74/74 tests pass. `cmake_minimum_required(VERSION 3.10)` is still accepted. Changes needed:
   - Boost: CMake 4 removed the `FindBoost` module (CMP0167), so the root `CMakeLists.txt` now calls `find_package(Boost 1.81.0 REQUIRED CONFIG)` and `compressor_benchmark` and `compressor_test` link `Boost::headers`. The `dependencies/boostorg/` wrapper and the unused `${Boost_INCLUDE_DIR}` on other targets are gone. Homebrew ships Boost 1.92, which works.
   - `CMAKE_EXPORT_COMPILE_COMMANDS ON` in the root `CMakeLists.txt`; `build/debug/compile_commands.json` exists after `./generate.sh`.
   - The googletest/benchmark download templates (`dependencies/google/*/CMakeLists.txt.in`) set `DOWNLOAD_EXTRACT_TIMESTAMP TRUE` (CMP0135) and require CMake 3.25 (CMP0114 warning under Xcode).
   - Left as is: googletest 1.13's own `cmake_minimum_required` deprecation warnings and `ld: warning: ignoring duplicate libraries` (gtest and benchmark linked twice via `package_add_test`). Both go away with vcpkg in Phase 3.
-- [ ] **Config files:**
-  - `.editorconfig`: UTF-8, LF, final newline, 4-space indent.
-  - `.clang-format`: start from FeatherOS's (LLVM base, 4 spaces, 100 columns, Allman braces, `PointerAlignment: Left`), which is close to the current code. Decide whether to sort includes.
-  - `.clang-tidy`: `bugprone-*`, `clang-analyzer-*`, `performance-*`, `modernize-*`, with `WarningsAsErrors: '*'` and `HeaderFilterRegex` limited to our own directories. The old code will hit many checks. Fix the cheap ones now. Turn off checks that only fire in code Phase 4 or 5 replaces, with a comment naming the phase that turns each back on.
-  - `.shellcheckrc`.
+- [x] **Config files (done):** `run-clang-tidy -p build/debug` over the whole tree passes; Debug and Release build with `-Werror`; 74/74 tests pass.
+  - `.editorconfig`: UTF-8, LF, final newline, trimmed trailing whitespace, 4-space indent; 2 spaces for YAML/JSON; Markdown keeps trailing whitespace; shfmt options for `.sh` (`binary_next_line`, `switch_case_indent`, `space_redirects`, as in FeatherOS).
+  - `.clang-format`: FeatherOS's (LLVM base, 4 spaces, 100 columns, `PointerAlignment: Left`) with changes: Allman braces except lambda bodies (`BeforeLambdaBody: false`, `LambdaBodyIndentation: OuterScope`), leading-comma constructor initializers one per line (`BreakConstructorInitializers: BeforeComma`, `PackConstructorInitializers: Never`, as the code already did), and includes sorted within their existing blocks (`SortIncludes: CaseSensitive`, `IncludeBlocks: Preserve`). The tree still has about 750 formatting differences; the reformat step below fixes them (and must confirm the sorted includes still build).
+  - `.clang-tidy`: `bugprone-*`, `clang-analyzer-*`, `performance-*`, `modernize-*`, `WarningsAsErrors: '*'`. Header filter is everything except `build/` (downloaded googletest/benchmark) and `argparser/`. Off for good: `bugprone-easily-swappable-parameters`, `modernize-use-nodiscard`, `modernize-use-trailing-return-type`. Off until Phase 5 (all findings sit in bitset, the tree and `Engine`; the comment in the file says to turn them back on): `bugprone-signed-bitwise`, `bugprone-narrowing-conversions`, `bugprone-exception-escape` (also fires on the two example `main`s, which will need a try/catch), `bugprone-derived-method-shadowing-base-method`.
+  - Nested configs (`InheritParentConfig: true`): `argparser/.clang-tidy` turns off the eight checks that fire there, and Phase 4 deletes it with `argparser/`; `compressor_benchmark/.clang-tidy` turns off `clang-analyzer-deadcode.DeadStores` and `bugprone-throwing-static-initialization` for google benchmark's `for (auto _ : state)` and `BENCHMARK()` idioms. A nested config doesn't apply to its headers when another package's file includes them, hence the `argparser/` header exclusion in the root file.
+  - Fixed: `override` instead of `virtual` on overrides, `= default`, pass-by-value plus `std::move` for sink parameters (task, node, tree and iterator constructors/setters), const-ref lambda parameters in `Engine`, `static_cast` for C-style casts, nested namespace `compressor::utils`, `std::make_unique`, `std::scoped_lock`, raw string literals in `Instrumentor`, `noexcept` on `bitset`'s move assignment. `compressor_example` no longer has throwing globals. In `bitset` tests: the moved-from check carries a `NOLINT`, `out4` is initialized, `in4` is written as `char`. `Engine::print_dict` casts the byte to `char` explicitly (same output).
+  - `.shellcheckrc`: `external-sources=true`. `generate.sh` and `build.sh` pass shellcheck; shfmt wants one blank line removed in `generate.sh` (reformat step).
 - [ ] **`tools/quality.sh`**, adapted from FeatherOS's but simpler:
   - stages: `clang-format`, `clang-tidy`, `shellcheck`, `shfmt`
   - commands: `check [stage...] [-- files]` (clang-tidy only on the sources the given files affect), `--fix`, `format`
@@ -128,6 +130,7 @@ Each issue names the phase that handles it.
 ### Build and tooling
 
 - [ ] **Wrong script name in the docs** (Phase 2). [development.md](development.md) says `./configure.sh`; the script is `./generate.sh`.
+- [ ] **Bitset benchmarks truncate their size** (Phase 5 benchmarks). `compressor_benchmark/src/bitset/*.cpp` store `state.range(0)` (up to 1024) in a `uint8_t`, so the larger runs measure sizes modulo 256.
 - [ ] **Benchmark builds aren't reproducible** (Phase 3). google benchmark is downloaded from `master.zip`, not a pinned tag.
 - [ ] **Dependencies are downloaded during configure** (Phase 3). googletest and benchmark come from ExternalProject; Boost (1.81 or later) must be installed separately (`brew install boost`).
 - [ ] **`Testing/` isn't gitignored** (Phase 2).

@@ -20,9 +20,9 @@ template<class T>
 class DataReader: public IDataReader<T>
 {
 public:
-    virtual ~DataReader() = default;
-    
-    virtual bool open(const std::string& file)
+    ~DataReader() override = default;
+
+    bool open(const std::string& file) override
     {
         input_stream_.open(file, std::ios::in | std::ios::binary);
         if (input_stream_.fail()) {
@@ -31,15 +31,15 @@ public:
         }
         return true;
     }
-    
-    virtual T read()
+
+    T read() override
     {
         T data;
         input_stream_ >> data;
         return data;
     }
-    
-    virtual void close()
+
+    void close() override
     {
         input_stream_.close();
     }

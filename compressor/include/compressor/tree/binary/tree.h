@@ -19,9 +19,8 @@ public:
     BinaryNodePreOrderIterator preOrderEnd() const;
 
 private:
-    
-    static uint64_t numberOfChildren(std::shared_ptr<BinaryNode> node) noexcept;
-    
+    static uint64_t numberOfChildren(const std::shared_ptr<BinaryNode>& node) noexcept;
+
     std::shared_ptr<BinaryNode> _root;
 };
 

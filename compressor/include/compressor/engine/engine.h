@@ -37,19 +37,19 @@ public:
 class Engine: public IEngine
 {
 public:
-    virtual ~Engine();
-    
-    virtual void build_dictionary();
-    virtual void build_tree();
-    virtual void create_hash_table();
-    
-    virtual std::shared_ptr<compressor::bitset> find_path(std::shared_ptr<SymbolNode>& node);
-    virtual void print_graph() const;
-    virtual void print_dict() const;
-    
-    virtual EncodedData encode(const DecodedData& data);
-    virtual DecodedData decode(const EncodedData& data);
-    
+    ~Engine() override;
+
+    void build_dictionary() override;
+    void build_tree() override;
+    void create_hash_table() override;
+
+    std::shared_ptr<compressor::bitset> find_path(std::shared_ptr<SymbolNode>& node) override;
+    void print_graph() const override;
+    void print_dict() const override;
+
+    EncodedData encode(const DecodedData& data) override;
+    DecodedData decode(const EncodedData& data) override;
+
 private:
     std::shared_ptr<BinaryTree> _tree;
     std::map<uint8_t, std::shared_ptr<SymbolNode>> _symbols_dict;

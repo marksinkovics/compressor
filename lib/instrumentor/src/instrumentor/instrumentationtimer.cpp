@@ -4,7 +4,6 @@
 
 InstrumentationTimer::InstrumentationTimer(const std::string& name)
     : m_result({name, 0, 0, 0})
-    , m_stopped(false)
 {
     m_startTimepoint = std::chrono::steady_clock::now();
 }

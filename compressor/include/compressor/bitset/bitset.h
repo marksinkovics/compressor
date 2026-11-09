@@ -26,7 +26,7 @@ public:
     bitset(const bitset& v);
     bitset& operator=(const bitset& rhs);
     bitset(bitset&& v) noexcept;
-    bitset& operator=(bitset&& rhs);
+    bitset& operator=(bitset&& rhs) noexcept;
     bitset& operator=(const std::string& bitstring);
     
     ~bitset();
