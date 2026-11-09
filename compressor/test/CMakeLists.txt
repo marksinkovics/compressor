@@ -22,6 +22,7 @@ set(SRC_FILES
     "${SRC_DIR}/tree/binary/nodeiterator.cpp"
     "${SRC_DIR}/utils/utils.cpp"
     "${SRC_DIR}/data/data.cpp"
+    "${SRC_DIR}/roundtrip/roundtrip.cpp"
 )
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${INCLUDE_FILES})
@@ -40,3 +41,10 @@ package_add_test(
         compressor
         Boost::headers
 )
+
+foreach(target ${PROJECT_NAME} ${PROJECT_NAME}_app)
+    target_compile_definitions(${target}
+        PRIVATE
+            COMPRESSOR_SAMPLES_DIR="${CMAKE_SOURCE_DIR}/compressor_example/samples/raw"
+    )
+endforeach()

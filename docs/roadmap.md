@@ -55,7 +55,9 @@ Done when `pre-commit install` is in place and `pre-commit run --all-files` pass
 
 ### Phase 1: Safety-net tests
 
-- [ ] **Round-trip test:** for every file in `compressor_example/samples/raw/`, encode, decode and compare with the original byte for byte.
+- [x] **Round-trip test (done):** `compressor/test/src/roundtrip/roundtrip.cpp`. `RoundTripTests` is parameterized over every regular file in `compressor_example/samples/raw/` (listed at static initialization with the `error_code` overloads, sorted; test names are the file names with non-alphanumerics replaced by `_`, e.g. `Samples/RoundTripTests.Encode_then_decode_restores_the_file/lena_jpg`), so a new sample gets a test without code changes. Each test goes end to end through `Compressor` with a real `EncoderTask` and `DecoderTask` and files in `$TMPDIR/compressor_roundtrip_<name>/`, then compares the decoded file with the original byte for byte. `RoundTripSamplesTests.Samples_directory_is_not_empty` fails if the directory is missing or empty. The path comes from the `COMPRESSOR_SAMPLES_DIR` compile definition in `compressor/test/CMakeLists.txt`.
+  - The test creates both output files before encoding, because `DataWriter::open` can't create one yet (known issue below). When Phase 2 fixes it, remove `touch()`; the edge-case test covers the missing-output case.
+  - All six samples (two images, four lorem texts) round-trip; 81/81 tests pass, the whole suite in about 7 s.
 - [ ] **Edge-case tests**, added as `DISABLED_` until Phase 2 fixes them: empty input, single-symbol input (`aaaa`), a missing input file, an output file that doesn't exist yet.
 
 ### Phase 2: Bug fixes

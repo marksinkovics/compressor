@@ -63,6 +63,8 @@ Tools
 3. Run unit tests with CTest
     `ctest`
 
+The round-trip tests (`RoundTripTests`) encode and decode every file in `compressor_example/samples/raw/` and compare the result byte for byte; a file added there is tested automatically.
+
 ## Code quality
 
 Formatting and linting run through `tools/quality.sh`, with one stage per tool: `clang-format`, `clang-tidy`, `shellcheck` and `shfmt`. A pre-commit hook runs each stage on every commit.

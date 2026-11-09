@@ -7,7 +7,8 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 ## Status (keep current)
 
 - Phase 0 (pre-commit hooks and code quality) is done: `tools/quality.sh`, pre-commit hooks installed, Claude format hook in `.claude/settings.json`.
-- **Next:** Phase 1, safety-net tests: the round-trip test over `compressor_example/samples/raw/` (`docs/roadmap.md`).
+- Phase 1: the round-trip test over `compressor_example/samples/raw/` is done (`compressor/test/src/roundtrip/`).
+- **Next:** Phase 1, the edge-case tests, added as `DISABLED_` (`docs/roadmap.md`).
 
 ## Commands
 
