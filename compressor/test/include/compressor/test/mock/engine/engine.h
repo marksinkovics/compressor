@@ -9,9 +9,10 @@
 #include <compressor/bitset/bitset.h>
 #include <compressor/tree/symbolnode.h>
 
-class MockIEngine: public compressor::IEngine {
+class MockIEngine : public compressor::IEngine
+{
 public:
-    MOCK_METHOD(void, build_dictionary,(), (override));
+    MOCK_METHOD(void, build_dictionary, (), (override));
     MOCK_METHOD(void, build_tree, (), (override));
     MOCK_METHOD(void, create_hash_table, (), (override));
     using SharedPtrBitset = std::shared_ptr<compressor::bitset>;

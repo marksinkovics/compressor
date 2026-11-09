@@ -9,7 +9,6 @@ BinaryNodeIterator::BinaryNodeIterator(std::shared_ptr<BinaryNode> node, uint64_
     : _node(std::move(node))
     , _index(index)
 {
-    
 }
 
 std::shared_ptr<BinaryNode> BinaryNodeIterator::operator*() const
@@ -54,7 +53,6 @@ BinaryNodePreOrderIterator::BinaryNodePreOrderIterator(std::shared_ptr<BinaryNod
                                                        uint64_t index)
     : BinaryNodeIterator(std::move(node), index)
 {
-    
 }
 
 // Pre- and post-incrementable.
@@ -66,18 +64,19 @@ BinaryNodePreOrderIterator& BinaryNodePreOrderIterator::operator++()
         _index++;
         return *this;
     }
-    
+
     auto node = _node;
-    while(!node->parent().expired() && (node->parent().lock()->right() == nullptr || node->parent().lock()->right() == node))
+    while (!node->parent().expired() &&
+           (node->parent().lock()->right() == nullptr || node->parent().lock()->right() == node))
     {
         node = node->parent().lock();
     }
-    
+
     if (!node->parent().expired())
     {
         _node = node->parent().lock()->right();
     }
-    
+
     _index++;
     return *this;
 }
@@ -90,18 +89,17 @@ BinaryNodePreOrderIterator BinaryNodePreOrderIterator::operator++(int)
 }
 
 //// Pre- and post-decrementable.
-//BinaryNodePreOrderIterator& BinaryNodePreOrderIterator::operator--()
+// BinaryNodePreOrderIterator& BinaryNodePreOrderIterator::operator--()
 //{
 //
-//}
+// }
 //
-//BinaryNodePreOrderIterator BinaryNodePreOrderIterator::operator--(int)
+// BinaryNodePreOrderIterator BinaryNodePreOrderIterator::operator--(int)
 //{
-//    BinaryNodePreOrderIterator it(*this);
-//    operator--();
-//    return it;
+//     BinaryNodePreOrderIterator it(*this);
+//     operator--();
+//     return it;
 //
-//}
+// }
 
-
-} // compressor
+} // namespace compressor

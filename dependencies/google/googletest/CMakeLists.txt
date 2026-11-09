@@ -1,6 +1,6 @@
-# 
+#
 # Google Test
-# 
+#
 
 # Download and unpack googletest at configure time
 # See: http://crascit.com/2015/07/25/cmake-gtest/
@@ -70,4 +70,3 @@ if(NOT TARGET GTest::GMock)
     add_library(GMock::GMock ALIAS gmock)
     add_library(GMock::Main ALIAS gmock_main)
 endif()
-

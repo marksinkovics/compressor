@@ -7,8 +7,8 @@
 
 #include <compressor/data/writer.h>
 
-template <typename T>
-class MockIDataWriter : public compressor::IDataWriter<T> {
+template <typename T> class MockIDataWriter : public compressor::IDataWriter<T>
+{
 public:
     MOCK_METHOD(bool, open, (const std::string&), (override));
     MOCK_METHOD(void, write, (const T&), (override));

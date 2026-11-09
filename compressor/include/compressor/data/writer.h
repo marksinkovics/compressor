@@ -6,8 +6,7 @@
 namespace compressor
 {
 
-template<class T>
-class IDataWriter
+template <class T> class IDataWriter
 {
 public:
     virtual ~IDataWriter() = default;
@@ -16,8 +15,7 @@ public:
     virtual void close() = 0;
 };
 
-template<class T>
-class DataWriter: public IDataWriter<T>
+template <class T> class DataWriter : public IDataWriter<T>
 {
 public:
     ~DataWriter() override = default;
@@ -25,7 +23,8 @@ public:
     bool open(const std::string& file) override
     {
         output_stream_.open(file, std::ios::in | std::ios::binary);
-        if (output_stream_.fail()) {
+        if (output_stream_.fail())
+        {
             std::cerr << "Cannot open file: " << file << '\n';
             return false;
         }
@@ -41,11 +40,11 @@ public:
     {
         output_stream_.close();
     }
+
 private:
     std::ofstream output_stream_;
 };
-    
-} // compressor
+
+} // namespace compressor
 
 #endif /* DataWriter_h */
-

@@ -1,8 +1,8 @@
 #ifndef bitset_hpp
 #define bitset_hpp
 
-#include <iostream>
 #include <fstream>
+#include <iostream>
 #include <vector>
 
 #include <limits>
@@ -20,6 +20,7 @@ public:
     static const std::size_t BITS_PER_BLOCK = std::numeric_limits<block_type>::digits;
     using value_type = bool;
     using iterator = bitset_iterator;
+
 public:
     bitset(const std::size_t& bits = 0);
     bitset(const std::string& bitstring);
@@ -28,53 +29,54 @@ public:
     bitset(bitset&& v) noexcept;
     bitset& operator=(bitset&& rhs) noexcept;
     bitset& operator=(const std::string& bitstring);
-    
+
     ~bitset();
-    
+
     // Read & Write operators
-    
+
     void set(const std::size_t& pos, bool value = true) noexcept;
     void reset(const std::size_t& pos) noexcept;
     bool test(const std::size_t pos) const noexcept;
     bool operator[](const std::size_t& pos) const noexcept;
-    
+
     void push_back(bool bit) noexcept;
     void append(const bitset& vector) noexcept;
-    
+
     void resize(const std::size_t& bits) noexcept;
-    
+
     // Measuring methods
-    
+
     std::size_t size() const noexcept;
     std::size_t num_bytes() const noexcept;
     std::size_t num_blocks() const noexcept;
-    
+
     // Relational operators
-    
+
     bool operator==(const bitset& rhs) const noexcept;
     bool operator!=(const bitset& rhs) const noexcept;
-    bool operator< (const bitset& rhs) const noexcept;
-    bool operator> (const bitset& rhs) const noexcept;
+    bool operator<(const bitset& rhs) const noexcept;
+    bool operator>(const bitset& rhs) const noexcept;
     bool operator<=(const bitset& rhs) const noexcept;
     bool operator>=(const bitset& rhs) const noexcept;
-    
+
     // Convert methods
-    
+
     std::string str() const noexcept;
-    
+
     // Iterators
-    
+
     bitset_iterator begin() const noexcept;
     bitset_iterator end() const noexcept;
 
 private:
     std::size_t bit_size;
     std::vector<block_type> blocks;
+
 public:
     friend std::ostream& operator<<(std::ostream& ostream, const bitset& bitset);
     friend std::istream& operator>>(std::istream& istream, bitset& bitset);
 };
 
-} // compressor
+} // namespace compressor
 
 #endif /* bitset_hpp */

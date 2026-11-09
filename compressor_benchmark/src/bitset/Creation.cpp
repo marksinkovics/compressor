@@ -5,7 +5,8 @@
 
 #include <compressor/bitset/bitset.h>
 
-static void BM_BoolVectorCreation(benchmark::State& state) {
+static void BM_BoolVectorCreation(benchmark::State& state)
+{
     uint8_t bit_count = state.range(0);
     for (auto _ : state)
         std::vector<bool> sample(bit_count);
@@ -13,7 +14,8 @@ static void BM_BoolVectorCreation(benchmark::State& state) {
 
 BENCHMARK(BM_BoolVectorCreation)->RangeMultiplier(2)->Range(8, 1024);
 
-static void BM_BoostDynamicBitSetCreation(benchmark::State& state) {
+static void BM_BoostDynamicBitSetCreation(benchmark::State& state)
+{
     uint8_t bit_count = state.range(0);
     for (auto _ : state)
         boost::dynamic_bitset<> sample(bit_count);
@@ -21,7 +23,8 @@ static void BM_BoostDynamicBitSetCreation(benchmark::State& state) {
 
 BENCHMARK(BM_BoostDynamicBitSetCreation)->RangeMultiplier(2)->Range(8, 1024);
 
-static void BM_BitSetCreation(benchmark::State& state) {
+static void BM_BitSetCreation(benchmark::State& state)
+{
     uint8_t bit_count = state.range(0);
     for (auto _ : state)
         compressor::bitset sample(bit_count);

@@ -4,12 +4,15 @@
 
 Instrumentor::Instrumentor() = default;
 
-Instrumentor::~Instrumentor() {
+Instrumentor::~Instrumentor()
+{
     endSession();
 }
 
-void Instrumentor::beginSession(const std::string& name, const std::string& filepath) {
-    if(m_activeSession) {
+void Instrumentor::beginSession(const std::string& name, const std::string& filepath)
+{
+    if (m_activeSession)
+    {
         endSession();
     }
     m_activeSession = true;
@@ -18,8 +21,10 @@ void Instrumentor::beginSession(const std::string& name, const std::string& file
     m_sessionName = name;
 }
 
-void Instrumentor::endSession() {
-    if(!m_activeSession) {
+void Instrumentor::endSession()
+{
+    if (!m_activeSession)
+    {
         return;
     }
     m_activeSession = false;
@@ -28,10 +33,12 @@ void Instrumentor::endSession() {
     m_profileCount = 0;
 }
 
-void Instrumentor::writeProfile(const ProfileResult& result) {
+void Instrumentor::writeProfile(const ProfileResult& result)
+{
     std::scoped_lock lock(m_lock);
 
-    if (m_profileCount++ > 0) {
+    if (m_profileCount++ > 0)
+    {
         m_outputStream << ",";
     }
 
@@ -50,12 +57,14 @@ void Instrumentor::writeProfile(const ProfileResult& result) {
     m_outputStream.flush();
 }
 
-void Instrumentor::writeHeader() {
+void Instrumentor::writeHeader()
+{
     m_outputStream << R"({"otherData": {},"traceEvents":[)";
     m_outputStream.flush();
 }
 
-void Instrumentor::writeFooter() {
+void Instrumentor::writeFooter()
+{
     m_outputStream << "]}";
     m_outputStream.flush();
 }

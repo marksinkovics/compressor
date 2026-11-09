@@ -2,15 +2,15 @@
 #define Utils_hpp
 
 #include <cstddef>
-#include <string>
 #include <sstream>
+#include <string>
 
 namespace compressor::utils
 {
 
 void handle_illegal_position(const std::size_t& pos) noexcept;
 
-template<typename T>
+template <typename T>
 std::string block_to_bit_string(T value, T length = std::numeric_limits<T>::digits)
 {
     if (length > std::numeric_limits<T>::digits)
@@ -29,11 +29,12 @@ std::string block_to_bit_string(T value, T length = std::numeric_limits<T>::digi
     return stream.str();
 }
 
-inline constexpr std::size_t calc_num_blocks(std::size_t num_bits, std::size_t bits_per_block) noexcept
+inline constexpr std::size_t calc_num_blocks(std::size_t num_bits,
+                                             std::size_t bits_per_block) noexcept
 {
     return num_bits / bits_per_block + static_cast<std::size_t>(num_bits % bits_per_block != 0);
 }
 
 } // namespace compressor::utils
 
-#endif //Utils_hpp
+#endif // Utils_hpp

@@ -9,11 +9,12 @@
 #include <compressor/data/data.h>
 #include <compressor/data/reader.h>
 #include <compressor/data/writer.h>
+#include <compressor/engine/engine.h>
 #include <compressor/task/coder.h>
 #include <compressor/task/decoder.h>
-#include <compressor/engine/engine.h>
 
-class MockIDecoderTask: public compressor::IDecoderTask {
+class MockIDecoderTask : public compressor::IDecoderTask
+{
 public:
     MOCK_METHOD(std::string, input_file, (), (override));
     MOCK_METHOD(std::string, output_file, (), (override));

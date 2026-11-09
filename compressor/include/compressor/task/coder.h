@@ -1,19 +1,19 @@
 #ifndef CoderTask_h
 #define CoderTask_h
 
-#include <string>
 #include <fstream>
+#include <string>
 
 #include <compressor/engine/engine.h>
 
 namespace compressor
 {
-    
+
 class ICoderTask
 {
 public:
     virtual ~ICoderTask() = default;
-    
+
     // input
     virtual std::string input_file() = 0;
     // output
@@ -23,6 +23,6 @@ public:
     virtual IEngine& engine() = 0;
 };
 
-} // compressor
+} // namespace compressor
 
 #endif /* CoderTask_h */

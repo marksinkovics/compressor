@@ -9,12 +9,13 @@ namespace compressor
 class BinaryNode;
 class BinaryNodePreOrderIterator;
 
-class BinaryTree {
+class BinaryTree
+{
 public:
     BinaryTree() = default;
     void setRoot(std::shared_ptr<BinaryNode> root);
     std::shared_ptr<BinaryNode> root() const;
-    
+
     BinaryNodePreOrderIterator preOrderBegin() const;
     BinaryNodePreOrderIterator preOrderEnd() const;
 
@@ -24,7 +25,6 @@ private:
     std::shared_ptr<BinaryNode> _root;
 };
 
-} //compressor
+} // namespace compressor
 
 #endif /* BinaryTree_hpp */
-

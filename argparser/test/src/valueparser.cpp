@@ -1,43 +1,41 @@
-#include <gtest/gtest.h>
 #include <argparser/argparser.h>
+#include <gtest/gtest.h>
 
 #include <any>
-#include <string>
 #include <map>
+#include <string>
 
-namespace argparser {
+namespace argparser
+{
 
-class ValueParserTests : public ::testing::Test {};
+class ValueParserTests : public ::testing::Test
+{
+};
 
-class BoolValueParserTests : public ValueParserTests, public ::testing::WithParamInterface<std::tuple<std::string, bool>> {};
-    
-INSTANTIATE_TEST_SUITE_P(TrueValueParserTestsParametersTrue, BoolValueParserTests, ::testing::Values(
-    std::make_tuple("true", true),
-    std::make_tuple("True", true),
-    std::make_tuple("t", true),
-    std::make_tuple("T", true),
-    std::make_tuple("yes", true),
-    std::make_tuple("Yes", true),
-    std::make_tuple("y", true),
-    std::make_tuple("T", true)
-));
+class BoolValueParserTests : public ValueParserTests,
+                             public ::testing::WithParamInterface<std::tuple<std::string, bool>>
+{
+};
 
-INSTANTIATE_TEST_SUITE_P(FalseValueParserTestsParametersTrue, BoolValueParserTests, ::testing::Values(
-    std::make_tuple("false", false),
-    std::make_tuple("False", false),
-    std::make_tuple("f", false),
-    std::make_tuple("F", false),
-    std::make_tuple("no", false),
-    std::make_tuple("No", false),
-    std::make_tuple("n", false),
-    std::make_tuple("N", false)
-));
+INSTANTIATE_TEST_SUITE_P(TrueValueParserTestsParametersTrue, BoolValueParserTests,
+                         ::testing::Values(std::make_tuple("true", true),
+                                           std::make_tuple("True", true),
+                                           std::make_tuple("t", true), std::make_tuple("T", true),
+                                           std::make_tuple("yes", true),
+                                           std::make_tuple("Yes", true), std::make_tuple("y", true),
+                                           std::make_tuple("T", true)));
 
-    
+INSTANTIATE_TEST_SUITE_P(
+    FalseValueParserTestsParametersTrue, BoolValueParserTests,
+    ::testing::Values(std::make_tuple("false", false), std::make_tuple("False", false),
+                      std::make_tuple("f", false), std::make_tuple("F", false),
+                      std::make_tuple("no", false), std::make_tuple("No", false),
+                      std::make_tuple("n", false), std::make_tuple("N", false)));
+
 TEST_P(BoolValueParserTests, Bool)
 {
-    std::string str = std::get<0>( GetParam());
-    bool expected = std::get<1>( GetParam());
+    std::string str = std::get<0>(GetParam());
+    bool expected = std::get<1>(GetParam());
     EXPECT_EQ(expected, ValueParser<bool>::parse(str));
 }
 
@@ -48,23 +46,24 @@ TEST_F(ValueParserTests, Int)
     EXPECT_EQ(uint32_t(42), ValueParser<uint32_t>::parse("42"));
     EXPECT_EQ(uint64_t(42), ValueParser<uint64_t>::parse("42"));
 }
-    
+
 TEST_F(ValueParserTests, Float)
 {
     EXPECT_FLOAT_EQ(3.14, ValueParser<float>::parse("3.14"));
 }
-    
+
 TEST_F(ValueParserTests, Double)
 {
     EXPECT_DOUBLE_EQ(3.14, ValueParser<double>::parse("3.14"));
 }
 
-struct SampleStruct {
+struct SampleStruct
+{
     int v1;
     float v2;
 };
-    
-template<> SampleStruct ValueParser<SampleStruct>::parse(const std::string& str)
+
+template <> SampleStruct ValueParser<SampleStruct>::parse(const std::string& str)
 {
     std::stringstream stream(str);
     int v1;
@@ -85,5 +84,5 @@ TEST_F(ValueParserTests, Custom)
     EXPECT_EQ(42, result.v1);
     EXPECT_FLOAT_EQ(3.14, result.v2);
 }
-    
-} // argparser
+
+} // namespace argparser

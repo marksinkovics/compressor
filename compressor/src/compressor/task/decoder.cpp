@@ -8,7 +8,6 @@ namespace compressor
 DecoderTask::DecoderTask()
     : engine_(std::make_shared<Engine>())
 {
-
 }
 
 DecoderTask::DecoderTask(std::string input_file, std::string output_file)
@@ -16,7 +15,6 @@ DecoderTask::DecoderTask(std::string input_file, std::string output_file)
     , output_file_(std::move(output_file))
     , engine_(std::make_shared<Engine>())
 {
-
 }
 
 // input
@@ -42,7 +40,7 @@ EncodedData& DecoderTask::data()
 {
     return data_;
 }
-    
+
 // reader
 IDataReader<EncodedData>& DecoderTask::reader()
 {
@@ -52,8 +50,8 @@ IDataReader<EncodedData>& DecoderTask::reader()
 // writer
 IDataWriter<DecodedData>& DecoderTask::writer()
 {
-    
+
     return writer_;
 }
 
-} // compressor
+} // namespace compressor

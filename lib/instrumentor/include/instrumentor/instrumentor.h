@@ -6,30 +6,30 @@
 #ifndef Instrumentor_h
 #define Instrumentor_h
 
-#include <string>
 #include <algorithm>
 #include <fstream>
 #include <mutex>
+#include <string>
 
-#include <instrumentor/profileresult.h>
 #include <instrumentor/instrumentationtimer.h>
+#include <instrumentor/profileresult.h>
 
 #if PROFILING == 1
-    #define PROFILE_SESSION(name) Instrumentor::Get().beginSession(name);
-    #define PROFILE_SCOPE(name) InstrumentationTimer timer##__LINE__(name);
-    #define PROFILE_FUNCTION() PROFILE_SCOPE(__PRETTY_FUNCTION__)
-    #define PROFILE_START(var_name, name) InstrumentationTimer var_name(name);
-    #define PROFILE_END(var_name, name) var_name.stop();
+#define PROFILE_SESSION(name) Instrumentor::Get().beginSession(name);
+#define PROFILE_SCOPE(name) InstrumentationTimer timer##__LINE__(name);
+#define PROFILE_FUNCTION() PROFILE_SCOPE(__PRETTY_FUNCTION__)
+#define PROFILE_START(var_name, name) InstrumentationTimer var_name(name);
+#define PROFILE_END(var_name, name) var_name.stop();
 #else
-    #define PROFILE_SESSION(name)
-    #define PROFILE_SCOPE(name)
-	#define PROFILE_FUNCTION()
-    #define PROFILE_START(var_name, name)
-    #define PROFILE_END(var_name, name)
+#define PROFILE_SESSION(name)
+#define PROFILE_SCOPE(name)
+#define PROFILE_FUNCTION()
+#define PROFILE_START(var_name, name)
+#define PROFILE_END(var_name, name)
 #endif
 
-
-class Instrumentor {
+class Instrumentor
+{
 private:
     std::string m_sessionName = "None";
     std::ofstream m_outputStream;
@@ -38,8 +38,10 @@ private:
     bool m_activeSession = false;
 
     Instrumentor();
+
 public:
-    static Instrumentor& Get() {
+    static Instrumentor& Get()
+    {
         static Instrumentor instance;
         return instance;
     }
@@ -48,8 +50,8 @@ public:
     void beginSession(const std::string& name, const std::string& filepath = "result.json");
     void endSession();
     void writeProfile(const ProfileResult& result);
-	void writeHeader();
-	void writeFooter();
+    void writeHeader();
+    void writeFooter();
 };
 
 #endif /* Instrumentor_h */

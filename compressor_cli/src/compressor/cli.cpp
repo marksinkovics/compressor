@@ -10,8 +10,8 @@ namespace compressor
 
 CLI::CLI(std::unique_ptr<argparser::IArgparser>&& parser,
          std::unique_ptr<compressor::ICompressor>&& compressor)
-: parser_(std::move(parser))
-, compressor_(std::move(compressor))
+    : parser_(std::move(parser))
+    , compressor_(std::move(compressor))
 {
     parser_->add_argument(argparser::CreateArg("encode", "Compress the given file.", false));
     parser_->add_argument(argparser::CreateArg("decode", "Decompress the given file.", false));
@@ -25,14 +25,16 @@ void CLI::run()
     std::string input_file, output_file;
     if (parser_->has_argument("input"))
     {
-        input_file = std::dynamic_pointer_cast<argparser::Arg<std::string>>(options_["input"])->value();
-        std::cout << "Input file: "<< input_file << '\n';
+        input_file =
+            std::dynamic_pointer_cast<argparser::Arg<std::string>>(options_["input"])->value();
+        std::cout << "Input file: " << input_file << '\n';
     }
 
     if (parser_->has_argument("output"))
     {
-        output_file = std::dynamic_pointer_cast<argparser::Arg<std::string>>(options_["output"])->value();
-        std::cout << "Output file: "<< output_file << '\n';
+        output_file =
+            std::dynamic_pointer_cast<argparser::Arg<std::string>>(options_["output"])->value();
+        std::cout << "Output file: " << output_file << '\n';
     }
 
     if (parser_->has_argument("encode"))
@@ -49,4 +51,4 @@ void CLI::run()
     }
 }
 
-} // compressor
+} // namespace compressor

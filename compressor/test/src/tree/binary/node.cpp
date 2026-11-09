@@ -4,7 +4,9 @@
 
 #include <compressor/tree/binary/node.h>
 
-class BinaryNodeTests : public ::testing::Test {};
+class BinaryNodeTests : public ::testing::Test
+{
+};
 
 TEST_F(BinaryNodeTests, Alloc)
 {
@@ -23,10 +25,10 @@ TEST_F(BinaryNodeTests, MultipleAllocation)
     left->setParent(parent);
     parent->setRight(right);
     right->setParent(parent);
-    
+
     EXPECT_EQ(parent->left(), left);
     EXPECT_EQ(parent->right(), right);
-    
+
     EXPECT_TRUE(left->hasParent());
     EXPECT_TRUE(right->hasParent());
 }

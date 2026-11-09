@@ -1,8 +1,8 @@
-#include <iostream>
 #include <instrumentor/instrumentor.h>
+#include <iostream>
+#include <thread>
 #include <unistd.h>
 #include <vector>
-#include <thread>
 
 void a()
 {
@@ -16,28 +16,33 @@ void b()
     usleep(50000);
 }
 
-void f1() {
+void f1()
+{
     PROFILE_FUNCTION()
     usleep(200000);
     a();
 }
 
-void f2() {
+void f2()
+{
     PROFILE_FUNCTION()
     usleep(200000);
     b();
 }
 
-uint64_t factorial(uint64_t n) {
+uint64_t factorial(uint64_t n)
+{
     PROFILE_FUNCTION()
     usleep(200000);
-    if (n == 0 || n == 1) {
+    if (n == 0 || n == 1)
+    {
         return 1;
     }
-    return n * factorial(n-1);
+    return n * factorial(n - 1);
 }
 
-void f3() {
+void f3()
+{
     PROFILE_FUNCTION()
     usleep(200000);
     a();

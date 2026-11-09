@@ -1,5 +1,5 @@
-#include <compressor/bitset/bitset_iterator.h>
 #include <compressor/bitset/bitset.h>
+#include <compressor/bitset/bitset_iterator.h>
 
 namespace compressor
 {
@@ -13,7 +13,8 @@ bitset_iterator::bitset_iterator(const bitset& vector, const std::size_t index)
 // Dereferencable.
 bool bitset_iterator::operator*() const
 {
-    if (this->internal_bitset && this->internal_bit_index < this->internal_bitset->size()) {
+    if (this->internal_bitset && this->internal_bit_index < this->internal_bitset->size())
+    {
         return this->internal_bitset->test(this->internal_bit_index);
     }
     return false;
@@ -85,4 +86,4 @@ bool bitset_iterator::operator!=(const bitset_iterator& rhs) const
     return !(*this == rhs);
 }
 
-} // compressor
+} // namespace compressor

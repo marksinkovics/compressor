@@ -1,9 +1,9 @@
-#include <gtest/gtest.h>
 #include <argparser/arg.h>
+#include <gtest/gtest.h>
 
 #include <any>
-#include <string>
 #include <map>
+#include <string>
 #include <vector>
 
 namespace argparser
@@ -11,7 +11,6 @@ namespace argparser
 
 class ArgTests : public ::testing::Test
 {
-
 };
 
 TEST_F(ArgTests, BasicInit)
@@ -34,4 +33,4 @@ TEST_F(ArgTests, VariedArgsInit)
     EXPECT_TRUE(arg3.value());
 }
 
-} // argparser
+} // namespace argparser

@@ -1,8 +1,8 @@
 #ifndef arg_h
 #define arg_h
 
-#include <string>
 #include <memory>
+#include <string>
 
 #include <argparser/basearg.h>
 #include <argparser/valueparser.h>
@@ -10,42 +10,45 @@
 namespace argparser
 {
 
-template<typename T>
-class Arg : public BaseArg {
+template <typename T> class Arg : public BaseArg
+{
 public:
-    
     explicit Arg(const std::string arg, const std::string description, T default_value)
-    : BaseArg(arg, description)
-    , value_(default_value)
-    { }
-    
+        : BaseArg(arg, description)
+        , value_(default_value)
+    {
+    }
+
     Arg(const Arg& other)
-    : BaseArg(other)
-    , value_(other.value_)
-    { }
-    
-    virtual ~Arg()
-    { }
-    
+        : BaseArg(other)
+        , value_(other.value_)
+    {
+    }
+
+    virtual ~Arg() {}
+
     Arg(Arg&& other) = default;
     Arg& operator=(const Arg& other) = default;
     Arg& operator=(Arg&& other) = default;
 
-    T value() const {
+    T value() const
+    {
         return value_;
     }
-    
-    void setValue(const T& value) {
+
+    void setValue(const T& value)
+    {
         value_ = value;
     }
 
-    virtual void parse(const std::string& str) {
+    virtual void parse(const std::string& str)
+    {
         value_ = ValueParser<T>::parse(str);
     }
-    
+
     virtual std::shared_ptr<BaseArg> clone(const std::string& str)
     {
-        if (Arg<T> *current = dynamic_cast<Arg<T>*>(this))
+        if (Arg<T>* current = dynamic_cast<Arg<T>*>(this))
         {
             auto new_arg = std::make_shared<Arg<T>>(*current);
             new_arg->setValue(ValueParser<T>::parse(str));
@@ -54,14 +57,13 @@ public:
         else
         {
             return nullptr;
-        }            
+        }
     }
 
-    
 private:
     T value_;
 };
 
-}
+} // namespace argparser
 
 #endif /* arg_h */

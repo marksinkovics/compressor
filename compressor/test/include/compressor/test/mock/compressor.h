@@ -4,10 +4,11 @@
 #include <gmock/gmock.h>
 
 #include <compressor/compressor.h>
-#include <compressor/task/encoder.h>
 #include <compressor/task/decoder.h>
+#include <compressor/task/encoder.h>
 
-class MockICompressor : public compressor::ICompressor {
+class MockICompressor : public compressor::ICompressor
+{
 public:
     MOCK_METHOD(void, encode, (compressor::IEncoderTask&), (override));
     MOCK_METHOD(void, decode, (compressor::IDecoderTask&), (override));

@@ -4,8 +4,8 @@
 #include <fstream>
 #include <string>
 
-#include <compressor/task/encoder.h>
 #include <compressor/task/decoder.h>
+#include <compressor/task/encoder.h>
 
 namespace compressor
 {
@@ -14,18 +14,18 @@ class ICompressor
 {
 public:
     virtual ~ICompressor() = default;
-    virtual void encode(IEncoderTask &task) = 0;
+    virtual void encode(IEncoderTask& task) = 0;
     virtual void decode(IDecoderTask& task) = 0;
 };
 
-class Compressor: public ICompressor
+class Compressor : public ICompressor
 {
 public:
     ~Compressor() override = default;
     void encode(IEncoderTask& task) override;
     void decode(IDecoderTask& task) override;
 };
-    
-}
+
+} // namespace compressor
 
 #endif /* Compressor_h */

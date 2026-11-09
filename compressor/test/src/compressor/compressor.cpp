@@ -2,8 +2,8 @@
 
 #include <gtest/gtest.h>
 
-#include <compressor/test/mock/task/encoder.h>
 #include <compressor/test/mock/task/decoder.h>
+#include <compressor/test/mock/task/encoder.h>
 
 #include <compressor/data/data.h>
 #include <compressor/data/reader.h>
@@ -11,34 +11,32 @@
 #include <compressor/test/mock/data/writer.h>
 #include <compressor/test/mock/engine/engine.h>
 
-class CompressorTests : public ::testing::Test {
+class CompressorTests : public ::testing::Test
+{
 protected:
-    void SetUp() override
-    {
-
-    }
+    void SetUp() override {}
 };
 
 TEST_F(CompressorTests, Encoding)
 {
-    std::string input_file { "input_file" };
-    std::string output_file { "output_file" };
+    std::string input_file{"input_file"};
+    std::string output_file{"output_file"};
     compressor::DecodedData decoded_data;
     compressor::EncodedData encoded_data;
-    
+
     MockIDataReader<compressor::DecodedData> reader;
     EXPECT_CALL(reader, open(testing::StrEq(input_file))).Times(1);
     EXPECT_CALL(reader, read()).WillOnce(testing::Return(decoded_data));
     EXPECT_CALL(reader, close()).Times(1);
-    
+
     MockIEngine engine;
     EXPECT_CALL(engine, encode(testing::Eq(decoded_data))).WillOnce(testing::Return(encoded_data));
-    
+
     MockIDataWriter<compressor::EncodedData> writer;
     EXPECT_CALL(writer, open(testing::StrEq(output_file))).Times(1);
     EXPECT_CALL(writer, write(testing::Eq(encoded_data))).Times(1);
     EXPECT_CALL(writer, close()).Times(1);
-    
+
     testing::NiceMock<MockIEncoderTask> task;
     ON_CALL(task, input_file()).WillByDefault(testing::Return(input_file));
     ON_CALL(task, output_file()).WillByDefault(testing::Return(output_file));
@@ -52,8 +50,8 @@ TEST_F(CompressorTests, Encoding)
 
 TEST_F(CompressorTests, Decoding)
 {
-    std::string input_file { "input_file" };
-    std::string output_file { "output_file" };
+    std::string input_file{"input_file"};
+    std::string output_file{"output_file"};
     compressor::DecodedData decoded_data;
     compressor::EncodedData encoded_data;
 

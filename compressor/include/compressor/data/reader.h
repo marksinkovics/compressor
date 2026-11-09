@@ -6,8 +6,7 @@
 namespace compressor
 {
 
-template<class T>
-class IDataReader
+template <class T> class IDataReader
 {
 public:
     virtual ~IDataReader() = default;
@@ -16,8 +15,7 @@ public:
     virtual void close() = 0;
 };
 
-template<class T>
-class DataReader: public IDataReader<T>
+template <class T> class DataReader : public IDataReader<T>
 {
 public:
     ~DataReader() override = default;
@@ -25,7 +23,8 @@ public:
     bool open(const std::string& file) override
     {
         input_stream_.open(file, std::ios::in | std::ios::binary);
-        if (input_stream_.fail()) {
+        if (input_stream_.fail())
+        {
             std::cerr << "Cannot open file: " << file << '\n';
             return false;
         }
@@ -43,11 +42,11 @@ public:
     {
         input_stream_.close();
     }
+
 private:
     std::ifstream input_stream_;
 };
 
-} // compressor
+} // namespace compressor
 
 #endif /* DataReader_h */
-

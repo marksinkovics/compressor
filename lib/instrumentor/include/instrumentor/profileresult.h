@@ -3,7 +3,8 @@
 
 #include <string>
 
-struct ProfileResult {
+struct ProfileResult
+{
     const std::string name;
     long long start, end;
     uint64_t threadID;

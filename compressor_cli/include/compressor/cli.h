@@ -15,12 +15,13 @@ public:
     CLI(std::unique_ptr<argparser::IArgparser>&& parser,
         std::unique_ptr<compressor::ICompressor>&& compressor);
     void run();
+
 private:
     std::unique_ptr<argparser::IArgparser> parser_;
     std::unique_ptr<compressor::ICompressor> compressor_;
     argparser::IArgparser::container_type options_;
 };
-    
-} // compressor
+
+} // namespace compressor
 
 #endif /* cli_h */

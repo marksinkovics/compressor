@@ -1,7 +1,7 @@
 #include <sstream>
 
-#include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 
 #include <argparser/test/mock/argparser.h>
 
@@ -9,7 +9,8 @@
 
 #include <compressor/cli.h>
 
-class CLITests : public ::testing::Test {
+class CLITests : public ::testing::Test
+{
 protected:
     void SetUp() override
     {
@@ -25,10 +26,8 @@ protected:
 
     argparser::IArgparser::container_type options_ = {
         {"input", std::make_shared<argparser::Arg<std::string>>("input", "desc", input_file_)},
-        {"output", std::make_shared<argparser::Arg<std::string>>("output", "desc", output_file_)}
-    };
+        {"output", std::make_shared<argparser::Arg<std::string>>("output", "desc", output_file_)}};
 };
-
 
 TEST_F(CLITests, Encoding)
 {
@@ -38,8 +37,10 @@ TEST_F(CLITests, Encoding)
 
     EXPECT_CALL(*argparser_, parse()).WillOnce(testing::Return(options_));
     EXPECT_CALL(*argparser_, has_argument(testing::StrEq("input"))).WillOnce(testing::Return(true));
-    EXPECT_CALL(*argparser_, has_argument(testing::StrEq("output"))).WillOnce(testing::Return(true));
-    EXPECT_CALL(*argparser_, has_argument(testing::StrEq("encode"))).WillOnce(testing::Return(true));
+    EXPECT_CALL(*argparser_, has_argument(testing::StrEq("output")))
+        .WillOnce(testing::Return(true));
+    EXPECT_CALL(*argparser_, has_argument(testing::StrEq("encode")))
+        .WillOnce(testing::Return(true));
 
     EXPECT_CALL(*compressor_, encode(testing::_)).Times(testing::AtLeast(1));
 
@@ -55,9 +56,12 @@ TEST_F(CLITests, Decoding)
 
     EXPECT_CALL(*argparser_, parse()).WillOnce(testing::Return(options_));
     EXPECT_CALL(*argparser_, has_argument(testing::StrEq("input"))).WillOnce(testing::Return(true));
-    EXPECT_CALL(*argparser_, has_argument(testing::StrEq("output"))).WillOnce(testing::Return(true));
-    EXPECT_CALL(*argparser_, has_argument(testing::StrEq("encode"))).WillOnce(testing::Return(false));
-    EXPECT_CALL(*argparser_, has_argument(testing::StrEq("decode"))).WillOnce(testing::Return(true));
+    EXPECT_CALL(*argparser_, has_argument(testing::StrEq("output")))
+        .WillOnce(testing::Return(true));
+    EXPECT_CALL(*argparser_, has_argument(testing::StrEq("encode")))
+        .WillOnce(testing::Return(false));
+    EXPECT_CALL(*argparser_, has_argument(testing::StrEq("decode")))
+        .WillOnce(testing::Return(true));
 
     EXPECT_CALL(*compressor_, decode(testing::_)).Times(testing::AtLeast(1));
 
@@ -72,9 +76,12 @@ TEST_F(CLITests, EmptyCommand)
     EXPECT_CALL(*argparser_, parse()).WillOnce(testing::Return(options_));
 
     EXPECT_CALL(*argparser_, has_argument(testing::StrEq("input"))).WillOnce(testing::Return(true));
-    EXPECT_CALL(*argparser_, has_argument(testing::StrEq("output"))).WillOnce(testing::Return(true));
-    EXPECT_CALL(*argparser_, has_argument(testing::StrEq("encode"))).WillOnce(testing::Return(false));
-    EXPECT_CALL(*argparser_, has_argument(testing::StrEq("decode"))).WillOnce(testing::Return(false));
+    EXPECT_CALL(*argparser_, has_argument(testing::StrEq("output")))
+        .WillOnce(testing::Return(true));
+    EXPECT_CALL(*argparser_, has_argument(testing::StrEq("encode")))
+        .WillOnce(testing::Return(false));
+    EXPECT_CALL(*argparser_, has_argument(testing::StrEq("decode")))
+        .WillOnce(testing::Return(false));
 
     EXPECT_CALL(*compressor_, encode(testing::_)).Times(testing::AtLeast(0));
 
@@ -84,7 +91,4 @@ TEST_F(CLITests, EmptyCommand)
     cli.run();
 }
 
-TEST_F(CLITests, EmptyFiles)
-{
-
-}
+TEST_F(CLITests, EmptyFiles) {}

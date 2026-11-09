@@ -15,10 +15,10 @@ public:
     explicit BinaryNode(BinaryNode& node) = default;
     explicit BinaryNode(BinaryNode&& node) = default;
     virtual ~BinaryNode() = default;
-    
+
     virtual BinaryNode& operator=(BinaryNode& node) = default;
     virtual BinaryNode& operator=(BinaryNode&& node) = default;
-    
+
     virtual std::shared_ptr<BinaryNode> left() const;
     virtual void setLeft(std::shared_ptr<BinaryNode> left);
     virtual std::shared_ptr<BinaryNode> right() const;
@@ -26,13 +26,13 @@ public:
     virtual std::weak_ptr<BinaryNode> parent() const;
     virtual void setParent(std::weak_ptr<BinaryNode> parent);
     virtual bool hasParent() const;
-    
+
     virtual void setTag(std::shared_ptr<compressor::bitset> tag);
     virtual std::shared_ptr<compressor::bitset> tag() const;
-    
+
     bool operator==(const BinaryNode& rhs);
     bool operator!=(const BinaryNode& rhs);
-    
+
 protected:
     std::shared_ptr<BinaryNode> _left;
     std::shared_ptr<BinaryNode> _right;
@@ -40,6 +40,6 @@ protected:
     std::shared_ptr<compressor::bitset> _tag;
 };
 
-}
+} // namespace compressor
 
 #endif /* BinaryNode_hpp */

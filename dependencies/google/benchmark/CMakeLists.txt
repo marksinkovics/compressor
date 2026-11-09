@@ -1,6 +1,6 @@
-# 
+#
 # Google Benchmark
-# 
+#
 
 set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "Suppressing benchmark's tests" FORCE)
 
@@ -30,4 +30,3 @@ if(NOT TARGET GBenchmark::GBenchmark)
     add_library(GBenchmark::GBenchmark ALIAS benchmark)
     add_library(GBenchmark::Main ALIAS benchmark_main)
 endif()
-

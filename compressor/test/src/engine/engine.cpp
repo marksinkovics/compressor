@@ -2,10 +2,11 @@
 
 #include <gtest/gtest.h>
 
-#include <compressor/engine/engine.h>
 #include <compressor/data/data.h>
+#include <compressor/engine/engine.h>
 
-class EngineTests : public ::testing::Test {
+class EngineTests : public ::testing::Test
+{
 protected:
     const std::string input = "go go gophers";
     const std::string longInput = R"(

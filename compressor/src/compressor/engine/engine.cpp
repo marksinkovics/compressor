@@ -8,10 +8,10 @@
 
 #include <compressor/bitset/bitset.h>
 #include <compressor/bitset/bitset_iterator.h>
-#include <compressor/tree/binary/tree.h>
 #include <compressor/engine/engine.h>
-#include <compressor/tree/symbolnode.h>
 #include <compressor/tree/binary/nodeiterator.h>
+#include <compressor/tree/binary/tree.h>
+#include <compressor/tree/symbolnode.h>
 
 #include <compressor/data/data.h>
 
@@ -42,22 +42,24 @@ void Engine::build_tree()
 {
     _tree = std::make_shared<BinaryTree>();
 
-    auto second = [](std::pair<char, std::shared_ptr<SymbolNode>> const &pair) {
+    auto second = [](std::pair<char, std::shared_ptr<SymbolNode>> const& pair) {
         return pair.second;
     };
 
-    auto lower = [](std::shared_ptr<SymbolNode> const &lhs, std::shared_ptr<SymbolNode> const &rhs) {
+    auto lower = [](std::shared_ptr<SymbolNode> const& lhs,
+                    std::shared_ptr<SymbolNode> const& rhs) {
         return lhs->frequency() < rhs->frequency();
     };
 
     std::vector<std::shared_ptr<SymbolNode>> _nodes;
     std::transform(_symbols_dict.begin(), _symbols_dict.end(), std::back_inserter(_nodes), second);
 
-    while(_nodes.size() > 1)
+    while (_nodes.size() > 1)
     {
         std::sort(_nodes.begin(), _nodes.end(), lower);
         auto left = _nodes.front(), right = (*(++_nodes.begin()));
-        auto parent = std::make_shared<SymbolNode>(left->value() + right->value(), left->frequency() + right->frequency());
+        auto parent = std::make_shared<SymbolNode>(left->value() + right->value(),
+                                                   left->frequency() + right->frequency());
         parent->setLeft(left);
         left->setParent(parent);
         parent->setRight(right);
@@ -87,7 +89,7 @@ void Engine::create_hash_table()
         node->tag()->push_back(isRightChild);
     });
 
-    for(const auto& pair : this->_symbols_dict)
+    for (const auto& pair : this->_symbols_dict)
     {
         auto node = std::dynamic_pointer_cast<SymbolNode>(pair.second);
         uint8_t c = node->value().c_str()[0];
@@ -136,7 +138,7 @@ void Engine::print_graph() const
 
 void Engine::print_dict() const
 {
-    for(const auto& it: bit_dict_)
+    for (const auto& it : bit_dict_)
     {
         std::cout << it.first.str() << " => [";
         std::cout << static_cast<char>(it.second);
@@ -202,7 +204,8 @@ DecodedData Engine::decode(const EncodedData& data)
     {
         current->push_back(bit);
         auto search = encoded_data_.bit_dict_.find(*current);
-        if (search != encoded_data_.bit_dict_.end()) {
+        if (search != encoded_data_.bit_dict_.end())
+        {
             uint8_t c = search->second;
             str += c;
             current = std::make_unique<bitset>();
@@ -214,4 +217,4 @@ DecodedData Engine::decode(const EncodedData& data)
     return result;
 }
 
-}
+} // namespace compressor

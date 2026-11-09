@@ -2,7 +2,8 @@
 
 #include <argparser/argparser.h>
 
-class MockIArgparser : public argparser::IArgparser {
+class MockIArgparser : public argparser::IArgparser
+{
 public:
     MOCK_METHOD(void, add_argument, (std::shared_ptr<argparser::BaseArg>), (override));
     MOCK_METHOD(container_type, parse, (), (override));

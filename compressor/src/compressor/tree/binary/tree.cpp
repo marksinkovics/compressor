@@ -21,10 +21,10 @@ std::shared_ptr<BinaryNode> BinaryTree::root() const
 uint64_t BinaryTree::numberOfChildren(const std::shared_ptr<BinaryNode>& node) noexcept
 {
     uint64_t counter = 1;
-    
+
     if (node->left())
         counter += numberOfChildren(node->left());
-    
+
     if (node->right())
         counter += numberOfChildren(node->right());
 
@@ -39,18 +39,20 @@ BinaryNodePreOrderIterator BinaryTree::preOrderBegin() const
 BinaryNodePreOrderIterator BinaryTree::preOrderEnd() const
 {
     std::shared_ptr<BinaryNode> rightestNode = _root;
-    
-    while(rightestNode->right()) {
+
+    while (rightestNode->right())
+    {
         rightestNode = rightestNode->right();
     }
-    
-    while(rightestNode->left()) {
+
+    while (rightestNode->left())
+    {
         rightestNode = rightestNode->left();
     }
-    
+
     uint64_t num = numberOfChildren(_root) + 1;
 
     return {rightestNode, num};
 }
-    
-} // compressor
+
+} // namespace compressor

@@ -8,7 +8,7 @@
 namespace compressor
 {
 
-void Compressor::encode(IEncoderTask &task)
+void Compressor::encode(IEncoderTask& task)
 {
     PROFILE_SESSION("Compressor::Encode")
 
@@ -50,4 +50,4 @@ void Compressor::decode(IDecoderTask& task)
     PROFILE_END(write_timer, "Write")
 }
 
-}
+} // namespace compressor

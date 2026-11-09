@@ -4,16 +4,17 @@
 #include <chrono>
 #include <instrumentor/profileresult.h>
 
-class InstrumentationTimer {
+class InstrumentationTimer
+{
 private:
-	ProfileResult m_result;
-	std::chrono::time_point<std::chrono::steady_clock> m_startTimepoint;
+    ProfileResult m_result;
+    std::chrono::time_point<std::chrono::steady_clock> m_startTimepoint;
     bool m_stopped{false};
 
 public:
-	InstrumentationTimer(const std::string& name);
-	~InstrumentationTimer();
-	void stop();
+    InstrumentationTimer(const std::string& name);
+    ~InstrumentationTimer();
+    void stop();
 };
 
 #endif /* InstrumentationTimer_h */

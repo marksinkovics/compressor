@@ -7,8 +7,8 @@
 
 #include <compressor/data/reader.h>
 
-template <typename T>
-class MockIDataReader : public compressor::IDataReader<T> {
+template <typename T> class MockIDataReader : public compressor::IDataReader<T>
+{
 public:
     MOCK_METHOD(bool, open, (const std::string& file), (override));
     MOCK_METHOD(T, read, (), (override));

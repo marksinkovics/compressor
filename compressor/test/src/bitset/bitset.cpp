@@ -14,30 +14,34 @@
 
 #include <compressor/utils/utils.h>
 
-class BitsetTests : public ::testing::Test {};
+class BitsetTests : public ::testing::Test
+{
+};
 
-TEST_F(BitsetTests, Init) {
+TEST_F(BitsetTests, Init)
+{
     compressor::bitset v1(1);
     EXPECT_EQ(v1.size(), 1u);
     EXPECT_EQ(v1.num_bytes(), 1u);
-    
+
     compressor::bitset v2(0);
     EXPECT_EQ(v2.size(), 0u);
     EXPECT_EQ(v2.num_bytes(), 0u);
-    
+
     compressor::bitset v3("010");
     EXPECT_EQ(v3.size(), 3u);
     EXPECT_EQ(v3.num_bytes(), 1u);
     EXPECT_FALSE(v3[0]);
     EXPECT_TRUE(v3[1]);
     EXPECT_FALSE(v3[2]);
-    
+
     compressor::bitset v4("0101010101");
     EXPECT_EQ(v4.size(), 10u);
     EXPECT_EQ(v4.num_bytes(), 2u);
 }
 
-TEST_F(BitsetTests, Accessors) {
+TEST_F(BitsetTests, Accessors)
+{
     compressor::bitset v1(8);
     v1.set(0, true);
     EXPECT_TRUE(v1[0]);
@@ -50,7 +54,8 @@ TEST_F(BitsetTests, Accessors) {
     EXPECT_FALSE(v1.test(9));
 }
 
-TEST_F(BitsetTests, Accessors_Invalid) {
+TEST_F(BitsetTests, Accessors_Invalid)
+{
     compressor::bitset v1(8);
     testing::internal::CaptureStderr();
     v1.set(9, true);
@@ -66,7 +71,8 @@ TEST_F(BitsetTests, Accessors_Invalid) {
     EXPECT_STREQ(error2.c_str(), expectedErrorMsgStream.str().c_str());
 }
 
-TEST_F(BitsetTests, ResizeInBits) {
+TEST_F(BitsetTests, ResizeInBits)
+{
     compressor::bitset v1(8);
     v1.set(0, true);
     v1.set(2, true);
@@ -85,7 +91,8 @@ TEST_F(BitsetTests, ResizeInBits) {
     EXPECT_TRUE(v1[2]);
 }
 
-TEST_F(BitsetTests, CopyOperators) {
+TEST_F(BitsetTests, CopyOperators)
+{
     compressor::bitset v1(8);
     v1.set(0);
     v1.set(7);
@@ -95,28 +102,29 @@ TEST_F(BitsetTests, CopyOperators) {
     EXPECT_TRUE(v2.test(7));
 
     v1.resize(16);
-    
+
     EXPECT_EQ(8u, v2.size());
-    
+
     v1.set(10);
     compressor::bitset v3(v1);
     EXPECT_TRUE(v3.test(0));
     EXPECT_TRUE(v3.test(7));
     EXPECT_TRUE(v3.test(10));
-    
+
     compressor::bitset v4 = v1;
     EXPECT_EQ(v4.size(), 16u);
     EXPECT_TRUE(v4.test(0));
     EXPECT_TRUE(v4.test(7));
 }
 
-TEST_F(BitsetTests, MoveOperators) {
+TEST_F(BitsetTests, MoveOperators)
+{
     compressor::bitset v1(9);
     v1.set(0);
     EXPECT_TRUE(v1.test(0));
     v1.set(5);
     EXPECT_TRUE(v1.test(5));
-    
+
     // Move constructor
     compressor::bitset v2(std::move(v1));
 
@@ -125,7 +133,7 @@ TEST_F(BitsetTests, MoveOperators) {
     EXPECT_EQ(v2.size(), 9u);
     EXPECT_TRUE(v2.test(0));
     EXPECT_TRUE(v2.test(5));
-   
+
     // Move assignment
     compressor::bitset v3(1);
     v3 = std::move(v2);
@@ -134,7 +142,8 @@ TEST_F(BitsetTests, MoveOperators) {
     EXPECT_TRUE(v3.test(5));
 }
 
-TEST_F(BitsetTests, AssignmentOperator) {
+TEST_F(BitsetTests, AssignmentOperator)
+{
     compressor::bitset v1(8);
     v1.set(0);
     v1.set(7);
@@ -152,14 +161,14 @@ TEST_F(BitsetTests, AssignmentOperator) {
     EXPECT_TRUE(v3.test(10));
 }
 
-//Relational operators
+// Relational operators
 TEST_F(BitsetTests, Relational)
 {
     compressor::bitset v1{"0101"};
     compressor::bitset v2{"0101"};
     compressor::bitset v3{"1101"};
     compressor::bitset v4{"10101"};
-    
+
     EXPECT_EQ(v1, v2); // 0101 == 0101
     EXPECT_NE(v1, v3); // 0101 != 1101
     EXPECT_GE(v3, v1); // 1101 >  0101
@@ -167,8 +176,9 @@ TEST_F(BitsetTests, Relational)
     EXPECT_LE(v1, v4); // 0101 <  10101
 }
 
-TEST_F(BitsetTests, ToString) {
-    
+TEST_F(BitsetTests, ToString)
+{
+
     compressor::bitset v1(16);
     v1.set(2);
     v1.set(4);
@@ -176,7 +186,7 @@ TEST_F(BitsetTests, ToString) {
     std::stringstream stream;
     stream << v1.str();
     EXPECT_EQ("1000000000010100", stream.str());
-    
+
     compressor::bitset v2(11);
     v2.set(2);
     v2.set(4);
@@ -194,44 +204,44 @@ TEST_F(BitsetTests, bitsets)
     v1.set(10);
     std::stringstream stream1;
     stream1 << v1.str();
-    
+
     std::bitset<11> b1;
     b1.set(2);
     b1.set(4);
     b1.set(10);
     std::stringstream stream2;
     stream2 << b1;
-    
+
     EXPECT_EQ(stream1.str(), stream2.str());
-    
+
     boost::dynamic_bitset<> db1(11);
     db1.flip(2);
     db1.flip(4);
     db1.flip(10);
     std::stringstream stream3;
     stream3 << db1;
-    
+
     EXPECT_EQ(stream1.str(), stream3.str());
 }
 
 TEST_F(BitsetTests, push_back)
 {
-    compressor::bitset v1(0);        //
-    v1.push_back(true);     //1
+    compressor::bitset v1(0); //
+    v1.push_back(true);       // 1
     EXPECT_TRUE(v1[0]);
-    v1.push_back(false);    //01
+    v1.push_back(false); // 01
     EXPECT_FALSE(v1[1]);
-    v1.push_back(true);     //101
+    v1.push_back(true); // 101
     EXPECT_TRUE(v1[2]);
-    v1.push_back(true);     //1101
+    v1.push_back(true); // 1101
     EXPECT_TRUE(v1[3]);
 }
 
 TEST_F(BitsetTests, Append)
 {
     compressor::bitset v1("011");
-    compressor::bitset v2("00");    //00
-    v2.append(v1);      //01100
+    compressor::bitset v2("00"); // 00
+    v2.append(v1);               // 01100
     EXPECT_EQ(compressor::bitset("01100"), v2);
     v2.append(v1);
     EXPECT_EQ(compressor::bitset("01101100"), v2);
@@ -244,9 +254,9 @@ TEST_F(BitsetTests, File)
     compressor::bitset in1("0");
     compressor::bitset in2("101101101");
     compressor::bitset in3("101101101101101101");
-    
+
     uint8_t in4 = 42;
-    
+
     std::cout << "in0  " << in0.str() << " Bit size: " << in0.size() << '\n';
     std::cout << "in1  " << in1.str() << " Bit size: " << in1.size() << '\n';
     std::cout << "in2  " << in2.str() << " Bit size: " << in2.size() << '\n';

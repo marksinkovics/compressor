@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 echo "Generate Ninja - Debug"
 cmake -S . -B build/debug -DCMAKE_BUILD_TYPE=Debug -G Ninja
 

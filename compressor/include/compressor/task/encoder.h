@@ -1,15 +1,15 @@
 #ifndef EncoderTask_h
 #define EncoderTask_h
 
-#include <compressor/task/coder.h>
 #include <compressor/data/data.h>
 #include <compressor/data/reader.h>
 #include <compressor/data/writer.h>
+#include <compressor/task/coder.h>
 
 namespace compressor
 {
 
-class IEncoderTask: public ICoderTask
+class IEncoderTask : public ICoderTask
 {
 public:
     ~IEncoderTask() override = default;
@@ -18,7 +18,7 @@ public:
     virtual IDataWriter<EncodedData>& writer() = 0;
 };
 
-class EncoderTask: public IEncoderTask
+class EncoderTask : public IEncoderTask
 {
 public:
     EncoderTask();
@@ -52,6 +52,6 @@ private:
     DataWriter<EncodedData> writer_;
 };
 
-} // compressor
+} // namespace compressor
 
 #endif /* EncoderTask_h */

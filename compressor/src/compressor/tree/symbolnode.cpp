@@ -28,12 +28,12 @@ SymbolNode& SymbolNode::operator++()
     return *this;
 }
 
-inline bool operator< (const SymbolNode& lhs, const SymbolNode& rhs)
+inline bool operator<(const SymbolNode& lhs, const SymbolNode& rhs)
 {
     return lhs.frequency() < rhs.frequency();
 }
 
-inline bool operator> (const SymbolNode& lhs, const SymbolNode& rhs)
+inline bool operator>(const SymbolNode& lhs, const SymbolNode& rhs)
 {
     return rhs < lhs;
 }
@@ -48,4 +48,4 @@ inline bool operator>=(const SymbolNode& lhs, const SymbolNode& rhs)
     return !(lhs < rhs);
 }
 
-}
+} // namespace compressor
