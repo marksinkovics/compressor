@@ -39,7 +39,7 @@ package_add_test(
         ${SRC_FILES}
     LIBRARIES
         compressor
-        Boost::headers
+        Boost::dynamic_bitset
 )
 
 foreach(target ${PROJECT_NAME} ${PROJECT_NAME}_app)

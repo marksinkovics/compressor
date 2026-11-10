@@ -4,60 +4,51 @@ The project uses [CMake](https://cmake.org) for managing dependencies, configura
 
 ## Prerequisite
 
-Last checked with CMake 4.4.5, Apple Clang 17 (Xcode 26.2) and Boost 1.92 on macOS (2026-11-09).
+Last checked with CMake 4.4.5, Apple Clang 17 (Xcode 26.2) and vcpkg 2025-12-16 on macOS (2026-11-09).
 
 * CMake 3.25 or later
 * A C++23 compiler (Apple Clang 17 / Xcode 26 or later)
 * Ninja
-* Boost 1.81 or later (`brew install boost`), found through its `BoostConfig.cmake`
-  * `boost::dynamic_bitset`, header only, used by the bitset benchmark and the bitset tests
+* [vcpkg](https://learn.microsoft.com/vcpkg/) cloned and bootstrapped, with `VCPKG_ROOT` pointing at it
 * `build/debug/compile_commands.json` is generated for clang-tidy and editors
 
 ## Compile
 
-### Clone
+Third-party libraries come only from vcpkg in manifest mode: `vcpkg.json` lists them (googletest, google benchmark, `boost-dynamic-bitset` for the bitset tests and benchmark) and pins the port versions through `builtin-baseline`. The root `CMakeLists.txt` uses `$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake` as the toolchain unless one is given, and configure installs the ports into `<build dir>/vcpkg_installed`; vcpkg's binary cache makes later configures fast. Every installed port, transitive and host ones included, is pinned to its exact version in `overrides`, and configure fails if one isn't (`cmake/VcpkgPins.cmake`). To add or update a dependency:
 
-This project manages 3rd party dependencies via CMake ExternalProject.
+1. Change `dependencies` (and `builtin-baseline` to a newer vcpkg commit when updating).
+2. Configure; the error lists every port without a matching override, with the version vcpkg chose.
+3. Add or change those `overrides` entries; the `port-version` comes from `$VCPKG_ROOT/versions/<letter>-/<port>.json` or the port's `vcpkg.json`.
 
-### Generate the project files for Ninja and Xcode
+### Presets
 
-1. Go to the root folder of the project
-2. Prepare folders (build/debug, build/release and build/xcode) an generate project files (Ninja, Xcode)
-   Run `./generate.sh`
-3. Run `./build.sh` to build in debug mode
+`CMakePresets.json` has one configure, build, test and workflow preset per configuration. Each builds in `build/<preset>` with warnings as errors.
 
-### Debug build (with Ninja)
+| Preset | Generator | Configuration |
+| --- | --- | --- |
+| `debug` | Ninja | Debug; its `compile_commands.json` feeds clang-tidy and editors |
+| `release` | Ninja | Release, for benchmarks |
+| `asan` | Ninja | Debug with `COMPRESSOR_ASAN=ON` and the `arm64-osx-asan` triplet (macOS only) |
+| `xcode` | Xcode | Debug for the build and test presets (macOS only) |
 
-1. Generate the project (with Ninja)
-   `cmake -S . -B build/debug -DCMAKE_BUILD_TYPE=Debug -DCOMPRESSOR_WERROR=ON -G Ninja`
-2. Build the project (all targets)
-    `cmake --build build/debug` or `./build.sh`
-3. Binary files can be found under _build/debug_
+```bash
+cmake --workflow --preset debug   # configure, build and test in one go
+cmake --preset debug              # configure only
+cmake --build --preset debug      # build
+ctest --preset debug              # test
+```
 
-### Release build (with Ninja)
-
-1. Generate the project (with Ninja)
-   `cmake -S . -B build/release -DCMAKE_BUILD_TYPE=Release -DCOMPRESSOR_WERROR=ON -G Ninja`
-2. Build the project (all targets)
-    `cmake --build build/release`
-3. Binary files can be found under _build/release_
-
-Of course CMake has various options for project generation that can be used under _-G_ such as:
-
-* Xcode
-* Unix Makefiles
-* Ninja
-* etc.
+Local variations (another generator, extra cache variables) go into `CMakeUserPresets.json`, which is ignored by git and can inherit from these presets.
 
 ### Build options
 
 | Option | Default | Effect |
 | --- | --- | --- |
-| `COMPRESSOR_WERROR` | `OFF` | Warnings are errors in our own targets (`-Werror`, `/WX` on MSVC). `./generate.sh` turns it on. |
-| `COMPRESSOR_ASAN` | `OFF` | AddressSanitizer for every target, dependencies included. Use with `CMAKE_BUILD_TYPE=Debug`. On Linux it also finds leaks; Apple Clang has no LeakSanitizer on arm64. |
+| `CMAKE_COMPILE_WARNING_AS_ERROR` | `OFF` | CMake's own option: warnings are errors (`-Werror`, `/WX` on MSVC). The presets turn it on; configuring with `--compile-no-warning-as-error` overrides it. |
+| `COMPRESSOR_ASAN` | `OFF` | AddressSanitizer for our code. Needs an ASan triplet from `triplets/` (`-DVCPKG_TARGET_TRIPLET=arm64-osx-asan` or `x64-linux-asan`), so gtest and benchmark are instrumented too; configure fails without one. Use with `CMAKE_BUILD_TYPE=Debug`. On Linux it also finds leaks; Apple Clang has no LeakSanitizer on arm64. |
 | `COMPRESSOR_PROFILING` | `OFF` | The `PROFILE_*` macros write `result.json` (Chrome trace format) to the working directory. |
 
-Our targets get `-Wall -Wextra -Wpedantic` (`/W4` on MSVC) by linking the `compressor_warnings` interface target from `cmake/Warnings.cmake`; a new target should link it `PRIVATE` as well. Optimization comes from the build type only (Release: `-O3 -DNDEBUG`). Tests are discovered when `ctest` runs (`DISCOVERY_MODE PRE_TEST`), not at build time.
+Every target gets `-Wall -Wextra -Wpedantic` (`/W4` on MSVC) from the root `add_compile_options`; every target built in this tree is ours, and vcpkg headers are included as system headers. Optimization comes from the build type only (Release: `-O3 -DNDEBUG`). Tests are discovered when `ctest` runs (`DISCOVERY_MODE PRE_TEST`), not at build time.
 
 ## Run tests
 
@@ -66,12 +57,7 @@ Tools
 * [Google test framework](https://github.com/google/googletest)
 * [CTest](https://cmake.org/cmake/help/latest/module/CTest.html)
 
-1. Generate the project (with Ninja)
-   `cmake -S . -B build/debug -DCMAKE_BUILD_TYPE=Debug -G Ninja`
-2. Build the project (all targets)
-    `cmake --build build/debug` or `./build.sh`
-3. Run unit tests with CTest
-    `ctest`
+Run `cmake --workflow --preset debug`, or `ctest --preset debug` after a build. A single binary runs directly too, for example `build/debug/compressor/test/compressor_test_app --gtest_filter='BitsetTests.*'`.
 
 The round-trip tests (`RoundTripTests`) encode and decode every file in `compressor_example/samples/raw/` and compare the result byte for byte; a file added there is tested automatically.
 
@@ -91,7 +77,7 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 
 - clang-format and clang-tidy both come from Homebrew's `llvm`, which is keg-only (not on `PATH`). `quality.sh` calls them by full path (`$(brew --prefix llvm)/bin/...`), so another clang-format on `PATH` doesn't matter. Without Homebrew (Linux, CI) both come from `PATH`; PyPI has matching `clang-format` and `clang-tidy` wheels.
 - clang-format must be major version 23 (`CLANG_FORMAT_MAJOR` in `quality.sh`; 23.1.3 is tested). Every major version formats a little differently, so `quality.sh` stops if it finds another one. When `brew upgrade llvm` moves to a new major version, bump `CLANG_FORMAT_MAJOR`, run `tools/quality.sh format`, commit the result on its own, and add that commit to `.git-blame-ignore-revs`.
-- clang-tidy reads `build/debug/compile_commands.json`, so run `./generate.sh` first.
+- clang-tidy reads `build/debug/compile_commands.json`, so run `cmake --preset debug` first.
 - `.git-blame-ignore-revs` lists the commit that reformatted the whole tree. The `git config` line is needed once per clone, so that `git blame` skips that commit.
 
 ### `tools/quality.sh`
@@ -125,8 +111,8 @@ pre-commit run clang-tidy --files compressor/include/compressor/bitset/bitset.h
 
 ## Run benchmark
 
-Tool: [Google benchmark framework](https://github.com/google/benchmark) (master branch)
+Tool: [Google benchmark framework](https://github.com/google/benchmark) (vcpkg port)
 
 :warning: Always use release configuration for benchmarking
 
-After the project is compiled successfully, the benchmarking app is under _build/debug/compressor_benchmark_ folder where `compressor_benchmark` runs the predefined tests
+`cmake --build --preset release`, then run `build/release/compressor_benchmark/compressor_benchmark`.

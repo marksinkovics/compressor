@@ -1,4 +1,17 @@
-cmake_minimum_required(VERSION 3.25)
+# Up to 3.31 for CMP0156 (3.29): de-duplicated static libraries, so Apple ld doesn't warn
+# about gtest and benchmark appearing twice on a link line.
+cmake_minimum_required(VERSION 3.25...3.31)
+
+# Before project(): that's where the toolchain file is read. A toolchain given on the command
+# line wins; chain another one through VCPKG_CHAINLOAD_TOOLCHAIN_FILE.
+if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+    if(NOT DEFINED ENV{VCPKG_ROOT})
+        message(FATAL_ERROR "Set VCPKG_ROOT to a vcpkg checkout; dependencies come from vcpkg.json.")
+    endif()
+    set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+        CACHE FILEPATH "vcpkg toolchain")
+endif()
+
 enable_testing()
 
 project(CompressionProject CXX)
@@ -12,28 +25,37 @@ set(VERSION_MINOR 0 CACHE STRING "Project minor version number.")
 set(VERSION_PATCH 1 CACHE STRING "Project patch version number.")
 mark_as_advanced(VERSION_MAJOR VERSION_MINOR VERSION_PATCH)
 
-option(COMPRESSOR_WERROR "Treat warnings in our own targets as errors." OFF)
-option(COMPRESSOR_ASAN "Build everything with AddressSanitizer." OFF)
+option(COMPRESSOR_ASAN "Build our code with AddressSanitizer (needs an -asan triplet)." OFF)
 option(COMPRESSOR_PROFILING "Make the PROFILE_* macros write result.json." OFF)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
-include(Warnings)
+include(VcpkgPins)
+compressor_check_vcpkg_pins()
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
-# Global on purpose: googletest and benchmark must be instrumented too, or libc++'s
-# container-overflow checks report false positives across the boundary.
+# Global on purpose: every target in this tree is ours; dependencies come prebuilt from vcpkg.
+# CMAKE_COMPILE_WARNING_AS_ERROR adds -Werror or /WX.
+if(MSVC)
+    add_compile_options(/W4)
+else()
+    add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
 # No -fsanitize=leak: Apple Clang rejects it on arm64, and on Linux ASan already includes LSan.
 if(COMPRESSOR_ASAN)
+    if(NOT VCPKG_TARGET_TRIPLET MATCHES "-asan$")
+        message(FATAL_ERROR "COMPRESSOR_ASAN needs an ASan triplet from triplets/, such as "
+                            "-DVCPKG_TARGET_TRIPLET=arm64-osx-asan (now: '${VCPKG_TARGET_TRIPLET}').")
+    endif()
     add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
     add_link_options(-fsanitize=address)
 endif()
 
-add_subdirectory(dependencies/google/googletest)
-set(BENCHMARK_ENABLE_GTEST_TESTS OFF)
-add_subdirectory(dependencies/google/benchmark)
-# Headers only (dynamic_bitset). CONFIG mode because CMake 4 removed the FindBoost module (CMP0167).
-find_package(Boost 1.81.0 REQUIRED CONFIG)
+find_package(GTest CONFIG REQUIRED)
+find_package(benchmark CONFIG REQUIRED)
+find_package(boost_dynamic_bitset CONFIG REQUIRED)
+
 add_subdirectory(argparser)
 add_subdirectory(compressor)
 add_subdirectory(compressor_cli)
@@ -41,16 +63,3 @@ add_subdirectory(compressor_app)
 add_subdirectory(compressor_benchmark)
 add_subdirectory(compressor_example)
 add_subdirectory(lib/instrumentor)
-
-mark_as_advanced(
-    BUILD_GMOCK BUILD_GTEST BUILD_SHARED_LIBS
-    gmock_build_tests gtest_build_samples gtest_build_tests
-    gtest_disable_pthreads gtest_force_shared_crt gtest_hide_internal_symbols
-)
-
-set_target_properties(gtest PROPERTIES FOLDER "dependencies")
-set_target_properties(gtest_main PROPERTIES FOLDER "dependencies")
-set_target_properties(gmock PROPERTIES FOLDER "dependencies")
-set_target_properties(gmock_main PROPERTIES FOLDER "dependencies")
-set_target_properties(benchmark PROPERTIES FOLDER "dependencies")
-set_target_properties(benchmark_main PROPERTIES FOLDER "dependencies")

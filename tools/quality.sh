@@ -127,13 +127,12 @@ job_count() {
     fi
 }
 
-# Our sources in the compile database, NUL-separated; googletest and benchmark are compiled from
-# build/. Test sources appear twice there (library and _app), so the list is deduplicated.
+# Our sources in the compile database, NUL-separated. Test sources appear twice there (library
+# and _app), so the list is deduplicated.
 tidy_sources() {
     grep -o '"file": "[^"]*"' "$BUILD_DIR/compile_commands.json" \
         | sed -e 's/^"file": "//' -e 's/"$//' \
         | grep "^$REPO_ROOT/" \
-        | grep -v "^$REPO_ROOT/build/" \
         | sort -u \
         | tr '\n' '\0'
 }
@@ -308,7 +307,7 @@ check_stages() {
         is_stage "$stage" || fail "unknown stage '$stage' (stages: ${STAGES[*]})"
         tools+=("$(stage_tool "$stage")")
         if [[ "$stage" == clang-tidy ]] && ! is_built; then
-            fail "no compile database in ${BUILD_DIR#"$REPO_ROOT/"}; run './generate.sh' first"
+            fail "no compile database in ${BUILD_DIR#"$REPO_ROOT/"}; run 'cmake --preset debug' first"
         fi
     done
     require_tools "${tools[@]}"

@@ -32,8 +32,6 @@ target_link_libraries(${PROJECT_NAME}
     PUBLIC
         compressor
         argparser
-    PRIVATE
-        compressor_warnings
 )
 
 add_subdirectory(test)

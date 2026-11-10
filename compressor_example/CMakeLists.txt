@@ -34,5 +34,4 @@ endif()
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
         compressor_cli
-        compressor_warnings
 )

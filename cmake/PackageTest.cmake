@@ -25,10 +25,8 @@ macro(package_add_test)
     target_link_libraries(${ADD_PACKAGE_TEST_NAME}
         PUBLIC
             ${ADD_PACKAGE_TEST_LIBRARIES}
-            gtest
-            gmock
-        PRIVATE
-            compressor_warnings
+            GTest::gtest
+            GTest::gmock
     )
 
     add_executable("${ADD_PACKAGE_TEST_NAME}_app"
@@ -45,11 +43,11 @@ macro(package_add_test)
     target_link_libraries("${ADD_PACKAGE_TEST_NAME}_app"
         PRIVATE
             ${ADD_PACKAGE_TEST_LIBRARIES}
-            gtest
-            gmock
-            gtest_main
-            compressor_warnings
+            GTest::gtest
+            GTest::gmock
+            GTest::gtest_main
     )
+
     include(GoogleTest)
     # gtest_add_tests(
     #     TARGET "${ADD_PACKAGE_TEST_NAME}_app"

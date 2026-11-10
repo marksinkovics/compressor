@@ -24,7 +24,6 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SRC_FILES})
 
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)
 target_compile_definitions(${PROJECT_NAME} PUBLIC PROFILING=$<BOOL:${COMPRESSOR_PROFILING}>)
-target_link_libraries(${PROJECT_NAME} PRIVATE compressor_warnings)
 
 target_include_directories(${PROJECT_NAME}
     PUBLIC
