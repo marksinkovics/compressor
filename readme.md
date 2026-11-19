@@ -18,11 +18,17 @@ Decompress data:
 ./compressor_app decode --input path/to/decoded_data --output /path/to/encoded_data
 ```
 
+Without `--input` or `--output`, or with `-`, it reads standard input and writes standard output:
+
+```bash
+tar c some_dir | ./compressor_app encode > some_dir.tar.ingot
+./compressor_app decode -i some_dir.tar.ingot | tar x
+```
+
 For more information, please check the help `compressor_app -h`
 
 ### Limitations
 
-- It stores the raw, encoded and/or decoded data into the memory.
 - It is designed to run only 1 thread
 
 ### :construction: [Development](docs/development.md)

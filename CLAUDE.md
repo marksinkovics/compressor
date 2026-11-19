@@ -13,8 +13,8 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 - Phase 4 (CLI11) is done: `argparser/` deleted, `encode`/`decode` subcommands with `-i`/`-o`, `--help`, `--version`; 65/65 pass.
 - The `asan` workflow passes 65/65 when run by hand (it can't run in Claude's sandbox).
 - Phase 5 (benchmarks and performance) is done: canonical length-limited Huffman (`compressor/huffman/`), decode table, 64-bit bit writer, block stream I/O, corrupt input as `compressor::Error`, and a stored fallback behind a method byte (format in `docs/file_format.md`, numbers in `docs/benchmarks.md`); 94/94 pass. The freestanding core is postponed to Phase 6.
-- Container format (renaming the project to **ingot**: magic `\x89ING`, `.ingot`): step 1 (frame header, 1 MiB blocks with per-block method and CRC32, end block; `docs/file_format.md`) and step 2 (block streaming through `BlockEncoder`/`BlockDecoder`, output via temp file and rename) are done; 125/125 pass.
-- **Next:** container format step 3 (stdin/stdout) in `docs/roadmap.md` ("Container format and streaming"). Renaming the targets to ingot is a later step.
+- Container format (renaming the project to **ingot**: magic `\x89ING`, `.ingot`): step 1 (frame header, 1 MiB blocks with per-block method and CRC32, end block; `docs/file_format.md`) step 2 (block streaming through `BlockEncoder`/`BlockDecoder`, output via temp file and rename) and step 3 (`-`/omitted `-i`/`-o` for stdin/stdout through `stream/stdio.h`) are done; 142/142 pass.
+- **Next:** hardware CRC32 (known issue "CRC32 caps stored blocks", item 2 of "Suggested order" in `docs/roadmap.md`), then multithreaded blocks. Renaming the targets to ingot is a later step.
 
 ## Commands
 
@@ -35,7 +35,7 @@ bash tools/bench-cli.sh           # compressor_app end to end with hyperfine (py
 
 `compressor_app` → `compressor_cli` (CLI11) → `compressor` → `lib/instrumentor`.
 
-- `compressor/`: `Compressor` opens the files and runs `stream/`'s `BlockEncoder`/`BlockDecoder` over `std::istream&`/`std::ostream&`, writing a regular output through a temp file that it renames on success. The coders read and write the container (`docs/file_format.md`) one block at a time with `write_block`/`FrameReader` from `data/data.h`, and call `IEngine::encode_block`/`decode_block`, which choose stored or Huffman per block and check `checksum/crc32`. `huffman/` computes length-limited code lengths (package-merge) and canonical codes; `Engine` encodes through a 64-bit `BitWriter` into an MSB-first payload, decodes through a `DecodeTable` indexed by the next 15 bits, and rebuilds a `tree/` only for `print_graph`.
+- `compressor/`: `Compressor` opens the files (or stdin/stdout for `-`, through `stream/stdio.h`'s buffers) and runs `stream/`'s `BlockEncoder`/`BlockDecoder` over `std::istream&`/`std::ostream&`, writing a regular output through a temp file that it renames on success. The coders read and write the container (`docs/file_format.md`) one block at a time with `write_block`/`FrameReader` from `data/data.h`, and call `IEngine::encode_block`/`decode_block`, which choose stored or Huffman per block and check `checksum/crc32`. `huffman/` computes length-limited code lengths (package-merge) and canonical codes; `Engine` encodes through a 64-bit `BitWriter` into an MSB-first payload, decodes through a `DecodeTable` indexed by the next 15 bits, and rebuilds a `tree/` only for `print_graph`.
 - Every component sits behind an interface (`ICompressor`, `IBlockEncoder`, `IBlockDecoder`, `IEngine`) with a gmock mock in `<pkg>/test/include/<pkg>/test/mock/`.
 - `cmake/PackageTest.cmake`'s `package_add_test` builds each test package twice: as a library, so other test packages can reuse its mocks, and as `<name>_app`, the runnable gtest binary.
 - Source files are listed explicitly in each `CMakeLists.txt`; add new files there.

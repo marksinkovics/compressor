@@ -247,7 +247,8 @@ Each issue names the phase that handles it.
 ### Performance and limitations
 
 - [x] **Slow decoding** (Phase 5 decode table). Each bit was pushed into a `bitset`, followed by a `std::map<bitset, uint8_t>` lookup; now one table lookup per symbol.
-- [ ] **Everything is in memory, single-threaded** (container format with blocks).
+- [ ] **Single-threaded** (container step "multithreaded blocks"). The in-memory part is fixed: container step 2 streams one block at a time.
+- [ ] **CRC32 caps stored blocks at about 1.9 GB/s** (found in container step 2; numbers in `docs/benchmarks.md`, "Block streaming"). The portable slicing-by-8 `crc32` costs 10–15% on Huffman blocks, and stored-block decode drops from a 70 GB/s copy to the CRC's speed. Fix: a hardware path chosen at compile time (ARMv8 `__crc32d`, x86 PCLMULQDQ folding), with the table version kept as the portable fallback for Phase 6's freestanding core; `Crc32Tests` must compare both against zlib. Benchmark stored and Huffman decode before and after.
 
 ### Build and tooling
 
@@ -289,8 +290,13 @@ Decisions: the checksum is CRC32 (IEEE), our own table-driven implementation in 
   - Deleted: `IDataReader`/`IDataWriter`, `DataReader`/`DataWriter`, the `task/` package (`ICoderTask`, `EncoderTask`, `DecoderTask`) and their mocks.
   - Tests: `BlockStreamSizeTests` (round trip at 0, 1, B−1, B, B+1 and 3B with B = 4 KiB, and the stream output equals the in-memory `operator<<` output), `BlockStreamTests` (pipe input for both coders, one engine call per block, stopping at the first failed block, earlier blocks already written, container errors, `read_failed`, `write_failed`), `CompressorTests` rewritten over mock coders and real temp files (replace, onto itself, missing input or directory, failure leaves no temp file, `/dev/null`), and two `FrameReader` tests. 125/125 pass.
   - Benchmarks (`docs/benchmarks.md`, "Block streaming"): CRC32 costs 10–15% on Huffman blocks and caps stored blocks at about 1.9 GB/s. CLI decode is 11% slower only because a new file plus deleting the old one costs more than truncating in place.
-  - Not done: the rename doesn't keep an existing output's permissions or replace a symlink's target (it replaces the link). Hardware CRC32 (ARMv8 `crc32` instructions, x86 PCLMUL) would lift the stored-block limit; see Phase 6 if the core must stay portable.
-- [ ] **Step 3, stdin/stdout:** `-i`/`-o` accept `-` or may be omitted, so the tool works in shell pipelines (`tar c dir | compressor encode > x`). CLI tests plus a piped round trip.
+  - Not done: the rename doesn't keep an existing output's permissions or replace a symlink's target (it replaces the link). Hardware CRC32 is a known issue under "Performance and limitations".
+- [x] **Step 3, stdin/stdout (done):** `-i`/`-o` accept `-` or may be omitted, so the tool works in shell pipelines (`tar c dir | compressor_app encode > x`).
+  - `compressor.h`: `standard_stream` (`"-"`) as an input or output path means stdin or stdout (`./-` names a file called `-`). `StandardStreams{in, out, err}` replaces the `err` constructor argument; `process_streams()` is the default. The standard output is written in place and flushed, a failed flush is `write_failed`, and a failed decode leaves the earlier blocks there. Errors name "standard input".
+  - `stream/stdio.{h,cpp}`: `StdioInputBuf`/`StdioOutputBuf`, `std::streambuf`s over a `FILE*` with a 64 KiB buffer and direct `fread`/`fwrite` for larger pieces; a read error throws, which `std::istream` turns into badbit. Found along the way: libc++'s `std::cin`/`std::cout` go through stdio one character at a time and ignore `sync_with_stdio(false)`, so a pipe was 5x slower than a file. Now a 35 MB release run is 0.065 s encode and 0.145 s decode through pipes, against 0.10 s and 0.18 s between files.
+  - CLI: an omitted `-i`/`-o` defaults to `-`; `-i` still checks that a file exists unless it is `-`. `main.cpp` switches stdin/stdout to binary mode on Windows (untested there).
+  - Tests: `CompressorTests` (stdin to stdout, stdin to a replaced file, a file to stdout, a failed decode keeps the partial stdout, a failing stdout is a write error), `StdioBufTests` (pieces below, at and above the buffer size, `peek`/`get` mixed with `read`, empty input, flush on destruction, read and write errors), `CLITests` (omitted paths, `-` for each, the error names standard input), and `PipeRoundTrip.*` CTests that run `compressor_app` through `compressor_app/test/pipe_roundtrip.cmake`. 142/142 pass.
+  - Not done: encoding to a terminal isn't refused (gzip refuses without `-f`), so `compressor_app encode -i file` with no `-o` prints binary to the terminal.
 - [ ] **Later, multithreaded blocks:** encode several blocks in parallel through a bounded queue, keeping the output order deterministic; benchmark it. Not part of this feature.
 - [ ] **Later, rename to ingot:** the targets (`compressor_app` → `ingot`), the CLI name and help text, the README and the docs. The magic and `.ingot` already use the name.
 
@@ -358,12 +364,14 @@ Existing examples: macOS compressed memory, Linux zram and zswap, Windows memory
 
 ### Suggested order
 
-1. Container format with streaming and blocks.
-2. Folder support and the extra commands.
-3. An LZ77 pipeline next to Huffman.
-4. Deflate output for zip/gzip compatibility.
-5. Searching through the block index.
-6. Read-only compressed file system image, and the compressed-memory experiments.
-7. Advanced options: FM-index, FUSE mount, type-specific transforms.
+1. Container format with streaming and blocks (steps 1–3, done).
+2. Hardware CRC32 (known issue "CRC32 caps stored blocks"), so each thread's blocks get the faster checksum.
+3. Multithreaded blocks (container format, "Later").
+4. Folder support and the extra commands.
+5. An LZ77 pipeline next to Huffman.
+6. Deflate output for zip/gzip compatibility.
+7. Searching through the block index.
+8. Read-only compressed file system image, and the compressed-memory experiments.
+9. Advanced options: FM-index, FUSE mount, type-specific transforms.
 
 The benchmark harness and fuzzing can be added alongside any of these steps.

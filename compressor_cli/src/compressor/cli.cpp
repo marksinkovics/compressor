@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <string>
+#include <string_view>
 
 #include <CLI/CLI.hpp>
 
@@ -15,18 +16,25 @@ namespace
 
 struct Paths
 {
-    std::string input;
-    std::string output;
+    std::string input{standard_stream};
+    std::string output{standard_stream};
 };
+
+std::string display_name(const std::string& path, std::string_view standard_name)
+{
+    return path == standard_stream ? std::string(standard_name) : path;
+}
 
 ::CLI::App* add_command(::CLI::App& app, const std::string& name, const std::string& description,
                         Paths& paths)
 {
     auto* command = app.add_subcommand(name, description);
-    command->add_option("-i,--input", paths.input, "Input file")
-        ->required()
-        ->check(::CLI::ExistingFile);
-    command->add_option("-o,--output", paths.output, "Output file")->required();
+    const ::CLI::Validator existing_file_or_stdin([](std::string& path) {
+        return path == standard_stream ? std::string{} : ::CLI::ExistingFile(path);
+    }, "FILE");
+    command->add_option("-i,--input", paths.input, "Input file; - or omitted: standard input")
+        ->check(existing_file_or_stdin);
+    command->add_option("-o,--output", paths.output, "Output file; - or omitted: standard output");
     return command;
 }
 
@@ -63,13 +71,13 @@ int CLI::run(std::span<const char* const> args)
     {
         if (compressor_->encode(encode_paths.input, encode_paths.output))
             return EXIT_SUCCESS;
-        err_ << "Encoding " << encode_paths.input << " failed\n";
+        err_ << "Encoding " << display_name(encode_paths.input, "standard input") << " failed\n";
         return EXIT_FAILURE;
     }
 
     if (compressor_->decode(decode_paths.input, decode_paths.output))
         return EXIT_SUCCESS;
-    err_ << "Decoding " << decode_paths.input << " failed\n";
+    err_ << "Decoding " << display_name(decode_paths.input, "standard input") << " failed\n";
     return EXIT_FAILURE;
 }
 

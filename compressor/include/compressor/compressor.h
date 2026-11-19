@@ -2,14 +2,28 @@
 #define Compressor_h
 
 #include <filesystem>
-#include <iostream>
+#include <iosfwd>
 #include <memory>
+#include <string_view>
 
 #include <compressor/stream/decoder.h>
 #include <compressor/stream/encoder.h>
 
 namespace compressor
 {
+
+// As an input or output path, the standard input or output; "./-" names a file called "-".
+inline constexpr std::string_view standard_stream = "-";
+
+struct StandardStreams
+{
+    std::istream& in;
+    std::ostream& out;
+    std::ostream& err;
+};
+
+// stdin and stdout through StdioInputBuf and StdioOutputBuf, and std::cerr.
+StandardStreams process_streams();
 
 class ICompressor
 {
@@ -23,13 +37,14 @@ public:
 
 // Writes a regular output through a temporary file next to it and renames that on success, so a
 // failure leaves an existing output untouched and encoding a file onto itself works. Devices and
-// pipes such as /dev/null are written in place.
+// pipes such as /dev/null are written in place, and so is the standard output, where a failed
+// decode may leave the blocks before the failure.
 class Compressor : public ICompressor
 {
 public:
     Compressor();
     Compressor(std::unique_ptr<IBlockEncoder> encoder, std::unique_ptr<IBlockDecoder> decoder,
-               std::ostream& err = std::cerr);
+               StandardStreams streams = process_streams());
     ~Compressor() override = default;
 
     bool encode(const std::filesystem::path& input, const std::filesystem::path& output) override;
@@ -38,7 +53,7 @@ public:
 private:
     std::unique_ptr<IBlockEncoder> encoder_;
     std::unique_ptr<IBlockDecoder> decoder_;
-    std::ostream& err_;
+    StandardStreams streams_;
 };
 
 } // namespace compressor

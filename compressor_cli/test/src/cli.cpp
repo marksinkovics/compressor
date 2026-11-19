@@ -175,12 +175,33 @@ TEST_F(CLITests, Option_without_a_value_at_the_end_fails)
     EXPECT_NE(run({"encode", "-o", output_, "--input"}), EXIT_SUCCESS);
 }
 
-TEST_F(CLITests, Missing_output_option_fails)
+TEST_F(CLITests, Omitted_paths_mean_the_standard_streams)
 {
-    EXPECT_CALL(*compressor_, decode(::testing::_, ::testing::_)).Times(0);
+    EXPECT_CALL(*compressor_, decode(fs::path("-"), fs::path("-"))).WillOnce(Return(true));
 
-    EXPECT_NE(run({"decode", "-i", input_}), EXIT_SUCCESS);
-    EXPECT_THAT(err_.str(), HasSubstr("--output"));
+    EXPECT_EQ(run({"decode"}), EXIT_SUCCESS);
+}
+
+TEST_F(CLITests, A_dash_input_means_standard_input)
+{
+    EXPECT_CALL(*compressor_, encode(fs::path("-"), fs::path(output_))).WillOnce(Return(true));
+
+    EXPECT_EQ(run({"encode", "-i", "-", "-o", output_}), EXIT_SUCCESS);
+}
+
+TEST_F(CLITests, A_dash_output_means_standard_output)
+{
+    EXPECT_CALL(*compressor_, decode(fs::path(input_), fs::path("-"))).WillOnce(Return(true));
+
+    EXPECT_EQ(run({"decode", "-i", input_, "-o", "-"}), EXIT_SUCCESS);
+}
+
+TEST_F(CLITests, Failed_encoding_of_standard_input_names_it)
+{
+    EXPECT_CALL(*compressor_, encode(::testing::_, ::testing::_)).WillOnce(Return(false));
+
+    EXPECT_NE(run({"encode", "-o", output_}), EXIT_SUCCESS);
+    EXPECT_THAT(err_.str(), HasSubstr("Encoding standard input failed"));
 }
 
 TEST_F(CLITests, Unknown_option_fails)

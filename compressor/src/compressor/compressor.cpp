@@ -1,15 +1,18 @@
 #include <compressor/compressor.h>
 
+#include <cstdio>
 #include <expected>
 #include <filesystem>
 #include <fstream>
 #include <ios>
+#include <iostream>
 #include <istream>
 #include <memory>
 #include <optional>
 #include <ostream>
 #include <random>
 #include <sstream>
+#include <string>
 #include <string_view>
 #include <system_error>
 #include <utility>
@@ -17,6 +20,7 @@
 #include <compressor/error.h>
 #include <compressor/stream/decoder.h>
 #include <compressor/stream/encoder.h>
+#include <compressor/stream/stdio.h>
 
 #include <instrumentor/instrumentor.h>
 
@@ -65,20 +69,59 @@ bool replaces_output(const fs::path& output)
     return !fs::exists(status) || fs::is_regular_file(status);
 }
 
+bool is_standard(const fs::path& path)
+{
+    return path.native() == fs::path(standard_stream).native();
+}
+
+std::string display_name(const fs::path& path, std::string_view standard_name)
+{
+    return is_standard(path) ? std::string(standard_name) : path.string();
+}
+
 template <class Coder>
-bool transcode(std::ostream& err, std::string_view action, const fs::path& input,
+std::expected<void, Error> write_in_place(Coder& code, std::istream& in, std::ostream& out)
+{
+    std::expected<void, Error> result = code(in, out);
+    out.flush();
+    if (result && out.fail())
+    {
+        result = std::unexpected(Error::write_failed);
+    }
+    return result;
+}
+
+template <class Coder>
+bool transcode(const StandardStreams& streams, std::string_view action, const fs::path& input,
                const fs::path& output, Coder code)
 {
-    std::ifstream in(input, std::ios::in | std::ios::binary);
-    if (!in)
+    std::ostream& err = streams.err;
+    std::ifstream file;
+    std::istream* in = &streams.in;
+    if (!is_standard(input))
     {
-        err << "Cannot open input file: " << input.string() << '\n';
-        return false;
+        file.open(input, std::ios::in | std::ios::binary);
+        if (!file)
+        {
+            err << "Cannot open input file: " << input.string() << '\n';
+            return false;
+        }
+        in = &file;
     }
     const auto report = [&](Error error) {
-        err << "Cannot " << action << ' ' << input.string() << ": " << describe(error) << '\n';
+        err << "Cannot " << action << ' ' << display_name(input, "standard input") << ": "
+            << describe(error) << '\n';
         return false;
     };
+
+    if (is_standard(output))
+    {
+        if (auto result = write_in_place(code, *in, streams.out); !result)
+        {
+            return report(result.error());
+        }
+        return true;
+    }
 
     if (!replaces_output(output))
     {
@@ -88,7 +131,7 @@ bool transcode(std::ostream& err, std::string_view action, const fs::path& input
             err << "Cannot open output file: " << output.string() << '\n';
             return false;
         }
-        if (auto result = code(in, out); !result)
+        if (auto result = write_in_place(code, *in, out); !result)
         {
             return report(result.error());
         }
@@ -101,8 +144,8 @@ bool transcode(std::ostream& err, std::string_view action, const fs::path& input
         err << "Cannot open output file: " << output.string() << '\n';
         return false;
     }
-    std::expected<void, Error> result = code(in, temp->stream);
-    in.close();
+    std::expected<void, Error> result = code(*in, temp->stream);
+    file.close();
     temp->stream.close();
     if (result && temp->stream.fail())
     {
@@ -126,23 +169,33 @@ bool transcode(std::ostream& err, std::string_view action, const fs::path& input
 
 } // namespace
 
+StandardStreams process_streams()
+{
+    static StdioInputBuf in_buf(stdin);
+    static StdioOutputBuf out_buf(stdout);
+    static std::istream in(&in_buf);
+    static std::ostream out(&out_buf);
+    return {.in = in, .out = out, .err = std::cerr};
+}
+
 Compressor::Compressor()
     : Compressor(std::make_unique<BlockEncoder>(), std::make_unique<BlockDecoder>())
 {
 }
 
 Compressor::Compressor(std::unique_ptr<IBlockEncoder> encoder,
-                       std::unique_ptr<IBlockDecoder> decoder, std::ostream& err)
+                       std::unique_ptr<IBlockDecoder> decoder, StandardStreams streams)
     : encoder_(std::move(encoder))
     , decoder_(std::move(decoder))
-    , err_(err)
+    , streams_(streams)
 {
 }
 
 bool Compressor::encode(const fs::path& input, const fs::path& output)
 {
     PROFILE_SESSION("Compressor::Encode")
-    return transcode(err_, "encode", input, output, [this](std::istream& in, std::ostream& out) {
+    return transcode(streams_, "encode", input, output,
+                     [this](std::istream& in, std::ostream& out) {
         return encoder_->encode(in, out);
     });
 }
@@ -150,7 +203,8 @@ bool Compressor::encode(const fs::path& input, const fs::path& output)
 bool Compressor::decode(const fs::path& input, const fs::path& output)
 {
     PROFILE_SESSION("Compressor::Decode")
-    return transcode(err_, "decode", input, output, [this](std::istream& in, std::ostream& out) {
+    return transcode(streams_, "decode", input, output,
+                     [this](std::istream& in, std::ostream& out) {
         return decoder_->decode(in, out);
     });
 }

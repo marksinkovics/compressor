@@ -15,6 +15,7 @@ set(INCLUDE_FILES
     "${COMPRESSOR_INCLUDE_DIR}/huffman/huffman.h"
     "${COMPRESSOR_INCLUDE_DIR}/stream/encoder.h"
     "${COMPRESSOR_INCLUDE_DIR}/stream/decoder.h"
+    "${COMPRESSOR_INCLUDE_DIR}/stream/stdio.h"
 )
 
 set(SRC_DIR ${PROJECT_SOURCE_DIR}/src)
@@ -32,6 +33,7 @@ set(SRC_FILES
     "${COMPRESSOR_SRC_DIR}/huffman/huffman.cpp"
     "${COMPRESSOR_SRC_DIR}/stream/encoder.cpp"
     "${COMPRESSOR_SRC_DIR}/stream/decoder.cpp"
+    "${COMPRESSOR_SRC_DIR}/stream/stdio.cpp"
 )
 
 add_library(${PROJECT_NAME} ${INCLUDE_FILES} ${SRC_FILES} )

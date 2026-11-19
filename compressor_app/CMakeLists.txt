@@ -27,3 +27,19 @@ target_link_libraries(${PROJECT_NAME}
     PRIVATE
         compressor_cli
 )
+
+set(SAMPLES_DIR "${CMAKE_SOURCE_DIR}/compressor_example/samples/raw")
+foreach(sample empty lorem_50p.txt flower.png)
+    if(sample STREQUAL "empty")
+        set(input "")
+    else()
+        set(input "${SAMPLES_DIR}/${sample}")
+    endif()
+    add_test(NAME PipeRoundTrip.${sample}
+        COMMAND "${CMAKE_COMMAND}"
+            "-DAPP=$<TARGET_FILE:${PROJECT_NAME}>"
+            "-DINPUT=${input}"
+            "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/pipe_roundtrip/${sample}"
+            -P "${PROJECT_SOURCE_DIR}/test/pipe_roundtrip.cmake"
+    )
+endforeach()

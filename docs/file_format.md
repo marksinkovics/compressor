@@ -65,4 +65,4 @@ Errors (`compressor::Error`):
 | `corrupt_payload` | A Huffman payload ends before the decoded size is reached, no code matches within `max_code_length` bits, bytes follow the one that holds the last code, or a padding bit isn't zero |
 | `checksum_mismatch` | A block decodes, but its CRC32 differs |
 
-`compressor_app decode` reports the error on stderr, exits non-zero and doesn't create or change the output file.
+`compressor_app decode` reports the error on stderr, exits non-zero and doesn't create or change the output file. Decoding to standard output can't take back what is already written: the blocks before the failing one stay in the output.

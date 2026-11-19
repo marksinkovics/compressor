@@ -82,7 +82,7 @@ protected:
 
     compressor::Compressor make_compressor()
     {
-        return {std::move(encoder_), std::move(decoder_), err_};
+        return {std::move(encoder_), std::move(decoder_), {.in = in_, .out = out_, .err = err_}};
     }
 
     std::vector<std::string> files() const
@@ -101,6 +101,8 @@ protected:
     fs::path output_;
     std::unique_ptr<MockIBlockEncoder> encoder_ = std::make_unique<MockIBlockEncoder>();
     std::unique_ptr<MockIBlockDecoder> decoder_ = std::make_unique<MockIBlockDecoder>();
+    std::istringstream in_{"xyz"};
+    std::ostringstream out_;
     std::ostringstream err_;
 };
 
@@ -204,3 +206,50 @@ TEST_F(CompressorTests, A_device_output_is_written_in_place)
     EXPECT_EQ(err_.str(), "");
 }
 #endif
+
+TEST_F(CompressorTests, Encode_reads_standard_input_and_writes_standard_output)
+{
+    EXPECT_CALL(*encoder_, encode(_, _)).WillOnce(shout);
+
+    EXPECT_TRUE(make_compressor().encode("-", "-"));
+    EXPECT_EQ(out_.str(), "XYZ");
+    EXPECT_EQ(files(), (std::vector<std::string>{"input.txt"}));
+    EXPECT_EQ(err_.str(), "");
+}
+
+TEST_F(CompressorTests, Standard_input_can_be_decoded_into_a_file)
+{
+    write_file(output_, std::string(4096, 'x'));
+    EXPECT_CALL(*decoder_, decode(_, _)).WillOnce(shout);
+
+    EXPECT_TRUE(make_compressor().decode("-", output_));
+    EXPECT_EQ(read_file(output_), "XYZ");
+    EXPECT_EQ(files(), (std::vector<std::string>{"input.txt", "output.bin"}));
+}
+
+TEST_F(CompressorTests, A_file_can_be_decoded_to_standard_output)
+{
+    EXPECT_CALL(*decoder_, decode(_, _)).WillOnce(shout);
+
+    EXPECT_TRUE(make_compressor().decode(input_, "-"));
+    EXPECT_EQ(out_.str(), "ABC");
+    EXPECT_EQ(files(), (std::vector<std::string>{"input.txt"}));
+}
+
+TEST_F(CompressorTests, A_failed_decode_to_standard_output_keeps_what_was_written)
+{
+    EXPECT_CALL(*decoder_, decode(_, _)).WillOnce(fail_halfway);
+
+    EXPECT_FALSE(make_compressor().decode("-", "-"));
+    EXPECT_EQ(out_.str(), "partial");
+    EXPECT_THAT(err_.str(), HasSubstr("Cannot decode standard input"));
+}
+
+TEST_F(CompressorTests, A_failing_standard_output_is_a_write_error)
+{
+    out_.setstate(std::ios::badbit);
+    EXPECT_CALL(*encoder_, encode(_, _)).WillOnce(shout);
+
+    EXPECT_FALSE(make_compressor().encode(input_, "-"));
+    EXPECT_THAT(err_.str(), HasSubstr("could not be written"));
+}

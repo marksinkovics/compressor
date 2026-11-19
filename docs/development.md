@@ -61,6 +61,8 @@ Run `cmake --workflow --preset debug`, or `ctest --preset debug` after a build. 
 
 The round-trip tests (`RoundTripTests`) encode and decode every file in `compressor_example/samples/raw/` and compare the result byte for byte; a file added there is tested automatically.
 
+`PipeRoundTrip.*` (in `compressor_app/CMakeLists.txt`) run the built `compressor_app` through `compressor_app/test/pipe_roundtrip.cmake`: stdin-to-stdout encoding must match file encoding, and `encode | decode` must give the input back. They cover an empty input, `lorem_50p.txt` and `flower.png`.
+
 Tests for known bugs are added with a `DISABLED_` prefix until the fix lands. Run one with `--gtest_also_run_disabled_tests --gtest_filter=<Suite>.DISABLED_<name>`; some of them crash or hang before their fix, so run them one at a time.
 
 ## Code quality
