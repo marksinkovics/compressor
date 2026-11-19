@@ -11,7 +11,8 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 - Phase 2 (bug fixes) is done: all edge-case tests enabled, 91/91 pass; `compressor_app` returns non-zero on failure.
 - Phase 3 (build, tooling and platforms) in progress: steps "CMake" (CMake 3.25+, C++23), "Flags per target" (`COMPRESSOR_*` options, native arm64 Xcode) and "vcpkg" (manifest, global warning flags, ASan triplets), "Presets" and "Quality tools on the new build" are done; step "CI" is deferred.
 - Phase 4 (CLI11) is done: `argparser/` deleted, `encode`/`decode` subcommands with `-i`/`-o`, `--help`, `--version`; 65/65 pass.
-- **Next:** run `cmake --workflow --preset asan` once outside Claude's sandbox (never verified), then Phase 5 step "Freestanding core" (`docs/roadmap.md`).
+- The `asan` workflow passes 65/65 when run by hand (it can't run in Claude's sandbox).
+- **Next:** Phase 5 step "Freestanding core" (`docs/roadmap.md`); start with a plan for approval.
 
 ## Commands
 
