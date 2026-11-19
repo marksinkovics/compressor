@@ -159,3 +159,10 @@ After container step 2 ([roadmap.md](roadmap.md#container-format-and-streaming))
 - **CRC32 cost (step 1, not measured then):** on Huffman blocks, encode and decode get 10–15% slower (geomean on Canterbury and Silesia). Stored blocks are now limited by the CRC: decode drops from about 70,000 MiB/s (one copy) to about 1,900 MiB/s, which is the slicing-by-8 CRC's own speed; stored encode drops from 1,700–2,700 to 850–1,150 MiB/s.
 - **Streaming itself:** the in-memory `Engine` numbers are unchanged within noise.
 - **CLI time:** on `mozilla`, encode 172 → 181 ms (+5%, within σ) and decode 265 → 294 ms (+11%). The decode gap is the file system, not the codec: the old binary truncates the existing output in place, the new one creates a new file and deletes the old one on rename. With the output removed before each run, both take 298–304 ms. The encoded bytes are identical to step 1's.
+
+## Hardware CRC32 (2026-11-19)
+
+`crc32()` switched from slicing-by-8 to ARMv8 `crc32x` ([roadmap.md](roadmap.md), known issue "CRC32 caps stored blocks"). In-memory `Engine` benchmarks, 3 repetitions (medians), Apple M3 Max under load average 9–46, so differences under about 10% are noise. Before: `docs/benchmarks/hardware-crc32-before.json`, after: `docs/benchmarks/hardware-crc32.json`.
+
+- **Stored blocks** (`flower.png`, `lena.jpg`): decode about 2,100 → 7,600–8,000 MiB/s, now limited by one serial `crc32x` chain rather than the table lookups; encode 940–1,250 → 1,470–2,200 MiB/s.
+- **Huffman blocks:** decode geomean +13% on Canterbury, +9% on Silesia; encode +20% and +19%. This wins back most of the 10–15% that the CRC cost in container step 1.

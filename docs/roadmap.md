@@ -248,7 +248,8 @@ Each issue names the phase that handles it.
 
 - [x] **Slow decoding** (Phase 5 decode table). Each bit was pushed into a `bitset`, followed by a `std::map<bitset, uint8_t>` lookup; now one table lookup per symbol.
 - [ ] **Single-threaded** (container step "multithreaded blocks"). The in-memory part is fixed: container step 2 streams one block at a time.
-- [ ] **CRC32 caps stored blocks at about 1.9 GB/s** (found in container step 2; numbers in `docs/benchmarks.md`, "Block streaming"). The portable slicing-by-8 `crc32` costs 10–15% on Huffman blocks, and stored-block decode drops from a 70 GB/s copy to the CRC's speed. Fix: a hardware path chosen at compile time (ARMv8 `__crc32d`, x86 PCLMULQDQ folding), with the table version kept as the portable fallback for Phase 6's freestanding core; `Crc32Tests` must compare both against zlib. Benchmark stored and Huffman decode before and after.
+- [x] **CRC32 caps stored blocks at about 1.9 GB/s (done)** (found in container step 2). `compressor/checksum/crc32.{h,cpp}` now picks a hardware path at compile time: ARMv8 `__crc32d`/`__crc32b` when `__ARM_FEATURE_CRC32` is defined (Apple Silicon by default), x86 PCLMULQDQ folding (4×128-bit lanes, Barrett reduction, Intel/zlib constants) when `__PCLMUL__` and `__SSE4_1__` are. `crc32_portable()` keeps slicing-by-8 as the fallback for Phase 6, and `crc32_hardware` says which one `crc32()` uses. `Crc32Tests` compare both against zlib (lengths 0–300, 1 MB, unaligned starts, continuation) and check that Apple arm64 uses the hardware path. The x86 path was checked under Rosetta (`-arch x86_64 -mpclmul -msse4.1`) against the portable CRC, not in CI. Results (`docs/benchmarks.md`, "Hardware CRC32"): stored decode about 2,100 → 8,000 MiB/s, Huffman decode +5–20%, encode +10–30%.
+- [ ] **Hardware CRC32 isn't on by default everywhere.** Generic x86-64 and Linux aarch64 builds don't define `__PCLMUL__`/`__ARM_FEATURE_CRC32`, so they fall back to slicing-by-8 unless built with `-mpclmul -msse4.1` (or `-march=x86-64-v3`) or `-march=armv8-a+crc`. Options: a CMake option adding those flags, or runtime dispatch (`target` attributes plus a CPU check). Also, the ARM loop is one `crc32x` chain, latency-bound at about 8 GB/s on an M3 Max; three interleaved chains merged with PMULL would roughly triple it, if stored blocks ever matter that much.
 
 ### Build and tooling
 
@@ -365,7 +366,7 @@ Existing examples: macOS compressed memory, Linux zram and zswap, Windows memory
 ### Suggested order
 
 1. Container format with streaming and blocks (steps 1–3, done).
-2. Hardware CRC32 (known issue "CRC32 caps stored blocks"), so each thread's blocks get the faster checksum.
+2. Hardware CRC32 (known issue "CRC32 caps stored blocks", done).
 3. Multithreaded blocks (container format, "Later").
 4. Folder support and the extra commands.
 5. An LZ77 pipeline next to Huffman.

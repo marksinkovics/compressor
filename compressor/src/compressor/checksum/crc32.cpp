@@ -1,9 +1,19 @@
 #include <compressor/checksum/crc32.h>
 
 #include <array>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <span>
+
+#if defined(__ARM_FEATURE_CRC32)
+#include <arm_acle.h>
+#define COMPRESSOR_CRC32_ARM 1
+#elif defined(__PCLMUL__) && defined(__SSE4_1__)
+#include <immintrin.h>
+#define COMPRESSOR_CRC32_PCLMUL 1
+#endif
 
 namespace compressor
 {
@@ -46,11 +56,9 @@ uint32_t load_le32(std::span<const uint8_t, 4> bytes)
            (static_cast<uint32_t>(bytes[2]) << 16U) | (static_cast<uint32_t>(bytes[3]) << 24U);
 }
 
-} // namespace
-
-uint32_t crc32(std::span<const uint8_t> bytes, uint32_t crc)
+// Works on the inverted CRC, like the hardware paths, so they can hand their tail over.
+uint32_t crc32_inverted_portable(std::span<const uint8_t> bytes, uint32_t crc)
 {
-    crc = ~crc;
     while (bytes.size() >= 8)
     {
         const uint32_t low = crc ^ load_le32(bytes.first<4>());
@@ -65,7 +73,112 @@ uint32_t crc32(std::span<const uint8_t> bytes, uint32_t crc)
     {
         crc = (crc >> 8U) ^ tables[0][(crc ^ byte) & 0xFFU];
     }
-    return ~crc;
+    return crc;
+}
+
+#if defined(COMPRESSOR_CRC32_ARM)
+
+uint32_t crc32_inverted_hardware(std::span<const uint8_t> bytes, uint32_t crc)
+{
+    static_assert(std::endian::native == std::endian::little);
+    while (bytes.size() >= 8)
+    {
+        uint64_t word = 0;
+        std::memcpy(&word, bytes.data(), sizeof(word));
+        crc = __crc32d(crc, word);
+        bytes = bytes.subspan(8);
+    }
+    for (const uint8_t byte : bytes)
+    {
+        crc = __crc32b(crc, byte);
+    }
+    return crc;
+}
+
+#elif defined(COMPRESSOR_CRC32_PCLMUL)
+
+// Folding with carry-less multiplication and a Barrett reduction, after Intel's "Fast CRC
+// Computation for Generic Polynomials Using PCLMULQDQ Instruction" (the constants are
+// x^n mod P for the reflected polynomial, as in zlib's and Chromium's versions).
+uint32_t crc32_inverted_hardware(std::span<const uint8_t> bytes, uint32_t crc)
+{
+    if (bytes.size() < 64)
+    {
+        return crc32_inverted_portable(bytes, crc);
+    }
+    const auto load = [](std::span<const uint8_t> from) {
+        return _mm_loadu_si128(reinterpret_cast<const __m128i*>(from.data()));
+    };
+    const auto fold = [](__m128i value, __m128i constants, __m128i next) {
+        const __m128i low = _mm_clmulepi64_si128(value, constants, 0x00);
+        const __m128i high = _mm_clmulepi64_si128(value, constants, 0x11);
+        return _mm_xor_si128(_mm_xor_si128(low, high), next);
+    };
+
+    __m128i x1 = _mm_xor_si128(load(bytes), _mm_cvtsi32_si128(static_cast<int>(crc)));
+    __m128i x2 = load(bytes.subspan(16));
+    __m128i x3 = load(bytes.subspan(32));
+    __m128i x4 = load(bytes.subspan(48));
+    bytes = bytes.subspan(64);
+
+    const __m128i k1k2 = _mm_set_epi64x(0x01c6e41596, 0x0154442bd4);
+    while (bytes.size() >= 64)
+    {
+        x1 = fold(x1, k1k2, load(bytes));
+        x2 = fold(x2, k1k2, load(bytes.subspan(16)));
+        x3 = fold(x3, k1k2, load(bytes.subspan(32)));
+        x4 = fold(x4, k1k2, load(bytes.subspan(48)));
+        bytes = bytes.subspan(64);
+    }
+
+    const __m128i k3k4 = _mm_set_epi64x(0x00ccaa009e, 0x01751997d0);
+    x1 = fold(x1, k3k4, x2);
+    x1 = fold(x1, k3k4, x3);
+    x1 = fold(x1, k3k4, x4);
+    while (bytes.size() >= 16)
+    {
+        x1 = fold(x1, k3k4, load(bytes));
+        bytes = bytes.subspan(16);
+    }
+
+    // 128 bits to 64.
+    const __m128i low32 = _mm_setr_epi32(-1, 0, -1, 0);
+    x1 = _mm_xor_si128(_mm_srli_si128(x1, 8), _mm_clmulepi64_si128(x1, k3k4, 0x10));
+    const __m128i k5 = _mm_set_epi64x(0, 0x0163cd6124);
+    x1 = _mm_xor_si128(_mm_clmulepi64_si128(_mm_and_si128(x1, low32), k5, 0x00),
+                       _mm_srli_si128(x1, 4));
+
+    // Barrett reduction to 32 bits.
+    const __m128i poly = _mm_set_epi64x(0x01f7011641, 0x01db710641);
+    __m128i x = _mm_clmulepi64_si128(_mm_and_si128(x1, low32), poly, 0x10);
+    x = _mm_clmulepi64_si128(_mm_and_si128(x, low32), poly, 0x00);
+    crc = static_cast<uint32_t>(_mm_extract_epi32(_mm_xor_si128(x1, x), 1));
+
+    return crc32_inverted_portable(bytes, crc);
+}
+
+#endif
+
+} // namespace
+
+#if defined(COMPRESSOR_CRC32_ARM) || defined(COMPRESSOR_CRC32_PCLMUL)
+const bool crc32_hardware = true;
+#else
+const bool crc32_hardware = false;
+#endif
+
+uint32_t crc32(std::span<const uint8_t> bytes, uint32_t crc)
+{
+#if defined(COMPRESSOR_CRC32_ARM) || defined(COMPRESSOR_CRC32_PCLMUL)
+    return ~crc32_inverted_hardware(bytes, ~crc);
+#else
+    return ~crc32_inverted_portable(bytes, ~crc);
+#endif
+}
+
+uint32_t crc32_portable(std::span<const uint8_t> bytes, uint32_t crc)
+{
+    return ~crc32_inverted_portable(bytes, ~crc);
 }
 
 } // namespace compressor

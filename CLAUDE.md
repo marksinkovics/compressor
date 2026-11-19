@@ -14,7 +14,8 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 - The `asan` workflow passes 65/65 when run by hand (it can't run in Claude's sandbox).
 - Phase 5 (benchmarks and performance) is done: canonical length-limited Huffman (`compressor/huffman/`), decode table, 64-bit bit writer, block stream I/O, corrupt input as `compressor::Error`, and a stored fallback behind a method byte (format in `docs/file_format.md`, numbers in `docs/benchmarks.md`); 94/94 pass. The freestanding core is postponed to Phase 6.
 - Container format (renaming the project to **ingot**: magic `\x89ING`, `.ingot`): step 1 (frame header, 1 MiB blocks with per-block method and CRC32, end block; `docs/file_format.md`) step 2 (block streaming through `BlockEncoder`/`BlockDecoder`, output via temp file and rename) and step 3 (`-`/omitted `-i`/`-o` for stdin/stdout through `stream/stdio.h`) are done; 142/142 pass.
-- **Next:** hardware CRC32 (known issue "CRC32 caps stored blocks", item 2 of "Suggested order" in `docs/roadmap.md`), then multithreaded blocks. Renaming the targets to ingot is a later step.
+- Hardware CRC32 is done: `crc32()` uses ARMv8 CRC32 or x86 PCLMULQDQ when the compiler targets them, else `crc32_portable()`; 144/144 pass.
+- **Next:** multithreaded blocks (item 3 of "Suggested order" in `docs/roadmap.md`; container format, "Later"). Renaming the targets to ingot is a later step.
 
 ## Commands
 
