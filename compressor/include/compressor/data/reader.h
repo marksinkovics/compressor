@@ -7,6 +7,7 @@
 #include <expected>
 #include <fstream>
 #include <string>
+#include <type_traits>
 
 namespace compressor
 {
@@ -34,17 +35,24 @@ public:
     // operator>> sets failbit only when the data it read is invalid.
     std::expected<T, Error> read() override
     {
-        T data;
-        input_stream_ >> data;
-        if (input_stream_.bad())
+        if constexpr (std::is_same_v<T, EncodedData>)
         {
-            return std::unexpected(Error::read_failed);
+            return read_encoded(input_stream_);
         }
-        if (input_stream_.fail())
+        else
         {
-            return std::unexpected(Error::corrupt_header);
+            T data;
+            input_stream_ >> data;
+            if (input_stream_.bad())
+            {
+                return std::unexpected(Error::read_failed);
+            }
+            if (input_stream_.fail())
+            {
+                return std::unexpected(Error::corrupt_header);
+            }
+            return data;
         }
-        return data;
     }
 
     void close() override

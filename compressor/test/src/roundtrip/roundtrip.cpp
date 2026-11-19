@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -240,14 +241,28 @@ TEST_F(EdgeCaseTests, Decoding_a_truncated_payload_fails_and_leaves_the_output_u
     EXPECT_EQ(read_bytes(decoded_), expected);
 }
 
-TEST_F(EdgeCaseTests, Incompressible_input_is_stored_with_a_nine_byte_header)
+TEST_F(EdgeCaseTests, Incompressible_input_is_stored_with_only_the_framing_added)
 {
     const fs::path sample = fs::path(samples_dir) / "flower.png";
     ASSERT_TRUE(fs::exists(sample));
     ASSERT_TRUE(encode(sample, encoded_));
 
-    EXPECT_EQ(fs::file_size(encoded_), fs::file_size(sample) + 9);
-    EXPECT_EQ(read_bytes(encoded_).front(), '\0'); // method: stored
+    // Frame header, one 13-byte header per 1 MiB block, end block.
+    const std::uintmax_t blocks = (fs::file_size(sample) + (1U << 20U) - 1) >> 20U;
+    EXPECT_EQ(fs::file_size(encoded_), fs::file_size(sample) + 8 + (13 * blocks) + 9);
+    EXPECT_EQ(read_bytes(encoded_)[8], '\0'); // first block's method: stored
+}
+
+TEST_F(EdgeCaseTests, Decoding_a_changed_byte_fails_the_checksum_and_creates_no_output)
+{
+    const fs::path sample = fs::path(samples_dir) / "flower.png";
+    ASSERT_TRUE(encode(sample, encoded_));
+    std::vector<char> bytes = read_bytes(encoded_);
+    bytes[100] = bytes[100] == 'A' ? 'B' : 'A';
+    write_bytes(encoded_, std::string(bytes.begin(), bytes.end()));
+
+    EXPECT_FALSE(decode(encoded_, decoded_));
+    EXPECT_FALSE(fs::exists(decoded_));
 }
 
 TEST_F(EdgeCaseTests, Decoding_with_bytes_appended_fails)

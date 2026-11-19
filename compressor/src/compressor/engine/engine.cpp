@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include <compressor/checksum/crc32.h>
 #include <compressor/data/data.h>
 #include <compressor/engine/engine.h>
 #include <compressor/error.h>
@@ -182,6 +183,11 @@ private:
 
 } // namespace
 
+Engine::Engine(uint8_t block_size_log2)
+    : block_size_log2_(block_size_log2)
+{
+}
+
 void Engine::set_codes(const CodeLengths& lengths)
 {
     codes_ = canonical_codes(lengths);
@@ -227,17 +233,61 @@ void Engine::print_dict() const
 
 EncodedData Engine::encode(const DecodedData& data)
 {
+    EncodedData encoded;
+    encoded.block_size_log2_ = block_size_log2_;
+    const std::size_t block_size = std::size_t{1} << block_size_log2_;
+    const std::span<const uint8_t> bytes = data.data_;
+    for (std::size_t offset = 0; offset < bytes.size(); offset += block_size)
+    {
+        encoded.blocks_.push_back(
+            encode_block(bytes.subspan(offset, std::min(block_size, bytes.size() - offset))));
+    }
+    if (bytes.empty())
+    {
+        frequencies_ = {};
+        codes_ = {};
+    }
+    return encoded;
+}
+
+std::expected<DecodedData, Error> Engine::decode(const EncodedData& data)
+{
+    frequencies_ = {};
+    codes_ = {};
+    DecodedData result;
+    std::size_t total = 0;
+    for (const EncodedBlock& block : data.blocks_)
+    {
+        total += block.size_;
+    }
+    result.data_.reserve(total);
+    for (const EncodedBlock& block : data.blocks_)
+    {
+        if (auto decoded = decode_block(block, result.data_); !decoded)
+        {
+            return std::unexpected(decoded.error());
+        }
+    }
+    return result;
+}
+
+EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
+{
     frequencies_ = {};
     {
         PROFILE_SCOPE("Count frequencies")
-        for (const uint8_t symbol : data.data_)
+        for (const uint8_t symbol : bytes)
         {
             ++frequencies_[symbol];
         }
     }
 
-    EncodedData encoded;
-    encoded.size_ = data.data_.size();
+    EncodedBlock encoded;
+    encoded.size_ = static_cast<uint32_t>(bytes.size());
+    {
+        PROFILE_SCOPE("Checksum")
+        encoded.crc_ = crc32(bytes);
+    }
     CodeLengths lengths{};
     {
         PROFILE_SCOPE("Code lengths")
@@ -252,11 +302,11 @@ EncodedData Engine::encode(const DecodedData& data)
     }
     const uint64_t payload_bytes = (bit_count + 7) / 8;
     // Ties go to stored, which decodes faster.
-    if (stored_header_bytes + encoded.size_ <= huffman_header_bytes + payload_bytes)
+    if (bytes.size() <= code_lengths_bytes + payload_bytes)
     {
         codes_ = {};
         encoded.method_ = Method::stored;
-        encoded.payload_ = data.data_;
+        encoded.payload_.assign(bytes.begin(), bytes.end());
         return encoded;
     }
 
@@ -265,7 +315,7 @@ EncodedData Engine::encode(const DecodedData& data)
         encoded.code_lengths_ = lengths;
         encoded.payload_.resize(payload_bytes);
         BitWriter writer(encoded.payload_);
-        for (const uint8_t symbol : data.data_)
+        for (const uint8_t symbol : bytes)
         {
             writer.put(codes_[symbol]);
         }
@@ -274,42 +324,59 @@ EncodedData Engine::encode(const DecodedData& data)
     return encoded;
 }
 
-std::expected<DecodedData, Error> Engine::decode(const EncodedData& data)
+std::expected<void, Error> Engine::decode_block(const EncodedBlock& block,
+                                                std::vector<uint8_t>& out)
 {
     frequencies_ = {};
-    set_codes(data.code_lengths_);
-
-    DecodedData result;
-    if (data.method_ == Method::stored)
+    codes_ = {};
+    const std::size_t start = out.size();
+    if (block.method_ == Method::stored)
     {
-        if (data.payload_.size() != data.size_)
+        if (block.payload_.size() != block.size_)
         {
             return std::unexpected(Error::corrupt_payload);
         }
-        result.data_ = data.payload_;
-        return result;
+        out.insert(out.end(), block.payload_.begin(), block.payload_.end());
     }
-    if (data.size_ == 0)
+    else if (auto decoded = decode_huffman(block, out); !decoded)
     {
-        if (!data.payload_.empty())
+        out.resize(start);
+        return decoded;
+    }
+
+    if (crc32(std::span(out).subspan(start)) != block.crc_)
+    {
+        out.resize(start);
+        return std::unexpected(Error::checksum_mismatch);
+    }
+    return {};
+}
+
+std::expected<void, Error> Engine::decode_huffman(const EncodedBlock& block,
+                                                  std::vector<uint8_t>& out)
+{
+    set_codes(block.code_lengths_);
+    if (block.size_ == 0)
+    {
+        if (!block.payload_.empty())
         {
             return std::unexpected(Error::corrupt_payload);
         }
-        return result;
+        return {};
     }
     // Every symbol takes at least one bit, so a corrupt size can't make this reserve too much.
-    result.data_.reserve(std::min<std::size_t>(data.size_, data.payload_.size() * 8));
+    out.reserve(out.size() + std::min<std::size_t>(block.size_, block.payload_.size() * 8));
 
     const DecodeTable table = build_decode_table(codes_);
-    BitReader reader(data.payload_);
-    for (uint64_t decoded = 0; decoded < data.size_; ++decoded)
+    BitReader reader(block.payload_);
+    for (uint32_t decoded = 0; decoded < block.size_; ++decoded)
     {
         const DecodeEntry entry = table[reader.peek()];
         if (entry.length == 0 || entry.length > reader.remaining())
         {
             return std::unexpected(Error::corrupt_payload);
         }
-        result.data_.push_back(entry.symbol);
+        out.push_back(entry.symbol);
         reader.consume(entry.length);
     }
     // peek() covers the rest of the last byte, and reads zeros past the payload.
@@ -317,7 +384,7 @@ std::expected<DecodedData, Error> Engine::decode(const EncodedData& data)
     {
         return std::unexpected(Error::corrupt_payload);
     }
-    return result;
+    return {};
 }
 
 } // namespace compressor

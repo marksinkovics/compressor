@@ -13,6 +13,7 @@ set(INCLUDE_FILES
 
 set(SRC_DIR ${PROJECT_SOURCE_DIR}/src)
 set(SRC_FILES
+    "${SRC_DIR}/checksum/crc32.cpp"
     "${SRC_DIR}/compressor/compressor.cpp"
     "${SRC_DIR}/engine/engine.cpp"
     "${SRC_DIR}/huffman/huffman.cpp"
@@ -37,6 +38,7 @@ package_add_test(
         ${SRC_FILES}
     LIBRARIES
         compressor
+        ZLIB::ZLIB
 )
 
 foreach(target ${PROJECT_NAME} ${PROJECT_NAME}_app)

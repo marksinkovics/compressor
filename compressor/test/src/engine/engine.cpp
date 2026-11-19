@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <span>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -9,6 +10,7 @@
 
 #include <gtest/gtest.h>
 
+#include <compressor/checksum/crc32.h>
 #include <compressor/data/data.h>
 #include <compressor/engine/engine.h>
 #include <compressor/error.h>
@@ -21,6 +23,39 @@ compressor::DecodedData decoded(std::string_view text)
     compressor::DecodedData data;
     data.data_.assign(text.begin(), text.end());
     return data;
+}
+
+std::span<const uint8_t> bytes(std::string_view text)
+{
+    return {reinterpret_cast<const uint8_t*>(text.data()), text.size()};
+}
+
+uint32_t crc(std::string_view text)
+{
+    return compressor::crc32(bytes(text));
+}
+
+std::expected<compressor::DecodedData, compressor::Error>
+decode_block(compressor::Engine& engine, const compressor::EncodedBlock& block)
+{
+    compressor::DecodedData result;
+    if (auto decoded = engine.decode_block(block, result.data_); !decoded)
+    {
+        return std::unexpected(decoded.error());
+    }
+    return result;
+}
+
+std::string pseudo_random_text(std::size_t size)
+{
+    std::string text(size, '\0');
+    uint32_t state = 7;
+    for (char& c : text)
+    {
+        state = (state * 1103515245U) + 12345U;
+        c = static_cast<char>('a' + ((state >> 16U) % 7));
+    }
+    return text;
 }
 
 std::string repeat(std::string_view text, std::size_t count)
@@ -39,7 +74,7 @@ class EngineTests : public ::testing::Test
 {
 protected:
     const std::string input = "go go gophers";
-    // Inputs below a few hundred bytes are stored, as the Huffman header alone is 137 bytes.
+    // Blocks below a few hundred bytes are stored, as the code lengths alone are 128 bytes.
     const std::string aab = repeat("aab", 201); // a = 0, b = 1: 603 bits
     const std::string longInput = R"(
         Lorem ipsum dolor sit amet, consectetur adipiscing elit.
@@ -128,7 +163,9 @@ TEST_F(EngineTests, Skewed_input_with_capped_codes_round_trips)
 
     compressor::Engine encoder;
     const compressor::EncodedData encoded = encoder.encode(decoded(skewed));
-    EXPECT_EQ(*std::ranges::max_element(encoded.code_lengths_), compressor::max_code_length);
+    ASSERT_EQ(encoded.blocks_.size(), 1U);
+    EXPECT_EQ(*std::ranges::max_element(encoded.blocks_[0].code_lengths_),
+              compressor::max_code_length);
 
     std::stringstream stream;
     stream << encoded;
@@ -154,7 +191,7 @@ TEST_F(EngineTests, Encode_packs_codes_first_bit_most_significant)
     expected.push_back(0x20);
 
     compressor::Engine engine;
-    const compressor::EncodedData encoded = engine.encode(decoded(aab));
+    const compressor::EncodedBlock encoded = engine.encode_block(bytes(aab));
     EXPECT_EQ(encoded.method_, compressor::Method::huffman);
     EXPECT_EQ(encoded.payload_, expected);
 }
@@ -170,18 +207,18 @@ TEST_F(EngineTests, Encode_packs_codes_across_bytes_and_pads_the_last_one)
     expected.push_back(0x4C);
 
     compressor::Engine engine;
-    EXPECT_EQ(engine.encode(decoded(repeat("abac", 65))).payload_, expected);
+    EXPECT_EQ(engine.encode_block(bytes(repeat("abac", 65))).payload_, expected);
 }
 
 TEST_F(EngineTests, A_truncated_payload_is_corrupt)
 {
     compressor::Engine encoder;
-    compressor::EncodedData encoded = encoder.encode(decoded(longInput));
+    compressor::EncodedBlock encoded = encoder.encode_block(bytes(longInput));
     ASSERT_EQ(encoded.method_, compressor::Method::huffman);
     encoded.payload_.resize(encoded.payload_.size() / 2);
 
     compressor::Engine decoder;
-    EXPECT_EQ(decoder.decode(encoded), std::unexpected(compressor::Error::corrupt_payload));
+    EXPECT_EQ(decode_block(decoder, encoded), std::unexpected(compressor::Error::corrupt_payload));
 }
 
 TEST_F(EngineTests, Print_dict_lists_the_canonical_codes)
@@ -227,20 +264,20 @@ TEST_F(EngineTests, Print_graph_handles_a_single_symbol)
 TEST_F(EngineTests, A_bit_pattern_that_starts_no_code_is_corrupt)
 {
     // A single symbol has the code 0, so no code starts with 1.
-    compressor::EncodedData encoded;
+    compressor::EncodedBlock encoded;
     encoded.size_ = 2;
     encoded.code_lengths_['a'] = 1;
     encoded.payload_ = {0x40}; // 01
 
     compressor::Engine decoder;
-    EXPECT_EQ(decoder.decode(encoded), std::unexpected(compressor::Error::corrupt_payload));
+    EXPECT_EQ(decode_block(decoder, encoded), std::unexpected(compressor::Error::corrupt_payload));
 }
 
 TEST_F(EngineTests, A_code_that_ends_past_the_payload_is_corrupt)
 {
     // a = 0, b = 10, c = 11: after seven "a", the last bit 1 starts a two-bit code that doesn't
     // fit.
-    compressor::EncodedData encoded;
+    compressor::EncodedBlock encoded;
     encoded.size_ = 8;
     encoded.code_lengths_['a'] = 1;
     encoded.code_lengths_['b'] = 2;
@@ -248,40 +285,40 @@ TEST_F(EngineTests, A_code_that_ends_past_the_payload_is_corrupt)
     encoded.payload_ = {0x01};
 
     compressor::Engine decoder;
-    EXPECT_EQ(decoder.decode(encoded), std::unexpected(compressor::Error::corrupt_payload));
+    EXPECT_EQ(decode_block(decoder, encoded), std::unexpected(compressor::Error::corrupt_payload));
 }
 
 TEST_F(EngineTests, A_trailing_byte_after_the_codes_is_corrupt)
 {
     compressor::Engine encoder;
-    compressor::EncodedData encoded = encoder.encode(decoded(aab));
+    compressor::EncodedBlock encoded = encoder.encode_block(bytes(aab));
     ASSERT_EQ(encoded.method_, compressor::Method::huffman);
     encoded.payload_.push_back(0x00);
 
     compressor::Engine decoder;
-    EXPECT_EQ(decoder.decode(encoded), std::unexpected(compressor::Error::corrupt_payload));
+    EXPECT_EQ(decode_block(decoder, encoded), std::unexpected(compressor::Error::corrupt_payload));
 }
 
 TEST_F(EngineTests, Non_zero_padding_is_corrupt)
 {
     // a = 0, b = 1: "aab" is 001, so the last five bits are padding.
-    compressor::EncodedData encoded;
+    compressor::EncodedBlock encoded;
     encoded.size_ = 3;
     encoded.code_lengths_['a'] = 1;
     encoded.code_lengths_['b'] = 1;
     encoded.payload_ = {0x21};
 
     compressor::Engine decoder;
-    EXPECT_EQ(decoder.decode(encoded), std::unexpected(compressor::Error::corrupt_payload));
+    EXPECT_EQ(decode_block(decoder, encoded), std::unexpected(compressor::Error::corrupt_payload));
 }
 
 TEST_F(EngineTests, A_payload_for_empty_data_is_corrupt)
 {
-    compressor::EncodedData encoded;
+    compressor::EncodedBlock encoded;
     encoded.payload_ = {0x00};
 
     compressor::Engine decoder;
-    EXPECT_EQ(decoder.decode(encoded), std::unexpected(compressor::Error::corrupt_payload));
+    EXPECT_EQ(decode_block(decoder, encoded), std::unexpected(compressor::Error::corrupt_payload));
 }
 
 TEST_F(EngineTests, Codes_that_fill_the_last_byte_exactly_decode)
@@ -289,12 +326,12 @@ TEST_F(EngineTests, Codes_that_fill_the_last_byte_exactly_decode)
     // a = 0, b = 1: 400 symbols are 50 bytes without padding.
     const std::string input = repeat("ab", 200);
     compressor::Engine encoder;
-    const compressor::EncodedData encoded = encoder.encode(decoded(input));
+    const compressor::EncodedBlock encoded = encoder.encode_block(bytes(input));
     ASSERT_EQ(encoded.method_, compressor::Method::huffman);
     ASSERT_EQ(encoded.payload_.size(), 50U);
 
     compressor::Engine decoder;
-    const auto result = decoder.decode(encoded);
+    const auto result = decode_block(decoder, encoded);
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(std::string(result->data_.begin(), result->data_.end()), input);
 }
@@ -309,33 +346,31 @@ TEST_F(EngineTests, Input_that_huffman_cannot_shrink_is_stored)
     }
 
     compressor::Engine encoder;
-    const compressor::EncodedData encoded = encoder.encode(input);
+    const compressor::EncodedBlock encoded = encoder.encode_block(input.data_);
     EXPECT_EQ(encoded.method_, compressor::Method::stored);
     EXPECT_EQ(encoded.size_, 512U);
     EXPECT_EQ(encoded.code_lengths_, compressor::CodeLengths{});
     EXPECT_EQ(encoded.payload_, input.data_);
 
     compressor::Engine decoder;
-    EXPECT_EQ(decoder.decode(encoded), input);
+    EXPECT_EQ(decode_block(decoder, encoded), input);
 }
 
 TEST_F(EngineTests, Short_input_is_stored_because_the_huffman_header_costs_more)
 {
     compressor::Engine encoder;
-    const compressor::EncodedData encoded = encoder.encode(decoded(input));
+    const compressor::EncodedBlock encoded = encoder.encode_block(bytes(input));
     EXPECT_EQ(encoded.method_, compressor::Method::stored);
 
     compressor::Engine decoder;
-    EXPECT_EQ(decoder.decode(encoded), decoded(input));
+    EXPECT_EQ(decode_block(decoder, encoded), decoded(input));
 }
 
-TEST_F(EngineTests, Empty_input_is_stored_and_round_trips)
+TEST_F(EngineTests, Empty_input_has_no_blocks_and_round_trips)
 {
     compressor::Engine encoder;
     const compressor::EncodedData encoded = encoder.encode(decoded(""));
-    EXPECT_EQ(encoded.method_, compressor::Method::stored);
-    EXPECT_EQ(encoded.size_, 0U);
-    EXPECT_TRUE(encoded.payload_.empty());
+    EXPECT_TRUE(encoded.blocks_.empty());
 
     compressor::Engine decoder;
     EXPECT_EQ(decoder.decode(encoded), decoded(""));
@@ -343,11 +378,11 @@ TEST_F(EngineTests, Empty_input_is_stored_and_round_trips)
 
 TEST_F(EngineTests, A_tie_is_stored_and_one_byte_saved_is_huffman)
 {
-    // a = 0, b = 1. 147 bytes: 9 + 147 = 137 + 19. 148 bytes: 9 + 148 > 137 + 19.
+    // a = 0, b = 1. 147 bytes: 147 = 128 + 19. 148 bytes: 148 > 128 + 19.
     compressor::Engine engine;
-    EXPECT_EQ(engine.encode(decoded(repeat("ab", 74).substr(0, 147))).method_,
+    EXPECT_EQ(engine.encode_block(bytes(repeat("ab", 74).substr(0, 147))).method_,
               compressor::Method::stored);
-    EXPECT_EQ(engine.encode(decoded(repeat("ab", 74))).method_, compressor::Method::huffman);
+    EXPECT_EQ(engine.encode_block(bytes(repeat("ab", 74))).method_, compressor::Method::huffman);
 }
 
 TEST_F(EngineTests, Print_dict_and_print_graph_are_empty_after_storing)
@@ -363,13 +398,110 @@ TEST_F(EngineTests, Print_dict_and_print_graph_are_empty_after_storing)
 
 TEST_F(EngineTests, A_stored_payload_of_the_wrong_size_is_corrupt)
 {
-    compressor::EncodedData encoded;
+    compressor::EncodedBlock encoded;
     encoded.method_ = compressor::Method::stored;
     encoded.size_ = 3;
 
     compressor::Engine decoder;
     encoded.payload_ = {'a', 'b'};
-    EXPECT_EQ(decoder.decode(encoded), std::unexpected(compressor::Error::corrupt_payload));
+    EXPECT_EQ(decode_block(decoder, encoded), std::unexpected(compressor::Error::corrupt_payload));
     encoded.payload_ = {'a', 'b', 'c', 'd'};
-    EXPECT_EQ(decoder.decode(encoded), std::unexpected(compressor::Error::corrupt_payload));
+    EXPECT_EQ(decode_block(decoder, encoded), std::unexpected(compressor::Error::corrupt_payload));
+}
+
+TEST_F(EngineTests, Encoded_blocks_carry_the_crc32_of_their_bytes)
+{
+    compressor::Engine engine;
+    EXPECT_EQ(engine.encode_block(bytes(aab)).crc_, crc(aab));
+    EXPECT_EQ(engine.encode_block(bytes(input)).crc_, crc(input));
+}
+
+TEST_F(EngineTests, Input_is_split_into_blocks_of_the_block_size)
+{
+    constexpr std::size_t block_size = 4096;
+    for (const std::size_t size :
+         {1UZ, block_size - 1, block_size, block_size + 1, 3 * block_size, (3 * block_size) + 5})
+    {
+        const std::string text = pseudo_random_text(size);
+        compressor::Engine encoder(12);
+        const compressor::EncodedData encoded = encoder.encode(decoded(text));
+        EXPECT_EQ(encoded.block_size_log2_, 12U);
+        ASSERT_EQ(encoded.blocks_.size(), (size + block_size - 1) / block_size) << size;
+        for (std::size_t i = 0; i < encoded.blocks_.size(); ++i)
+        {
+            const std::size_t expected = std::min(block_size, size - (i * block_size));
+            EXPECT_EQ(encoded.blocks_[i].size_, expected) << size << " block " << i;
+            EXPECT_EQ(encoded.blocks_[i].crc_,
+                      crc(std::string_view(text).substr(i * block_size, expected)));
+        }
+
+        compressor::Engine decoder;
+        EXPECT_EQ(decoder.decode(encoded), decoded(text)) << size;
+    }
+}
+
+TEST_F(EngineTests, Each_block_chooses_its_own_method)
+{
+    // A compressible block, then one with every byte value equally often.
+    std::string text = repeat("aab", 1366).substr(0, 4096);
+    for (int i = 0; i < 4096; ++i)
+    {
+        text.push_back(static_cast<char>(i));
+    }
+    compressor::Engine encoder(12);
+    const compressor::EncodedData encoded = encoder.encode(decoded(text));
+    ASSERT_EQ(encoded.blocks_.size(), 2U);
+    EXPECT_EQ(encoded.blocks_[0].method_, compressor::Method::huffman);
+    EXPECT_EQ(encoded.blocks_[1].method_, compressor::Method::stored);
+
+    compressor::Engine decoder;
+    EXPECT_EQ(decoder.decode(encoded), decoded(text));
+}
+
+TEST_F(EngineTests, A_changed_stored_byte_fails_the_checksum)
+{
+    compressor::Engine encoder;
+    compressor::EncodedBlock encoded = encoder.encode_block(bytes(input));
+    ASSERT_EQ(encoded.method_, compressor::Method::stored);
+    encoded.payload_[3] ^= 0x01U;
+
+    compressor::Engine decoder;
+    EXPECT_EQ(decode_block(decoder, encoded),
+              std::unexpected(compressor::Error::checksum_mismatch));
+}
+
+TEST_F(EngineTests, A_huffman_block_with_a_wrong_crc_fails_the_checksum)
+{
+    compressor::Engine encoder;
+    compressor::EncodedBlock encoded = encoder.encode_block(bytes(aab));
+    ASSERT_EQ(encoded.method_, compressor::Method::huffman);
+    encoded.crc_ ^= 0x80000000U;
+
+    compressor::Engine decoder;
+    EXPECT_EQ(decode_block(decoder, encoded),
+              std::unexpected(compressor::Error::checksum_mismatch));
+}
+
+TEST_F(EngineTests, A_failed_block_leaves_the_output_unchanged)
+{
+    compressor::Engine encoder;
+    compressor::EncodedBlock encoded = encoder.encode_block(bytes(aab));
+    encoded.crc_ ^= 1U;
+
+    compressor::Engine decoder;
+    std::vector<uint8_t> out{1, 2, 3};
+    EXPECT_FALSE(decoder.decode_block(encoded, out).has_value());
+    EXPECT_EQ(out, (std::vector<uint8_t>{1, 2, 3}));
+}
+
+TEST_F(EngineTests, A_corrupt_later_block_fails_the_whole_decode)
+{
+    const std::string text = pseudo_random_text(3UZ * 4096);
+    compressor::Engine encoder(12);
+    compressor::EncodedData encoded = encoder.encode(decoded(text));
+    ASSERT_EQ(encoded.blocks_.size(), 3U);
+    encoded.blocks_[2].crc_ ^= 1U;
+
+    compressor::Engine decoder;
+    EXPECT_EQ(decoder.decode(encoded), std::unexpected(compressor::Error::checksum_mismatch));
 }

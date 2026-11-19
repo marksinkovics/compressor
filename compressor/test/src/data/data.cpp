@@ -8,12 +8,14 @@
 #include <sstream>
 #include <streambuf>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <compressor/checksum/crc32.h>
 #include <compressor/data/data.h>
 #include <compressor/data/reader.h>
 #include <compressor/error.h>
@@ -129,115 +131,219 @@ TEST_F(CompressorDataTests, Decoded_data_reads_from_a_stream_that_cannot_seek)
 namespace
 {
 
-compressor::EncodedData encoded_aab()
+uint32_t crc(std::string_view text)
+{
+    return compressor::crc32({reinterpret_cast<const uint8_t*>(text.data()), text.size()});
+}
+
+compressor::EncodedBlock huffman_aab()
 {
     // "aab": a and b both get length 1, so a = 0 and b = 1, and the payload is 001.
+    compressor::EncodedBlock block;
+    block.size_ = 3;
+    block.crc_ = crc("aab");
+    block.code_lengths_['a'] = 1;
+    block.code_lengths_['b'] = 1;
+    block.payload_ = {0x20};
+    return block;
+}
+
+compressor::EncodedBlock stored_block(std::string_view text)
+{
+    compressor::EncodedBlock block;
+    block.method_ = compressor::Method::stored;
+    block.size_ = static_cast<uint32_t>(text.size());
+    block.crc_ = crc(text);
+    block.payload_.assign(text.begin(), text.end());
+    return block;
+}
+
+compressor::EncodedData container(std::vector<compressor::EncodedBlock> blocks,
+                                  uint8_t block_size_log2 = compressor::default_block_size_log2)
+{
     compressor::EncodedData data;
-    data.size_ = 3;
-    data.code_lengths_['a'] = 1;
-    data.code_lengths_['b'] = 1;
-    data.payload_ = {0x20};
+    data.block_size_log2_ = block_size_log2;
+    data.blocks_ = std::move(blocks);
     return data;
+}
+
+compressor::EncodedData encoded_aab()
+{
+    return container({huffman_aab()});
 }
 
 compressor::EncodedData stored_abc()
 {
-    compressor::EncodedData data;
-    data.method_ = compressor::Method::stored;
-    data.size_ = 3;
-    data.payload_ = {'a', 'b', 'c'};
-    return data;
+    return container({stored_block("abc")});
 }
 
-std::string header_bytes(uint64_t size, const compressor::CodeLengths& lengths)
+std::string serialized(const compressor::EncodedData& data)
 {
-    std::string bytes(137, '\0');
-    bytes[0] = '\x01';
-    for (std::size_t i = 0; i < 8; ++i)
+    std::stringstream stream;
+    stream << data;
+    return stream.str();
+}
+
+std::string le32(uint32_t value)
+{
+    std::string bytes;
+    for (std::size_t i = 0; i < 4; ++i)
     {
-        bytes[1 + i] = static_cast<char>((size >> (8 * i)) & 0xFFU);
-    }
-    for (std::size_t i = 0; i < 128; ++i)
-    {
-        bytes[9 + i] = static_cast<char>(static_cast<unsigned>(lengths[2 * i]) |
-                                         (static_cast<unsigned>(lengths[(2 * i) + 1]) << 4U));
+        bytes.push_back(static_cast<char>((value >> (8 * i)) & 0xFFU));
     }
     return bytes;
 }
 
+void put_le32(std::string& bytes, std::size_t offset, uint32_t value)
+{
+    bytes.replace(offset, 4, le32(value));
+}
+
+std::expected<compressor::EncodedData, compressor::Error> parse(const std::string& bytes)
+{
+    std::stringstream input(bytes);
+    return compressor::read_encoded(input);
+}
+
+// Offsets in a container whose first block is stored_abc's or huffman_aab's.
+constexpr std::size_t method_offset = 8;
+constexpr std::size_t size_offset = 9;
+constexpr std::size_t encoded_size_offset = 13;
+constexpr std::size_t lengths_offset = 21;
+
 } // namespace
 
-TEST_F(CompressorDataTests, Encoded_data_is_written_in_the_portable_format)
+TEST_F(CompressorDataTests, Stored_data_is_written_in_the_container_format)
 {
-    stream << encoded_aab();
-    const std::string bytes = stream.str();
+    const std::string bytes = serialized(stored_abc());
 
-    ASSERT_EQ(bytes.size(), 138U);
-    EXPECT_EQ(bytes[0], '\x01');
-    EXPECT_EQ(bytes.substr(1, 8), std::string("\x03\0\0\0\0\0\0\0", 8));
+    ASSERT_EQ(bytes.size(), 8U + 13U + 3U + 9U);
+    EXPECT_EQ(bytes.substr(0, 8), std::string("\x89ING\x01\x14\0\0", 8));
+    EXPECT_EQ(bytes.substr(8, 13), std::string("\x00", 1) + le32(3) + le32(3) + le32(crc("abc")));
+    EXPECT_EQ(bytes.substr(21, 3), "abc");
+    EXPECT_EQ(bytes.substr(24), std::string("\xFF\x03\0\0\0\0\0\0\0", 9));
+}
+
+TEST_F(CompressorDataTests, Huffman_blocks_are_written_with_nibble_code_lengths)
+{
+    const std::string bytes = serialized(encoded_aab());
+
+    ASSERT_EQ(bytes.size(), 8U + 13U + 128U + 1U + 9U);
+    EXPECT_EQ(bytes.substr(8, 13), std::string("\x01", 1) + le32(3) + le32(129) + le32(crc("aab")));
     // 'a' (97) is odd: the high nibble of byte 48; 'b' (98) the low nibble of byte 49.
-    EXPECT_EQ(bytes[9 + 48], '\x10');
-    EXPECT_EQ(bytes[9 + 49], '\x01');
-    EXPECT_EQ(std::ranges::count(bytes.substr(9, 128), '\0'), 126);
+    EXPECT_EQ(bytes[lengths_offset + 48], '\x10');
+    EXPECT_EQ(bytes[lengths_offset + 49], '\x01');
+    EXPECT_EQ(std::ranges::count(bytes.substr(lengths_offset, 128), '\0'), 126);
     // Payload 001, first bit in the most significant bit.
-    EXPECT_EQ(bytes[137], '\x20');
+    EXPECT_EQ(bytes[lengths_offset + 128], '\x20');
+    EXPECT_EQ(bytes.substr(150), std::string("\xFF\x03\0\0\0\0\0\0\0", 9));
 }
 
-TEST_F(CompressorDataTests, Stored_data_is_written_without_code_lengths)
+TEST_F(CompressorDataTests, Empty_data_is_a_frame_header_and_an_end_block)
 {
-    stream << stored_abc();
+    const std::string bytes = serialized(container({}));
 
-    EXPECT_EQ(stream.str(), std::string("\x00\x03\0\0\0\0\0\0\0abc", 12));
+    EXPECT_EQ(bytes, std::string("\x89ING\x01\x14\0\0\xFF\0\0\0\0\0\0\0\0", 17));
+    EXPECT_EQ(parse(bytes), container({}));
 }
 
-TEST_F(CompressorDataTests, Stored_data_round_trips_through_a_stream)
+TEST_F(CompressorDataTests, Encoded_data_round_trips_through_a_stream)
 {
-    stream << stored_abc();
+    const std::string full(4096, 'x');
+    const std::array cases{
+        stored_abc(),
+        encoded_aab(),
+        container({stored_block(full), huffman_aab()}, 12),
+    };
+    for (const auto& input_data : cases)
+    {
+        std::stringstream stream;
+        stream << input_data;
 
-    compressor::EncodedData output_data;
-    stream >> output_data;
+        compressor::EncodedData output_data;
+        stream >> output_data;
 
-    ASSERT_FALSE(stream.fail());
-    EXPECT_EQ(output_data, stored_abc());
+        ASSERT_FALSE(stream.fail());
+        EXPECT_EQ(output_data, input_data);
+    }
 }
 
-TEST_F(CompressorDataTests, A_short_stored_header_fails)
+TEST_F(CompressorDataTests, Every_truncation_is_reported)
 {
-    stream << stored_abc();
-    std::stringstream truncated(stream.str().substr(0, 5));
-
-    compressor::EncodedData output_data;
-    truncated >> output_data;
-
-    EXPECT_TRUE(truncated.fail());
-    EXPECT_EQ(output_data, compressor::EncodedData{});
+    const std::string bytes =
+        serialized(container({stored_block(std::string(4096, 'x')), huffman_aab()}, 12));
+    for (std::size_t length = 0; length < bytes.size(); ++length)
+    {
+        const auto expected =
+            length < 4 ? compressor::Error::not_ingot : compressor::Error::truncated;
+        EXPECT_EQ(parse(bytes.substr(0, length)), std::unexpected(expected)) << length;
+    }
 }
 
-TEST_F(CompressorDataTests, EncodedDataStream)
+TEST_F(CompressorDataTests, Invalid_frame_headers_are_rejected)
 {
-    const compressor::EncodedData input_data = encoded_aab();
-    stream << input_data;
+    const std::string valid = serialized(stored_abc());
+    auto with = [&](std::size_t offset, char value) {
+        std::string bytes = valid;
+        bytes[offset] = value;
+        return bytes;
+    };
 
-    compressor::EncodedData output_data;
-    stream >> output_data;
-
-    ASSERT_FALSE(stream.fail());
-    EXPECT_EQ(output_data, input_data);
+    using compressor::Error;
+    EXPECT_EQ(parse("plain text, not ingot"), std::unexpected(Error::not_ingot));
+    EXPECT_EQ(parse(with(0, 'I')), std::unexpected(Error::not_ingot));
+    EXPECT_EQ(parse(with(3, 'Z')), std::unexpected(Error::not_ingot));
+    EXPECT_EQ(parse(with(4, '\x02')), std::unexpected(Error::unsupported_version));
+    EXPECT_EQ(parse(with(4, '\x00')), std::unexpected(Error::unsupported_version));
+    EXPECT_EQ(parse(with(5, '\x0B')), std::unexpected(Error::corrupt_header));
+    EXPECT_EQ(parse(with(5, '\x1B')), std::unexpected(Error::corrupt_header));
+    EXPECT_EQ(parse(with(6, '\x01')), std::unexpected(Error::corrupt_header));
+    EXPECT_EQ(parse(with(7, '\x80')), std::unexpected(Error::corrupt_header));
 }
 
-TEST_F(CompressorDataTests, A_short_header_fails)
+TEST_F(CompressorDataTests, Invalid_block_headers_are_rejected)
 {
-    stream << encoded_aab();
-    std::stringstream truncated(stream.str().substr(0, 100));
+    using compressor::Error;
+    const std::string stored = serialized(stored_abc());
+    const std::string huffman = serialized(encoded_aab());
 
-    compressor::EncodedData output_data;
-    truncated >> output_data;
+    std::string unknown_method = stored;
+    unknown_method[method_offset] = '\x02';
+    EXPECT_EQ(parse(unknown_method), std::unexpected(Error::corrupt_header));
 
-    EXPECT_TRUE(truncated.fail());
-    EXPECT_EQ(output_data, compressor::EncodedData{});
+    std::string empty_block = stored;
+    put_le32(empty_block, size_offset, 0);
+    EXPECT_EQ(parse(empty_block), std::unexpected(Error::corrupt_header));
+
+    std::string stored_size_mismatch = stored;
+    put_le32(stored_size_mismatch, encoded_size_offset, 2);
+    EXPECT_EQ(parse(stored_size_mismatch), std::unexpected(Error::corrupt_header));
+
+    std::string no_room_for_lengths = huffman;
+    put_le32(no_room_for_lengths, encoded_size_offset, 127);
+    EXPECT_EQ(parse(no_room_for_lengths), std::unexpected(Error::corrupt_header));
+
+    // Three symbols of at most 15 bits fit in 6 bytes.
+    std::string payload_too_long = huffman;
+    put_le32(payload_too_long, encoded_size_offset, 128 + 7);
+    EXPECT_EQ(parse(payload_too_long), std::unexpected(Error::corrupt_header));
 }
 
-TEST_F(CompressorDataTests, Invalid_headers_fail)
+TEST_F(CompressorDataTests, A_block_larger_than_the_block_size_is_rejected)
+{
+    const std::string bytes = serialized(container({stored_block(std::string(4097, 'x'))}, 12));
+
+    EXPECT_EQ(parse(bytes), std::unexpected(compressor::Error::corrupt_header));
+}
+
+TEST_F(CompressorDataTests, Only_the_last_block_may_be_short)
+{
+    const std::string bytes = serialized(container({stored_block("abc"), stored_block("def")}, 12));
+
+    EXPECT_EQ(parse(bytes), std::unexpected(compressor::Error::corrupt_header));
+}
+
+TEST_F(CompressorDataTests, Invalid_code_lengths_are_rejected)
 {
     compressor::CodeLengths incomplete{};
     incomplete['a'] = 1;
@@ -246,36 +352,52 @@ TEST_F(CompressorDataTests, Invalid_headers_fail)
     oversubscribed['a'] = 1;
     oversubscribed['b'] = 1;
     oversubscribed['c'] = 1;
-    compressor::CodeLengths valid{};
-    valid['a'] = 1;
-    valid['b'] = 1;
 
-    std::string unknown_method = header_bytes(3, valid);
-    unknown_method[0] = '\x02';
-
-    const std::array<std::pair<const char*, std::string>, 5> cases{{
-        {"Kraft sum below 1", header_bytes(3, incomplete)},
-        {"Kraft sum above 1", header_bytes(3, oversubscribed)},
-        {"codes for empty data", header_bytes(0, valid)},
-        {"no codes for non-empty data", header_bytes(3, compressor::CodeLengths{})},
-        {"unknown method", unknown_method},
+    const std::array<std::pair<const char*, compressor::CodeLengths>, 3> cases{{
+        {"Kraft sum below 1", incomplete},
+        {"Kraft sum above 1", oversubscribed},
+        {"no codes", compressor::CodeLengths{}},
     }};
-    for (const auto& [name, bytes] : cases)
+    for (const auto& [name, lengths] : cases)
     {
-        std::stringstream input(bytes + '\x20');
-        compressor::EncodedData output_data;
-        input >> output_data;
-        EXPECT_TRUE(input.fail()) << name;
-        EXPECT_EQ(output_data, compressor::EncodedData{}) << name;
+        compressor::EncodedBlock block = huffman_aab();
+        block.code_lengths_ = lengths;
+        EXPECT_EQ(parse(serialized(container({block}))),
+                  std::unexpected(compressor::Error::corrupt_header))
+            << name;
     }
+}
+
+TEST_F(CompressorDataTests, A_wrong_total_size_in_the_end_block_is_rejected)
+{
+    std::string bytes = serialized(stored_abc());
+    bytes[25] = '\x04';
+
+    EXPECT_EQ(parse(bytes), std::unexpected(compressor::Error::corrupt_header));
+}
+
+TEST_F(CompressorDataTests, Bytes_after_the_end_block_are_rejected)
+{
+    EXPECT_EQ(parse(serialized(stored_abc()) + 'x'),
+              std::unexpected(compressor::Error::corrupt_header));
+}
+
+TEST_F(CompressorDataTests, A_failed_read_sets_failbit_and_leaves_the_data_empty)
+{
+    std::stringstream input(serialized(stored_abc()).substr(0, 20));
+    compressor::EncodedData output_data = encoded_aab();
+    input >> output_data;
+
+    EXPECT_TRUE(input.fail());
+    EXPECT_EQ(output_data, compressor::EncodedData{});
 }
 
 TEST_F(CompressorDataTests, Encoded_data_reads_from_a_stream_that_cannot_seek)
 {
-    compressor::EncodedData input_data = encoded_aab();
-    input_data.payload_ = all_byte_values(100'000);
-    stream << input_data;
-    PipeBuffer pipe(stream.str(), 1000);
+    const std::vector<uint8_t> big = all_byte_values(100'000);
+    const compressor::EncodedData input_data = container(
+        {stored_block(std::string_view(reinterpret_cast<const char*>(big.data()), big.size()))});
+    PipeBuffer pipe(serialized(input_data), 1000);
     std::istream input(&pipe);
 
     compressor::EncodedData output_data;
@@ -333,27 +455,25 @@ template <class T> std::expected<T, compressor::Error> read_file(const TempFile&
 
 TEST_F(CompressorDataTests, Reader_returns_valid_encoded_data)
 {
-    stream << encoded_aab();
-    const TempFile file(stream.str());
+    const TempFile file(serialized(encoded_aab()));
 
     EXPECT_EQ(read_file<compressor::EncodedData>(file), encoded_aab());
 }
 
-TEST_F(CompressorDataTests, Reader_reports_a_short_header_as_corrupt)
+TEST_F(CompressorDataTests, Reader_reports_a_truncated_file)
 {
-    stream << encoded_aab();
-    const TempFile file(stream.str().substr(0, 100));
+    const TempFile file(serialized(encoded_aab()).substr(0, 100));
 
     EXPECT_EQ(read_file<compressor::EncodedData>(file),
-              std::unexpected(compressor::Error::corrupt_header));
+              std::unexpected(compressor::Error::truncated));
 }
 
-TEST_F(CompressorDataTests, Reader_reports_an_invalid_header_as_corrupt)
+TEST_F(CompressorDataTests, Reader_reports_a_file_that_is_not_ingot)
 {
-    const TempFile file(header_bytes(3, compressor::CodeLengths{}) + '\x20');
+    const TempFile file("hello");
 
     EXPECT_EQ(read_file<compressor::EncodedData>(file),
-              std::unexpected(compressor::Error::corrupt_header));
+              std::unexpected(compressor::Error::not_ingot));
 }
 
 TEST_F(CompressorDataTests, Reader_returns_an_empty_file_as_empty_decoded_data)

@@ -242,7 +242,7 @@ Each issue names the phase that handles it.
 ### File format
 
 - [x] **Files aren't portable** (Phase 5 canonical step; magic number and version still come with the container format). The dictionary size and every `bitset` length were written as raw `size_t` in native byte order. Now the size is little-endian and the lengths are nibbles ([file_format.md](file_format.md)).
-- [ ] **No spec** (container format). [file_format.md](file_format.md) describes the current format; [compression.md](compression.md) still contains only a heading.
+- [x] **No spec** (container format step 1). [file_format.md](file_format.md) specifies the ingot container; [compression.md](compression.md) still contains only a heading.
 
 ### Performance and limitations
 
@@ -265,12 +265,26 @@ Ideas for after the basics are done. Each section is roughly in order of difficu
 
 ### Container format and streaming
 
-The foundation for most features below, so design it first.
+The foundation for most features below, so design it first. Plan approved 2026-11-19.
 
-- [ ] **File header:** magic number, format version, algorithm/pipeline ID, original size and a checksum (CRC32 or xxHash).
-- [ ] **Block-based streaming:** compress fixed-size blocks independently so memory use stays constant, blocks can be compressed on separate threads, and blocks can be read individually.
-- [ ] **stdin/stdout support**, so the tool works in shell pipelines (`tar c dir | compressor encode > x`).
-- [ ] **Incompressible blocks:** store a block uncompressed (with a flag) if compression doesn't shrink it.
+Format version 1, all integers little-endian:
+
+- **Frame header (8 bytes):** 4-byte magic `89 49 4E 47` (`0x89` then `ING`, for the project's new name, ingot; extension `.ingot`), format version `1`, log2 of the block size (default 20 = 1 MiB, accepted range 12–26, `--block-size` overrides it), 2 flag bytes that must be 0.
+- **Block, repeated:** method (0 stored, 1 Huffman), decoded size (u32, 1..block size), encoded size (u32, bytes after this 13-byte block header, so blocks can be skipped or read in parallel), CRC32 of the decoded bytes (u32), then the 128 code-length bytes (Huffman only) and the payload.
+- **End block:** method `0xFF`, then the total decoded size (u64), which catches missing blocks. Every block but the last holds exactly the block size.
+
+Decisions: the checksum is CRC32 (IEEE), our own table-driven implementation in `compressor/`, tested against zlib's `crc32`. gzip and zip need the same CRC, and it keeps the core dependency-free for Phase 6. Each block carries its own CRC so a single block can be verified on its own. The stored fallback works per block. Out of scope: a block index (comes with folders and search) and pipelines (the method byte leaves room).
+
+- [x] **Step 1, frame and CRC32 (done):** blocks came in this step already, still in memory, so no single-block interim format was needed.
+  - `compressor/checksum/crc32.{h,cpp}`: `crc32(bytes, crc)`, slicing-by-8 with tables built at compile time; `Crc32Tests` check the standard value and compare against zlib (`ZLIB::ZLIB` is linked into `compressor_test` only).
+  - `data.h`: `EncodedBlock` (method, size, CRC, code lengths, payload) and `EncodedData` (block size log2 plus blocks). `operator<<` writes the container; `read_encoded()` parses it and returns a specific `Error`, and `operator>>` wraps it. `DataReader<EncodedData>` calls `read_encoded()`. New errors: `not_ingot`, `unsupported_version`, `truncated`, `checksum_mismatch`.
+  - `Engine(block_size_log2)`: `encode`/`decode` loop over the public `encode_block`/`decode_block`, which choose stored or Huffman per block and check the CRC. They aren't in `IEngine` yet; step 2's streaming coder will need them there.
+  - Tests: `CompressorDataTests` (byte layout, every truncation, each header rule), `EngineTests` (block splitting at B−1, B, B+1, 3B; per-block method; CRC failures), `EdgeCaseTests` (framing overhead, a changed byte fails with no output). 112/112 pass.
+  - Not measured yet: the CRC's cost on encode and decode speed. Step 2 re-runs the benchmarks.
+- [ ] **Step 2, block streaming:** stream-based `BlockEncoder`/`BlockDecoder` over `std::istream&`/`std::ostream&` (with interfaces and mocks) replace `IDataReader<T>`/`IDataWriter<T>` and the file-path tasks. Memory use is about 2 × block size. Decode writes to a temporary file next to the output and renames it on success, so a failed decode still leaves the output untouched. Round trips at sizes 0, 1, B−1, B, B+1 and 3B; re-run the benchmarks.
+- [ ] **Step 3, stdin/stdout:** `-i`/`-o` accept `-` or may be omitted, so the tool works in shell pipelines (`tar c dir | compressor encode > x`). CLI tests plus a piped round trip.
+- [ ] **Later, multithreaded blocks:** encode several blocks in parallel through a bounded queue, keeping the output order deterministic; benchmark it. Not part of this feature.
+- [ ] **Later, rename to ingot:** the targets (`compressor_app` → `ingot`), the CLI name and help text, the README and the docs. The magic and `.ingot` already use the name.
 
 ### Folder compression
 

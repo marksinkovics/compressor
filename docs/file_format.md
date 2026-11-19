@@ -1,27 +1,44 @@
 # File format
 
-An encoded file is a method byte, the decoded size, and a payload coded with that method: stored as is, or one canonical Huffman code over the whole input. It has no magic number, version or checksum yet; the container format (`docs/roadmap.md`, Features) adds those. Implemented by `operator<<`/`operator>>` on `EncodedData` in `compressor/src/compressor/data/data.cpp`.
+An ingot file (`.ingot`) is a frame header, a sequence of independently coded blocks, and an end block. Each block is stored as is or coded with its own canonical Huffman code, and carries the CRC32 of its decoded bytes. All integers are unsigned little-endian. Implemented by `operator<<` and `read_encoded()` on `EncodedData` in `compressor/src/compressor/data/data.cpp`.
+
+## Frame header (8 bytes)
 
 | Offset | Size | Field |
 |---:|---:|---|
-| 0 | 1 | Method: 0 = stored, 1 = Huffman. 2–255 are reserved for later coders and rejected |
-| 1 | 8 | Decoded size in bytes, unsigned, little-endian |
-| 9 | 128 | Huffman only. Code lengths: 4 bits per byte value. Byte value `2i` is in the low nibble of byte `9 + i`, `2i + 1` in the high nibble. 0 means the byte value doesn't occur |
-| 9 (stored), 137 (Huffman) | rest | Payload. Stored: the input bytes. Huffman: the code of every input byte in order, packed from the most significant bit of each byte down; the last byte is padded with zero bits |
+| 0 | 4 | Magic `89 49 4E 47` (`\x89ING`). The high first byte catches transfers that strip the 8th bit, as in PNG |
+| 4 | 1 | Format version: 1 |
+| 5 | 1 | log2 of the block size, 12–26 (4 KiB–64 MiB). The encoder writes 20 (1 MiB) |
+| 6 | 2 | Flags, must be 0 |
+
+## Block
+
+| Offset | Size | Field |
+|---:|---:|---|
+| 0 | 1 | Method: 0 = stored, 1 = Huffman. 0xFF is the end block; 2–254 are reserved and rejected |
+| 1 | 4 | Decoded size: 1 to the block size. Every block but the last is exactly the block size |
+| 5 | 4 | Encoded size: the bytes after this 13-byte header (code lengths and payload), so a reader can skip the block |
+| 9 | 4 | CRC32 of the decoded bytes (CRC-32/ISO-HDLC, as in gzip and zip) |
+| 13 | 128 | Huffman only. Code lengths: 4 bits per byte value. Byte value `2i` is in the low nibble of byte `13 + i`, `2i + 1` in the high nibble. 0 means the byte value doesn't occur |
+| 13 (stored), 141 (Huffman) | rest | Payload. Stored: the decoded bytes. Huffman: the code of every byte of the block in order, packed from the most significant bit of each byte down; the last byte is padded with zero bits |
+
+## End block (9 bytes)
+
+| Offset | Size | Field |
+|---:|---:|---|
+| 0 | 1 | 0xFF |
+| 1 | 8 | Total decoded size: the sum of the blocks' decoded sizes |
+
+Empty input is the frame header followed directly by the end block, 17 bytes in all.
 
 ## Choosing the method
 
-The encoder writes whichever file is smaller: stored is `9 + size` bytes, Huffman `137 + payload` bytes. A tie goes to stored, which decodes faster. Every code is at least 1 bit, so inputs up to 147 bytes (empty input included) always come out stored, and so does already-compressed data such as PNG or JPEG.
+Per block, the encoder writes whichever is smaller: stored is `size` bytes after the block header, Huffman `128 + payload`. A tie goes to stored, which decodes faster. Every code is at least 1 bit, so blocks up to 147 bytes always come out stored, and so does already-compressed data such as PNG or JPEG. A stored file is the input plus `17 + 13 × blocks` bytes.
 
 ## Code lengths
 
 - No length exceeds `max_code_length` (15, DEFLATE's limit and the most a 4-bit field holds, in `compressor/include/compressor/huffman/huffman.h`). The encoder computes optimal lengths under that cap with package-merge (`code_lengths()`).
-- A valid header has one of these:
-  - all lengths 0, with a decoded size of 0;
-  - exactly one byte value with length 1 (single-symbol input; its code is `0`);
-  - at least two lengths whose Kraft sum Σ 2^-length is exactly 1 (a complete prefix code).
-
-  Anything else is rejected, as is a non-zero size with no codes.
+- A valid Huffman block has either exactly one byte value with length 1 (single-symbol block; its code is `0`), or at least two lengths whose Kraft sum Σ 2^-length is exactly 1 (a complete prefix code). Anything else, including no codes at all, is rejected.
 
 ## Canonical codes
 
@@ -35,13 +52,17 @@ Example: lengths `A=3 B=3 C=3 D=3 E=3 F=2 G=4 H=4` give `F=00 A=010 B=011 C=100 
 
 ## Decoding
 
-A stored payload is the decoded data. For Huffman, read bits from the payload and emit a byte whenever the bits read so far form a code, until the decoded size is reached; the payload's bit count isn't stored.
+A stored payload is the decoded block. For Huffman, read bits from the payload and emit a byte whenever the bits read so far form a code, until the block's decoded size is reached; the payload's bit count isn't stored. Then the CRC32 of the decoded block must match.
 
-The input is corrupt if:
+Errors (`compressor::Error`):
 
-- the header is shorter than 9 bytes (stored) or 137 bytes (Huffman), the method is unknown, or the code lengths break the rules under "Code lengths";
-- a stored payload's length differs from the decoded size;
-- a Huffman payload ends before the decoded size is reached, or no code matches within `max_code_length` bits;
-- bytes follow the one that holds the last code (a decoded size of 0 needs an empty payload), or a padding bit isn't zero.
+| Error | When |
+|---|---|
+| `not_ingot` | Shorter than 4 bytes, or the magic differs |
+| `unsupported_version` | The version isn't 1 |
+| `truncated` | The file ends inside a header, a payload, or before the end block |
+| `corrupt_header` | Block size or flags out of range; unknown method; a decoded size of 0 or above the block size; a short block that isn't the last; a stored block whose encoded size differs from its decoded size; a Huffman block with fewer than 128 encoded bytes, a payload longer than 15 bits per byte, or invalid code lengths; a total size that doesn't match the blocks; any byte after the end block |
+| `corrupt_payload` | A Huffman payload ends before the decoded size is reached, no code matches within `max_code_length` bits, bytes follow the one that holds the last code, or a padding bit isn't zero |
+| `checksum_mismatch` | A block decodes, but its CRC32 differs |
 
-`compressor_app decode` reports corrupt input on stderr, exits non-zero and doesn't create or change the output file.
+`compressor_app decode` reports the error on stderr, exits non-zero and doesn't create or change the output file.
