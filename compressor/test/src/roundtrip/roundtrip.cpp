@@ -48,18 +48,18 @@ void write_bytes(const fs::path& file, const std::string& bytes)
     stream << bytes;
 }
 
-void encode(const fs::path& input, const fs::path& output)
+bool encode(const fs::path& input, const fs::path& output)
 {
     compressor::Compressor compressor;
     compressor::EncoderTask task(input.string(), output.string());
-    compressor.encode(task);
+    return compressor.encode(task);
 }
 
-void decode(const fs::path& input, const fs::path& output)
+bool decode(const fs::path& input, const fs::path& output)
 {
     compressor::Compressor compressor;
     compressor::DecoderTask task(input.string(), output.string());
-    compressor.decode(task);
+    return compressor.decode(task);
 }
 
 fs::path fresh_work_dir(const std::string& name)
@@ -108,8 +108,8 @@ TEST_P(RoundTripTests, Encode_then_decode_restores_the_file)
     const fs::path& original = GetParam();
     const fs::path encoded = work_dir_ / "encoded.bin";
     const fs::path decoded = work_dir_ / "decoded.bin";
-    encode(original, encoded);
-    decode(encoded, decoded);
+    ASSERT_TRUE(encode(original, encoded));
+    ASSERT_TRUE(decode(encoded, decoded));
 
     const auto expected = read_bytes(original);
     const auto actual = read_bytes(decoded);
@@ -140,8 +140,17 @@ protected:
 
     void round_trip()
     {
-        encode(input_, encoded_);
-        decode(encoded_, decoded_);
+        ASSERT_TRUE(encode(input_, encoded_));
+        ASSERT_TRUE(decode(encoded_, decoded_));
+    }
+
+    // Encodes `text` and returns the encoded file's bytes.
+    std::string encoded_bytes(const std::string& text)
+    {
+        write_bytes(input_, text);
+        EXPECT_TRUE(encode(input_, encoded_));
+        const auto bytes = read_bytes(encoded_);
+        return {bytes.begin(), bytes.end()};
     }
 
     fs::path work_dir_;
@@ -171,7 +180,7 @@ TEST_F(EdgeCaseTests, Single_symbol_input_round_trips)
 TEST_F(EdgeCaseTests, Encoding_a_missing_input_leaves_the_output_untouched)
 {
     write_bytes(encoded_, "keep");
-    encode(work_dir_ / "missing.bin", encoded_);
+    EXPECT_FALSE(encode(work_dir_ / "missing.bin", encoded_));
 
     const std::vector<char> expected{'k', 'e', 'e', 'p'};
     EXPECT_EQ(read_bytes(encoded_), expected);
@@ -180,9 +189,9 @@ TEST_F(EdgeCaseTests, Encoding_a_missing_input_leaves_the_output_untouched)
 TEST_F(EdgeCaseTests, Output_files_are_created_when_missing)
 {
     write_bytes(input_, "abracadabra");
-    encode(input_, encoded_);
+    ASSERT_TRUE(encode(input_, encoded_));
     ASSERT_TRUE(fs::exists(encoded_));
-    decode(encoded_, decoded_);
+    ASSERT_TRUE(decode(encoded_, decoded_));
 
     const std::string text = "abracadabra";
     EXPECT_EQ(read_bytes(decoded_), std::vector<char>(text.begin(), text.end()));
@@ -194,9 +203,36 @@ TEST_F(EdgeCaseTests, Existing_longer_output_files_are_truncated)
     write_bytes(input_, "abracadabra");
     write_bytes(encoded_, leftover);
     write_bytes(decoded_, leftover);
-    encode(input_, encoded_);
-    decode(encoded_, decoded_);
+    ASSERT_TRUE(encode(input_, encoded_));
+    ASSERT_TRUE(decode(encoded_, decoded_));
 
     const std::string text = "abracadabra";
     EXPECT_EQ(read_bytes(decoded_), std::vector<char>(text.begin(), text.end()));
+}
+
+TEST_F(EdgeCaseTests, Decoding_a_truncated_header_fails_and_creates_no_output)
+{
+    write_bytes(encoded_, encoded_bytes("abracadabra").substr(0, 100));
+
+    EXPECT_FALSE(decode(encoded_, decoded_));
+    EXPECT_FALSE(fs::exists(decoded_));
+}
+
+TEST_F(EdgeCaseTests, Decoding_a_truncated_payload_fails_and_leaves_the_output_untouched)
+{
+    const std::string bytes = encoded_bytes("abracadabra");
+    write_bytes(encoded_, bytes.substr(0, bytes.size() - 1));
+    write_bytes(decoded_, "keep");
+
+    EXPECT_FALSE(decode(encoded_, decoded_));
+    const std::vector<char> expected{'k', 'e', 'e', 'p'};
+    EXPECT_EQ(read_bytes(decoded_), expected);
+}
+
+TEST_F(EdgeCaseTests, Decoding_with_bytes_appended_fails)
+{
+    write_bytes(encoded_, encoded_bytes("abracadabra") + "x");
+
+    EXPECT_FALSE(decode(encoded_, decoded_));
+    EXPECT_FALSE(fs::exists(decoded_));
 }

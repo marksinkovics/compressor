@@ -188,8 +188,14 @@ Measure first, then make the existing codec fast, one change per step, each with
   - Tests in `compressor/test/src/data/data.cpp`: `Decoded_data_round_trips_every_byte_value` (also replaces old content), `Decoded_data_reads_across_blocks` (3 MiB + 7), and `Decoded_data_reads_from_a_stream_that_cannot_seek` and `Encoded_data_reads_from_a_stream_that_cannot_seek` (a `PipeBuffer` streambuf handing out 1000 bytes per underflow).
 
     70/70 pass in `debug` and `release`; `quality.sh check` passes.
-- [ ] **Report corrupt input (next):** `IDataReader::read()` (and the mocks) returns an error, so `Compressor::decode` fails and `compressor_app` exits non-zero on a corrupt header or a payload that ends early. Today these decode to an empty output file with exit code 0.
-- [ ] **Stored fallback:** store the input as is, with a flag, when Huffman doesn't shrink it. Needed: `flower.png` grows from 734,560 to 737,072 bytes today. The container format later does this per block.
+- [x] **Report corrupt input (done):** `compressor_app decode` prints `Cannot read <file>: the header is corrupt` or `Cannot decode <file>: the payload is corrupt` and exits 1; the output file isn't created or changed. The format rules are in [file_format.md](file_format.md) ("Decoding").
+  - `compressor/include/compressor/error.h`: `enum class Error : std::uint8_t { read_failed, corrupt_header, corrupt_payload }` and `describe(Error)` (in `error.cpp`), meant to be reused by Phase 6.
+  - `IDataReader<T>::read()` returns `std::expected<T, Error>`: `badbit` gives `read_failed`, `failbit` (set only by `operator>>` on an invalid `EncodedData` header) gives `corrupt_header`. `IEngine::decode` returns `std::expected<DecodedData, Error>`. `Compressor::encode`/`decode` stop before opening the writer on either error. The mocks and the codec benchmark follow.
+  - Stricter than planned at first, as decided: `Engine::decode` also rejects bytes after the one holding the last code, non-zero padding bits, and a payload for a decoded size of 0.
+  - Tests: `EngineTests.A_trailing_byte_after_the_codes_is_corrupt`, `Non_zero_padding_is_corrupt`, `A_payload_for_empty_data_is_corrupt`, `Codes_that_fill_the_last_byte_exactly_decode` (the three earlier `..._decodes_to_nothing` tests are now `..._is_corrupt`); `CompressorDataTests.Reader_*` (four, through real files); `CompressorTests.Encoding_fails_without_writing_when_the_input_cannot_be_read`, `Decoding_fails_without_writing_when_the_header_is_corrupt`/`_payload_is_corrupt`; `EdgeCaseTests.Decoding_a_truncated_header_fails_and_creates_no_output`, `Decoding_a_truncated_payload_fails_and_leaves_the_output_untouched`, `Decoding_with_bytes_appended_fails`. The round-trip helpers now return and assert the `bool`.
+
+    84/84 pass in `debug` and `release`; `quality.sh check` passes. The same three cases checked by hand with `compressor_app`.
+- [ ] **Stored fallback (next):** store the input as is, with a flag, when Huffman doesn't shrink it. Needed: `flower.png` grows from 734,560 to 737,072 bytes today. The container format later does this per block.
 
 After Phase 5, continue with the features in their suggested order, starting with the container format.
 
@@ -216,7 +222,7 @@ Each issue names the phase that handles it.
 
 - [x] **Output file must already exist** (Phase 2). `DataWriter::open` ([writer.h](../compressor/include/compressor/data/writer.h)) opens its `std::ofstream` with `std::ios::in | std::ios::binary`. Because of `in`, the open fails when the output file doesn't exist, and an existing file isn't truncated, so leftover bytes from a longer earlier file stay at the end.
 - [x] **Open failures are ignored** (Phase 2). `Compressor::encode/decode` ([compressor.cpp](../compressor/src/compressor/compressor.cpp)) ignore the `bool` that `open()` returns and go on to read from or write to a stream that failed to open.
-- [ ] **Corrupt encoded input isn't reported** (Phase 5 "Report corrupt input"). Since the canonical step, `operator>>` validates the header and `Engine::decode` stops at the end of the payload, so corrupt input no longer hangs or crashes. It decodes to an empty file, though, and the exit code is still 0. The decoder fuzzing feature would test it further.
+- [x] **Corrupt encoded input isn't reported** (Phase 5 "Report corrupt input"). Corrupt input decoded to an empty file with exit code 0; now it fails with a message and a non-zero exit code. The decoder fuzzing feature would test it further.
 - [x] **Empty input is undefined behaviour** (Phase 2). If the input is empty, `Engine::build_tree` ([engine.cpp](../compressor/src/compressor/engine/engine.cpp)) calls `_nodes.front()` on an empty vector.
 - [x] **Input with only one distinct byte is lost** (Phase 2). For input like `aaaa`, the root is the only node and its code is an empty bitset. The encoded payload is 0 bits and decoding returns nothing.
 - [x] **`Engine::find_path` returns wrong codes** (Phase 2, delete). Inside the loop it checks `node` instead of `innerNode`, so every step pushes the same bit. Nothing calls it, but it is part of `IEngine`.

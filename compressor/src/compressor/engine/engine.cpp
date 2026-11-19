@@ -2,6 +2,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <iostream>
 #include <memory>
 #include <span>
@@ -11,6 +12,7 @@
 
 #include <compressor/data/data.h>
 #include <compressor/engine/engine.h>
+#include <compressor/error.h>
 #include <compressor/huffman/huffman.h>
 #include <compressor/tree/binary/nodeiterator.h>
 #include <compressor/tree/binary/tree.h>
@@ -260,7 +262,7 @@ EncodedData Engine::encode(const DecodedData& data)
     return encoded;
 }
 
-DecodedData Engine::decode(const EncodedData& data)
+std::expected<DecodedData, Error> Engine::decode(const EncodedData& data)
 {
     frequencies_ = {};
     set_codes(data.code_lengths_);
@@ -268,6 +270,10 @@ DecodedData Engine::decode(const EncodedData& data)
     DecodedData result;
     if (data.size_ == 0)
     {
+        if (!data.payload_.empty())
+        {
+            return std::unexpected(Error::corrupt_payload);
+        }
         return result;
     }
     // Every symbol takes at least one bit, so a corrupt size can't make this reserve too much.
@@ -280,10 +286,15 @@ DecodedData Engine::decode(const EncodedData& data)
         const DecodeEntry entry = table[reader.peek()];
         if (entry.length == 0 || entry.length > reader.remaining())
         {
-            return {};
+            return std::unexpected(Error::corrupt_payload);
         }
         result.data_.push_back(entry.symbol);
         reader.consume(entry.length);
+    }
+    // peek() covers the rest of the last byte, and reads zeros past the payload.
+    if (reader.remaining() >= 8 || reader.peek() != 0)
+    {
+        return std::unexpected(Error::corrupt_payload);
     }
     return result;
 }

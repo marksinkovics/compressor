@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -21,6 +22,7 @@
 
 #include <compressor/data/data.h>
 #include <compressor/engine/engine.h>
+#include <compressor/error.h>
 
 namespace compressor::bench
 {
@@ -195,7 +197,7 @@ void engine_decode(::benchmark::State& state, const fs::path& path)
         Engine engine;
         file.engine_encoded = engine.encode(as_decoded(file.input));
     }
-    DecodedData decoded;
+    std::expected<DecodedData, Error> decoded;
     for (auto _ : state)
     {
         Engine engine;
@@ -203,7 +205,7 @@ void engine_decode(::benchmark::State& state, const fs::path& path)
         ::benchmark::DoNotOptimize(decoded);
     }
     set_bytes_processed(state, file);
-    if (decoded.data_ != file.input)
+    if (!decoded || decoded->data_ != file.input)
     {
         state.SkipWithError("decoded data differs from the input");
     }

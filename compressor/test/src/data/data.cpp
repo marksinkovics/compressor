@@ -2,6 +2,9 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <expected>
+#include <filesystem>
+#include <fstream>
 #include <sstream>
 #include <streambuf>
 #include <string>
@@ -12,6 +15,8 @@
 #include <gtest/gtest.h>
 
 #include <compressor/data/data.h>
+#include <compressor/data/reader.h>
+#include <compressor/error.h>
 
 class CompressorDataTests : public ::testing::Test
 {
@@ -233,4 +238,82 @@ TEST_F(CompressorDataTests, Encoded_data_reads_from_a_stream_that_cannot_seek)
 
     ASSERT_FALSE(input.fail());
     EXPECT_EQ(output_data, input_data);
+}
+
+namespace
+{
+
+class TempFile
+{
+public:
+    explicit TempFile(const std::string& bytes)
+        : path_(std::filesystem::temp_directory_path() /
+                (std::string("compressor_data_") +
+                 testing::UnitTest::GetInstance()->current_test_info()->name()))
+    {
+        std::ofstream stream(path_, std::ios::out | std::ios::trunc | std::ios::binary);
+        stream << bytes;
+    }
+
+    ~TempFile()
+    {
+        std::error_code error;
+        std::filesystem::remove(path_, error);
+    }
+
+    TempFile(const TempFile&) = delete;
+    TempFile& operator=(const TempFile&) = delete;
+    TempFile(TempFile&&) = delete;
+    TempFile& operator=(TempFile&&) = delete;
+
+    std::string path() const
+    {
+        return path_.string();
+    }
+
+private:
+    std::filesystem::path path_;
+};
+
+template <class T> std::expected<T, compressor::Error> read_file(const TempFile& file)
+{
+    compressor::DataReader<T> reader;
+    EXPECT_TRUE(reader.open(file.path()));
+    auto result = reader.read();
+    reader.close();
+    return result;
+}
+
+} // namespace
+
+TEST_F(CompressorDataTests, Reader_returns_valid_encoded_data)
+{
+    stream << encoded_aab();
+    const TempFile file(stream.str());
+
+    EXPECT_EQ(read_file<compressor::EncodedData>(file), encoded_aab());
+}
+
+TEST_F(CompressorDataTests, Reader_reports_a_short_header_as_corrupt)
+{
+    stream << encoded_aab();
+    const TempFile file(stream.str().substr(0, 100));
+
+    EXPECT_EQ(read_file<compressor::EncodedData>(file),
+              std::unexpected(compressor::Error::corrupt_header));
+}
+
+TEST_F(CompressorDataTests, Reader_reports_an_invalid_header_as_corrupt)
+{
+    const TempFile file(header_bytes(3, compressor::CodeLengths{}) + '\x20');
+
+    EXPECT_EQ(read_file<compressor::EncodedData>(file),
+              std::unexpected(compressor::Error::corrupt_header));
+}
+
+TEST_F(CompressorDataTests, Reader_returns_an_empty_file_as_empty_decoded_data)
+{
+    const TempFile file("");
+
+    EXPECT_EQ(read_file<compressor::DecodedData>(file), compressor::DecodedData{});
 }

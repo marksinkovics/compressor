@@ -3,8 +3,10 @@
 
 #include <array>
 #include <cstdint>
+#include <expected>
 
 #include <compressor/data/data.h>
+#include <compressor/error.h>
 #include <compressor/huffman/huffman.h>
 
 namespace compressor
@@ -19,7 +21,7 @@ public:
     virtual void print_dict() const = 0;
 
     virtual EncodedData encode(const DecodedData& data) = 0;
-    virtual DecodedData decode(const EncodedData& data) = 0;
+    virtual std::expected<DecodedData, Error> decode(const EncodedData& data) = 0;
 };
 
 class Engine : public IEngine
@@ -30,8 +32,8 @@ public:
     void print_dict() const override;
 
     EncodedData encode(const DecodedData& data) override;
-    // Returns empty data when the payload ends before data.size_ symbols or holds no valid code.
-    DecodedData decode(const EncodedData& data) override;
+    // Fails unless the payload holds exactly data.size_ codes followed by zero padding.
+    std::expected<DecodedData, Error> decode(const EncodedData& data) override;
 
 private:
     void set_codes(const CodeLengths& lengths);

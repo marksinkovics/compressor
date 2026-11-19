@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cstdint>
+#include <expected>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -9,6 +10,7 @@
 
 #include <compressor/data/data.h>
 #include <compressor/engine/engine.h>
+#include <compressor/error.h>
 
 namespace
 {
@@ -45,9 +47,10 @@ TEST_F(EngineTests, Compression_with_text)
     compressor::EncodedData encoded_data = comp1.encode(decoded(input));
 
     compressor::Engine comp2;
-    compressor::DecodedData decoded_data = comp2.decode(encoded_data);
+    const auto decoded_data = comp2.decode(encoded_data);
+    ASSERT_TRUE(decoded_data.has_value());
 
-    std::string decoded_str(decoded_data.data_.begin(), decoded_data.data_.end());
+    std::string decoded_str(decoded_data->data_.begin(), decoded_data->data_.end());
 
     EXPECT_STREQ(input.c_str(), decoded_str.c_str());
 }
@@ -58,9 +61,10 @@ TEST_F(EngineTests, Compression_with_long_text)
     compressor::EncodedData encoded_data = comp1.encode(decoded(longInput));
 
     compressor::Engine comp2;
-    compressor::DecodedData decoded_data = comp2.decode(encoded_data);
+    const auto decoded_data = comp2.decode(encoded_data);
+    ASSERT_TRUE(decoded_data.has_value());
 
-    std::string decoded_str(decoded_data.data_.begin(), decoded_data.data_.end());
+    std::string decoded_str(decoded_data->data_.begin(), decoded_data->data_.end());
 
     EXPECT_STREQ(longInput.c_str(), decoded_str.c_str());
 }
@@ -77,9 +81,10 @@ TEST_F(EngineTests, Stream)
     stream >> encoded_data2;
 
     compressor::Engine comp2;
-    compressor::DecodedData decoded_data = comp2.decode(encoded_data2);
+    const auto decoded_data = comp2.decode(encoded_data2);
+    ASSERT_TRUE(decoded_data.has_value());
 
-    std::string decoded_str(decoded_data.data_.begin(), decoded_data.data_.end());
+    std::string decoded_str(decoded_data->data_.begin(), decoded_data->data_.end());
 
     EXPECT_STREQ(input.c_str(), decoded_str.c_str());
 }
@@ -120,8 +125,9 @@ TEST_F(EngineTests, Skewed_input_with_capped_codes_round_trips)
     EXPECT_EQ(read_back, encoded);
 
     compressor::Engine decoder;
-    const compressor::DecodedData decoded = decoder.decode(read_back);
-    EXPECT_EQ(std::string(decoded.data_.begin(), decoded.data_.end()), skewed);
+    const auto result = decoder.decode(read_back);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(std::string(result->data_.begin(), result->data_.end()), skewed);
 }
 
 TEST_F(EngineTests, Encode_packs_codes_first_bit_most_significant)
@@ -144,14 +150,14 @@ TEST_F(EngineTests, Encode_packs_codes_across_bytes_and_pads_the_last_one)
               (std::vector<uint8_t>{0x4D, 0x34, 0xD3, 0x4D, 0x30}));
 }
 
-TEST_F(EngineTests, A_truncated_payload_decodes_to_nothing)
+TEST_F(EngineTests, A_truncated_payload_is_corrupt)
 {
     compressor::Engine encoder;
     compressor::EncodedData encoded = encoder.encode(decoded(longInput));
     encoded.payload_.resize(encoded.payload_.size() / 2);
 
     compressor::Engine decoder;
-    EXPECT_TRUE(decoder.decode(encoded).data_.empty());
+    EXPECT_EQ(decoder.decode(encoded), std::unexpected(compressor::Error::corrupt_payload));
 }
 
 TEST_F(EngineTests, Print_dict_lists_the_canonical_codes)
@@ -194,7 +200,7 @@ TEST_F(EngineTests, Print_graph_handles_a_single_symbol)
                                                       "}\n");
 }
 
-TEST_F(EngineTests, A_bit_pattern_that_starts_no_code_decodes_to_nothing)
+TEST_F(EngineTests, A_bit_pattern_that_starts_no_code_is_corrupt)
 {
     // A single symbol has the code 0, so no code starts with 1.
     compressor::EncodedData encoded;
@@ -203,10 +209,10 @@ TEST_F(EngineTests, A_bit_pattern_that_starts_no_code_decodes_to_nothing)
     encoded.payload_ = {0x40}; // 01
 
     compressor::Engine decoder;
-    EXPECT_TRUE(decoder.decode(encoded).data_.empty());
+    EXPECT_EQ(decoder.decode(encoded), std::unexpected(compressor::Error::corrupt_payload));
 }
 
-TEST_F(EngineTests, A_code_that_ends_past_the_payload_decodes_to_nothing)
+TEST_F(EngineTests, A_code_that_ends_past_the_payload_is_corrupt)
 {
     // a = 0, b = 10, c = 11: after seven "a", the last bit 1 starts a two-bit code that doesn't
     // fit.
@@ -218,5 +224,50 @@ TEST_F(EngineTests, A_code_that_ends_past_the_payload_decodes_to_nothing)
     encoded.payload_ = {0x01};
 
     compressor::Engine decoder;
-    EXPECT_TRUE(decoder.decode(encoded).data_.empty());
+    EXPECT_EQ(decoder.decode(encoded), std::unexpected(compressor::Error::corrupt_payload));
+}
+
+TEST_F(EngineTests, A_trailing_byte_after_the_codes_is_corrupt)
+{
+    compressor::Engine encoder;
+    compressor::EncodedData encoded = encoder.encode(decoded("aab"));
+    encoded.payload_.push_back(0x00);
+
+    compressor::Engine decoder;
+    EXPECT_EQ(decoder.decode(encoded), std::unexpected(compressor::Error::corrupt_payload));
+}
+
+TEST_F(EngineTests, Non_zero_padding_is_corrupt)
+{
+    // a = 0, b = 1: "aab" is 001, so the last five bits are padding.
+    compressor::EncodedData encoded;
+    encoded.size_ = 3;
+    encoded.code_lengths_['a'] = 1;
+    encoded.code_lengths_['b'] = 1;
+    encoded.payload_ = {0x21};
+
+    compressor::Engine decoder;
+    EXPECT_EQ(decoder.decode(encoded), std::unexpected(compressor::Error::corrupt_payload));
+}
+
+TEST_F(EngineTests, A_payload_for_empty_data_is_corrupt)
+{
+    compressor::EncodedData encoded;
+    encoded.payload_ = {0x00};
+
+    compressor::Engine decoder;
+    EXPECT_EQ(decoder.decode(encoded), std::unexpected(compressor::Error::corrupt_payload));
+}
+
+TEST_F(EngineTests, Codes_that_fill_the_last_byte_exactly_decode)
+{
+    // a = 0, b = 1: eight symbols are one byte without padding.
+    compressor::Engine encoder;
+    const compressor::EncodedData encoded = encoder.encode(decoded("abababab"));
+    ASSERT_EQ(encoded.payload_.size(), 1U);
+
+    compressor::Engine decoder;
+    const auto result = decoder.decode(encoded);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(std::string(result->data_.begin(), result->data_.end()), "abababab");
 }

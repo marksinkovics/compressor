@@ -30,4 +30,10 @@ Example: lengths `A=3 B=3 C=3 D=3 E=3 F=2 G=4 H=4` give `F=00 A=010 B=011 C=100 
 
 ## Decoding
 
-Read bits from the payload and emit a byte whenever the bits read so far form a code, until the decoded size is reached. The payload's bit count isn't stored. If the payload ends first, or no code matches within `max_code_length` bits, the input is corrupt.
+Read bits from the payload and emit a byte whenever the bits read so far form a code, until the decoded size is reached. The payload's bit count isn't stored. The input is corrupt if:
+
+- the header is shorter than 136 bytes or breaks the rules under "Code lengths";
+- the payload ends before the decoded size is reached, or no code matches within `max_code_length` bits;
+- bytes follow the one that holds the last code (a decoded size of 0 needs an empty payload), or a padding bit isn't zero.
+
+`compressor_app decode` reports corrupt input on stderr, exits non-zero and doesn't create or change the output file.

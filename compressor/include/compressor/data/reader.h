@@ -2,7 +2,9 @@
 #define DataReader_h
 
 #include <compressor/data/data.h>
+#include <compressor/error.h>
 
+#include <expected>
 #include <fstream>
 #include <string>
 
@@ -14,7 +16,7 @@ template <class T> class IDataReader
 public:
     virtual ~IDataReader() = default;
     virtual bool open(const std::string& file) = 0;
-    virtual T read() = 0;
+    virtual std::expected<T, Error> read() = 0;
     virtual void close() = 0;
 };
 
@@ -29,10 +31,19 @@ public:
         return !input_stream_.fail();
     }
 
-    T read() override
+    // operator>> sets failbit only when the data it read is invalid.
+    std::expected<T, Error> read() override
     {
         T data;
         input_stream_ >> data;
+        if (input_stream_.bad())
+        {
+            return std::unexpected(Error::read_failed);
+        }
+        if (input_stream_.fail())
+        {
+            return std::unexpected(Error::corrupt_header);
+        }
         return data;
     }
 
