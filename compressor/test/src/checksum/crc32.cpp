@@ -74,7 +74,7 @@ TEST(Crc32Tests, Matches_zlib_on_unaligned_input)
 #if defined(__APPLE__) && defined(__aarch64__)
 TEST(Crc32Tests, Uses_the_hardware_path_on_apple_silicon)
 {
-    EXPECT_TRUE(compressor::crc32_hardware);
+    EXPECT_TRUE(compressor::crc32_hardware());
 }
 #endif
 

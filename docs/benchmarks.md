@@ -162,7 +162,7 @@ After container step 2 ([roadmap.md](roadmap.md#container-format-and-streaming))
 
 ## Hardware CRC32 (2026-11-19)
 
-`crc32()` switched from slicing-by-8 to ARMv8 `crc32x` ([roadmap.md](roadmap.md), known issue "CRC32 caps stored blocks"). In-memory `Engine` benchmarks, 3 repetitions (medians), Apple M3 Max under load average 9–46, so differences under about 10% are noise. Before: `docs/benchmarks/hardware-crc32-before.json`, after: `docs/benchmarks/hardware-crc32.json`.
+`crc32()` switched from slicing-by-8 to ARMv8 `crc32x` (then to runtime dispatch, which measured the same) ([roadmap.md](roadmap.md), known issue "CRC32 caps stored blocks"). In-memory `Engine` benchmarks, 3 repetitions (medians), Apple M3 Max under load average 9–46, so differences under about 10% are noise. Before: `docs/benchmarks/hardware-crc32-before.json`, after: `docs/benchmarks/hardware-crc32.json`.
 
 - **Stored blocks** (`flower.png`, `lena.jpg`): decode about 2,100 → 7,600–8,000 MiB/s, now limited by one serial `crc32x` chain rather than the table lookups; encode 940–1,250 → 1,470–2,200 MiB/s.
 - **Huffman blocks:** decode geomean +13% on Canterbury, +9% on Silesia; encode +20% and +19%. This wins back most of the 10–15% that the CRC cost in container step 1.

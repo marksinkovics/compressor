@@ -7,12 +7,33 @@
 #include <cstring>
 #include <span>
 
-#if defined(__ARM_FEATURE_CRC32)
+// Each hardware path is compiled with a target attribute, so the build needs no -m flags, and is
+// used only after a CPU check; when the compiler already targets the feature, the check is skipped.
+#if defined(__aarch64__) && (defined(__GNUC__) || defined(__clang__))
 #include <arm_acle.h>
 #define COMPRESSOR_CRC32_ARM 1
-#elif defined(__PCLMUL__) && defined(__SSE4_1__)
+#if defined(__ARM_FEATURE_CRC32)
+#define COMPRESSOR_CRC32_TARGET
+#elif defined(__clang__)
+#define COMPRESSOR_CRC32_TARGET __attribute__((target("crc")))
+#else
+#define COMPRESSOR_CRC32_TARGET __attribute__((target("+crc")))
+#endif
+#if defined(__linux__)
+#include <asm/hwcap.h>
+#include <sys/auxv.h>
+#elif defined(__APPLE__)
+#include <sys/sysctl.h>
+#endif
+#elif defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
 #include <immintrin.h>
 #define COMPRESSOR_CRC32_PCLMUL 1
+#define COMPRESSOR_CRC32_TARGET __attribute__((target("pclmul,sse4.1")))
+#elif defined(_M_X64) && defined(_MSC_VER)
+#include <immintrin.h>
+#include <intrin.h>
+#define COMPRESSOR_CRC32_PCLMUL 1
+#define COMPRESSOR_CRC32_TARGET
 #endif
 
 namespace compressor
@@ -78,7 +99,23 @@ uint32_t crc32_inverted_portable(std::span<const uint8_t> bytes, uint32_t crc)
 
 #if defined(COMPRESSOR_CRC32_ARM)
 
-uint32_t crc32_inverted_hardware(std::span<const uint8_t> bytes, uint32_t crc)
+bool cpu_has_crc32()
+{
+#if defined(__ARM_FEATURE_CRC32)
+    return true;
+#elif defined(__linux__)
+    return (getauxval(AT_HWCAP) & HWCAP_CRC32) != 0;
+#elif defined(__APPLE__)
+    int value = 0;
+    std::size_t size = sizeof(value);
+    return sysctlbyname("hw.optional.armv8_crc32", &value, &size, nullptr, 0) == 0 && value != 0;
+#else
+    return false;
+#endif
+}
+
+COMPRESSOR_CRC32_TARGET uint32_t crc32_inverted_hardware(std::span<const uint8_t> bytes,
+                                                         uint32_t crc)
 {
     static_assert(std::endian::native == std::endian::little);
     while (bytes.size() >= 8)
@@ -97,37 +134,56 @@ uint32_t crc32_inverted_hardware(std::span<const uint8_t> bytes, uint32_t crc)
 
 #elif defined(COMPRESSOR_CRC32_PCLMUL)
 
+bool cpu_has_crc32()
+{
+#if defined(__PCLMUL__) && defined(__SSE4_1__)
+    return true;
+#elif defined(_MSC_VER)
+    std::array<int, 4> registers{};
+    __cpuid(registers.data(), 1);
+    constexpr int pclmulqdq = 1 << 1;
+    constexpr int sse4_1 = 1 << 19;
+    return (registers[2] & pclmulqdq) != 0 && (registers[2] & sse4_1) != 0;
+#else
+    return __builtin_cpu_supports("pclmul") && __builtin_cpu_supports("sse4.1");
+#endif
+}
+
+COMPRESSOR_CRC32_TARGET __m128i load128(std::span<const uint8_t> from)
+{
+    return _mm_loadu_si128(reinterpret_cast<const __m128i*>(from.data()));
+}
+
+COMPRESSOR_CRC32_TARGET __m128i fold(__m128i value, __m128i constants, __m128i next)
+{
+    const __m128i low = _mm_clmulepi64_si128(value, constants, 0x00);
+    const __m128i high = _mm_clmulepi64_si128(value, constants, 0x11);
+    return _mm_xor_si128(_mm_xor_si128(low, high), next);
+}
+
 // Folding with carry-less multiplication and a Barrett reduction, after Intel's "Fast CRC
 // Computation for Generic Polynomials Using PCLMULQDQ Instruction" (the constants are
 // x^n mod P for the reflected polynomial, as in zlib's and Chromium's versions).
-uint32_t crc32_inverted_hardware(std::span<const uint8_t> bytes, uint32_t crc)
+COMPRESSOR_CRC32_TARGET uint32_t crc32_inverted_hardware(std::span<const uint8_t> bytes,
+                                                         uint32_t crc)
 {
     if (bytes.size() < 64)
     {
         return crc32_inverted_portable(bytes, crc);
     }
-    const auto load = [](std::span<const uint8_t> from) {
-        return _mm_loadu_si128(reinterpret_cast<const __m128i*>(from.data()));
-    };
-    const auto fold = [](__m128i value, __m128i constants, __m128i next) {
-        const __m128i low = _mm_clmulepi64_si128(value, constants, 0x00);
-        const __m128i high = _mm_clmulepi64_si128(value, constants, 0x11);
-        return _mm_xor_si128(_mm_xor_si128(low, high), next);
-    };
-
-    __m128i x1 = _mm_xor_si128(load(bytes), _mm_cvtsi32_si128(static_cast<int>(crc)));
-    __m128i x2 = load(bytes.subspan(16));
-    __m128i x3 = load(bytes.subspan(32));
-    __m128i x4 = load(bytes.subspan(48));
+    __m128i x1 = _mm_xor_si128(load128(bytes), _mm_cvtsi32_si128(static_cast<int>(crc)));
+    __m128i x2 = load128(bytes.subspan(16));
+    __m128i x3 = load128(bytes.subspan(32));
+    __m128i x4 = load128(bytes.subspan(48));
     bytes = bytes.subspan(64);
 
     const __m128i k1k2 = _mm_set_epi64x(0x01c6e41596, 0x0154442bd4);
     while (bytes.size() >= 64)
     {
-        x1 = fold(x1, k1k2, load(bytes));
-        x2 = fold(x2, k1k2, load(bytes.subspan(16)));
-        x3 = fold(x3, k1k2, load(bytes.subspan(32)));
-        x4 = fold(x4, k1k2, load(bytes.subspan(48)));
+        x1 = fold(x1, k1k2, load128(bytes));
+        x2 = fold(x2, k1k2, load128(bytes.subspan(16)));
+        x3 = fold(x3, k1k2, load128(bytes.subspan(32)));
+        x4 = fold(x4, k1k2, load128(bytes.subspan(48)));
         bytes = bytes.subspan(64);
     }
 
@@ -137,7 +193,7 @@ uint32_t crc32_inverted_hardware(std::span<const uint8_t> bytes, uint32_t crc)
     x1 = fold(x1, k3k4, x4);
     while (bytes.size() >= 16)
     {
-        x1 = fold(x1, k3k4, load(bytes));
+        x1 = fold(x1, k3k4, load128(bytes));
         bytes = bytes.subspan(16);
     }
 
@@ -157,23 +213,32 @@ uint32_t crc32_inverted_hardware(std::span<const uint8_t> bytes, uint32_t crc)
     return crc32_inverted_portable(bytes, crc);
 }
 
+#else
+
+bool cpu_has_crc32()
+{
+    return false;
+}
+
+uint32_t crc32_inverted_hardware(std::span<const uint8_t> bytes, uint32_t crc)
+{
+    return crc32_inverted_portable(bytes, crc);
+}
+
 #endif
 
 } // namespace
 
-#if defined(COMPRESSOR_CRC32_ARM) || defined(COMPRESSOR_CRC32_PCLMUL)
-const bool crc32_hardware = true;
-#else
-const bool crc32_hardware = false;
-#endif
+bool crc32_hardware()
+{
+    static const bool available = cpu_has_crc32();
+    return available;
+}
 
 uint32_t crc32(std::span<const uint8_t> bytes, uint32_t crc)
 {
-#if defined(COMPRESSOR_CRC32_ARM) || defined(COMPRESSOR_CRC32_PCLMUL)
-    return ~crc32_inverted_hardware(bytes, ~crc);
-#else
-    return ~crc32_inverted_portable(bytes, ~crc);
-#endif
+    return ~(crc32_hardware() ? crc32_inverted_hardware(bytes, ~crc)
+                              : crc32_inverted_portable(bytes, ~crc));
 }
 
 uint32_t crc32_portable(std::span<const uint8_t> bytes, uint32_t crc)
