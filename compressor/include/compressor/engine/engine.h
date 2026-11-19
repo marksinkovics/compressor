@@ -22,8 +22,13 @@ public:
     virtual void print_graph() const = 0;
     virtual void print_dict() const = 0;
 
-    virtual EncodedData encode(const DecodedData& data) = 0;
-    virtual std::expected<DecodedData, Error> decode(const EncodedData& data) = 0;
+    // Uses whichever of stored and Huffman gives the smaller block.
+    virtual EncodedBlock encode_block(std::span<const uint8_t> bytes) = 0;
+    // Appends the decoded bytes to `out`. Fails unless a stored payload is block.size_ bytes, or a
+    // Huffman payload holds exactly block.size_ codes followed by zero padding, and the bytes
+    // match block.crc_.
+    virtual std::expected<void, Error> decode_block(const EncodedBlock& block,
+                                                    std::vector<uint8_t>& out) = 0;
 };
 
 class Engine : public IEngine
@@ -35,16 +40,13 @@ public:
     void print_graph() const override;
     void print_dict() const override;
 
-    // Splits the input into blocks of the engine's block size.
-    EncodedData encode(const DecodedData& data) override;
-    std::expected<DecodedData, Error> decode(const EncodedData& data) override;
+    EncodedBlock encode_block(std::span<const uint8_t> bytes) override;
+    std::expected<void, Error> decode_block(const EncodedBlock& block,
+                                            std::vector<uint8_t>& out) override;
 
-    // Uses whichever of stored and Huffman gives the smaller block.
-    EncodedBlock encode_block(std::span<const uint8_t> bytes);
-    // Appends the decoded bytes to `out`. Fails unless a stored payload is block.size_ bytes, or a
-    // Huffman payload holds exactly block.size_ codes followed by zero padding, and the bytes
-    // match block.crc_.
-    std::expected<void, Error> decode_block(const EncodedBlock& block, std::vector<uint8_t>& out);
+    // Whole buffers in memory, for tests and benchmarks; split into blocks of the engine's size.
+    EncodedData encode(const DecodedData& data);
+    std::expected<DecodedData, Error> decode(const EncodedData& data);
 
 private:
     std::expected<void, Error> decode_huffman(const EncodedBlock& block, std::vector<uint8_t>& out);

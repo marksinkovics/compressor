@@ -11,8 +11,6 @@
 #include <gtest/gtest.h>
 
 #include <compressor/compressor.h>
-#include <compressor/task/decoder.h>
-#include <compressor/task/encoder.h>
 
 namespace
 {
@@ -52,15 +50,13 @@ void write_bytes(const fs::path& file, const std::string& bytes)
 bool encode(const fs::path& input, const fs::path& output)
 {
     compressor::Compressor compressor;
-    compressor::EncoderTask task(input.string(), output.string());
-    return compressor.encode(task);
+    return compressor.encode(input, output);
 }
 
 bool decode(const fs::path& input, const fs::path& output)
 {
     compressor::Compressor compressor;
-    compressor::DecoderTask task(input.string(), output.string());
-    return compressor.decode(task);
+    return compressor.decode(input, output);
 }
 
 fs::path fresh_work_dir(const std::string& name)

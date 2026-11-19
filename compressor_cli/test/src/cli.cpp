@@ -64,12 +64,13 @@ TEST_F(CLITests, Encode_passes_the_paths_to_the_compressor)
 {
     std::string input;
     std::string output;
-    EXPECT_CALL(*compressor_, encode(::testing::_)).WillOnce([&](compressor::IEncoderTask& task) {
-        input = task.input_file();
-        output = task.output_file();
+    EXPECT_CALL(*compressor_, encode(::testing::_, ::testing::_))
+        .WillOnce([&](const fs::path& in, const fs::path& out) {
+        input = in.string();
+        output = out.string();
         return true;
     });
-    EXPECT_CALL(*compressor_, decode(::testing::_)).Times(0);
+    EXPECT_CALL(*compressor_, decode(::testing::_, ::testing::_)).Times(0);
 
     EXPECT_EQ(run({"encode", "--input", input_, "--output", output_}), EXIT_SUCCESS);
     EXPECT_EQ(input, input_);
@@ -80,10 +81,11 @@ TEST_F(CLITests, Decode_passes_the_paths_to_the_compressor)
 {
     std::string input;
     std::string output;
-    EXPECT_CALL(*compressor_, encode(::testing::_)).Times(0);
-    EXPECT_CALL(*compressor_, decode(::testing::_)).WillOnce([&](compressor::IDecoderTask& task) {
-        input = task.input_file();
-        output = task.output_file();
+    EXPECT_CALL(*compressor_, encode(::testing::_, ::testing::_)).Times(0);
+    EXPECT_CALL(*compressor_, decode(::testing::_, ::testing::_))
+        .WillOnce([&](const fs::path& in, const fs::path& out) {
+        input = in.string();
+        output = out.string();
         return true;
     });
 
@@ -94,7 +96,7 @@ TEST_F(CLITests, Decode_passes_the_paths_to_the_compressor)
 
 TEST_F(CLITests, Failed_encoding_gives_a_non_zero_exit_code)
 {
-    EXPECT_CALL(*compressor_, encode(::testing::_)).WillOnce(Return(false));
+    EXPECT_CALL(*compressor_, encode(::testing::_, ::testing::_)).WillOnce(Return(false));
 
     EXPECT_NE(run({"encode", "-i", input_, "-o", output_}), EXIT_SUCCESS);
     EXPECT_THAT(err_.str(), HasSubstr("Encoding"));
@@ -102,7 +104,7 @@ TEST_F(CLITests, Failed_encoding_gives_a_non_zero_exit_code)
 
 TEST_F(CLITests, Failed_decoding_gives_a_non_zero_exit_code)
 {
-    EXPECT_CALL(*compressor_, decode(::testing::_)).WillOnce(Return(false));
+    EXPECT_CALL(*compressor_, decode(::testing::_, ::testing::_)).WillOnce(Return(false));
 
     EXPECT_NE(run({"decode", "-i", input_, "-o", output_}), EXIT_SUCCESS);
     EXPECT_THAT(err_.str(), HasSubstr("Decoding"));
@@ -110,8 +112,8 @@ TEST_F(CLITests, Failed_decoding_gives_a_non_zero_exit_code)
 
 TEST_F(CLITests, Help_prints_once_and_succeeds)
 {
-    EXPECT_CALL(*compressor_, encode(::testing::_)).Times(0);
-    EXPECT_CALL(*compressor_, decode(::testing::_)).Times(0);
+    EXPECT_CALL(*compressor_, encode(::testing::_, ::testing::_)).Times(0);
+    EXPECT_CALL(*compressor_, decode(::testing::_, ::testing::_)).Times(0);
 
     EXPECT_EQ(run({"--help"}), EXIT_SUCCESS);
     const std::string help = out_.str();
@@ -125,7 +127,7 @@ TEST_F(CLITests, Help_prints_once_and_succeeds)
 
 TEST_F(CLITests, Subcommand_help_succeeds)
 {
-    EXPECT_CALL(*compressor_, encode(::testing::_)).Times(0);
+    EXPECT_CALL(*compressor_, encode(::testing::_, ::testing::_)).Times(0);
 
     EXPECT_EQ(run({"encode", "--help"}), EXIT_SUCCESS);
     EXPECT_THAT(out_.str(), HasSubstr("--input"));
@@ -133,8 +135,8 @@ TEST_F(CLITests, Subcommand_help_succeeds)
 
 TEST_F(CLITests, Version_prints_the_version_and_succeeds)
 {
-    EXPECT_CALL(*compressor_, encode(::testing::_)).Times(0);
-    EXPECT_CALL(*compressor_, decode(::testing::_)).Times(0);
+    EXPECT_CALL(*compressor_, encode(::testing::_, ::testing::_)).Times(0);
+    EXPECT_CALL(*compressor_, decode(::testing::_, ::testing::_)).Times(0);
 
     EXPECT_EQ(run({"--version"}), EXIT_SUCCESS);
     EXPECT_THAT(out_.str(), HasSubstr(COMPRESSOR_VERSION));
@@ -142,8 +144,8 @@ TEST_F(CLITests, Version_prints_the_version_and_succeeds)
 
 TEST_F(CLITests, No_subcommand_fails)
 {
-    EXPECT_CALL(*compressor_, encode(::testing::_)).Times(0);
-    EXPECT_CALL(*compressor_, decode(::testing::_)).Times(0);
+    EXPECT_CALL(*compressor_, encode(::testing::_, ::testing::_)).Times(0);
+    EXPECT_CALL(*compressor_, decode(::testing::_, ::testing::_)).Times(0);
 
     EXPECT_NE(run({}), EXIT_SUCCESS);
     EXPECT_THAT(err_.str(), Not(IsEmpty()));
@@ -151,8 +153,8 @@ TEST_F(CLITests, No_subcommand_fails)
 
 TEST_F(CLITests, Two_subcommands_fail)
 {
-    EXPECT_CALL(*compressor_, encode(::testing::_)).Times(0);
-    EXPECT_CALL(*compressor_, decode(::testing::_)).Times(0);
+    EXPECT_CALL(*compressor_, encode(::testing::_, ::testing::_)).Times(0);
+    EXPECT_CALL(*compressor_, decode(::testing::_, ::testing::_)).Times(0);
 
     EXPECT_NE(run({"encode", "-i", input_, "-o", output_, "decode", "-i", input_, "-o", output_}),
               EXIT_SUCCESS);
@@ -160,7 +162,7 @@ TEST_F(CLITests, Two_subcommands_fail)
 
 TEST_F(CLITests, Missing_input_file_fails)
 {
-    EXPECT_CALL(*compressor_, encode(::testing::_)).Times(0);
+    EXPECT_CALL(*compressor_, encode(::testing::_, ::testing::_)).Times(0);
 
     EXPECT_NE(run({"encode", "-i", (dir_ / "missing").string(), "-o", output_}), EXIT_SUCCESS);
     EXPECT_THAT(err_.str(), HasSubstr("missing"));
@@ -168,14 +170,14 @@ TEST_F(CLITests, Missing_input_file_fails)
 
 TEST_F(CLITests, Option_without_a_value_at_the_end_fails)
 {
-    EXPECT_CALL(*compressor_, encode(::testing::_)).Times(0);
+    EXPECT_CALL(*compressor_, encode(::testing::_, ::testing::_)).Times(0);
 
     EXPECT_NE(run({"encode", "-o", output_, "--input"}), EXIT_SUCCESS);
 }
 
 TEST_F(CLITests, Missing_output_option_fails)
 {
-    EXPECT_CALL(*compressor_, decode(::testing::_)).Times(0);
+    EXPECT_CALL(*compressor_, decode(::testing::_, ::testing::_)).Times(0);
 
     EXPECT_NE(run({"decode", "-i", input_}), EXIT_SUCCESS);
     EXPECT_THAT(err_.str(), HasSubstr("--output"));
@@ -183,7 +185,7 @@ TEST_F(CLITests, Missing_output_option_fails)
 
 TEST_F(CLITests, Unknown_option_fails)
 {
-    EXPECT_CALL(*compressor_, encode(::testing::_)).Times(0);
+    EXPECT_CALL(*compressor_, encode(::testing::_, ::testing::_)).Times(0);
 
     EXPECT_NE(run({"encode", "-i", input_, "-o", output_, "--level", "9"}), EXIT_SUCCESS);
 }

@@ -10,6 +10,7 @@ namespace compressor
 enum class Error : std::uint8_t
 {
     read_failed,
+    write_failed,
     not_ingot,
     unsupported_version,
     truncated,

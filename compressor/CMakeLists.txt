@@ -9,15 +9,12 @@ set(INCLUDE_FILES
     "${COMPRESSOR_INCLUDE_DIR}/tree/symbolnode.h"
     "${COMPRESSOR_INCLUDE_DIR}/checksum/crc32.h"
     "${COMPRESSOR_INCLUDE_DIR}/data/data.h"
-    "${COMPRESSOR_INCLUDE_DIR}/data/reader.h"
-    "${COMPRESSOR_INCLUDE_DIR}/data/writer.h"
     "${COMPRESSOR_INCLUDE_DIR}/compressor.h"
     "${COMPRESSOR_INCLUDE_DIR}/engine/engine.h"
     "${COMPRESSOR_INCLUDE_DIR}/error.h"
     "${COMPRESSOR_INCLUDE_DIR}/huffman/huffman.h"
-    "${COMPRESSOR_INCLUDE_DIR}/task/coder.h"
-    "${COMPRESSOR_INCLUDE_DIR}/task/encoder.h"
-    "${COMPRESSOR_INCLUDE_DIR}/task/decoder.h"
+    "${COMPRESSOR_INCLUDE_DIR}/stream/encoder.h"
+    "${COMPRESSOR_INCLUDE_DIR}/stream/decoder.h"
 )
 
 set(SRC_DIR ${PROJECT_SOURCE_DIR}/src)
@@ -29,15 +26,12 @@ set(SRC_FILES
     "${COMPRESSOR_SRC_DIR}/tree/symbolnode.cpp"
     "${COMPRESSOR_SRC_DIR}/checksum/crc32.cpp"
     "${COMPRESSOR_SRC_DIR}/data/data.cpp"
-    "${COMPRESSOR_SRC_DIR}/data/reader.cpp"
-    "${COMPRESSOR_SRC_DIR}/data/writer.cpp"
     "${COMPRESSOR_SRC_DIR}/compressor.cpp"
     "${COMPRESSOR_SRC_DIR}/engine/engine.cpp"
     "${COMPRESSOR_SRC_DIR}/error.cpp"
     "${COMPRESSOR_SRC_DIR}/huffman/huffman.cpp"
-    "${COMPRESSOR_SRC_DIR}/task/coder.cpp"
-    "${COMPRESSOR_SRC_DIR}/task/encoder.cpp"
-    "${COMPRESSOR_SRC_DIR}/task/decoder.cpp"
+    "${COMPRESSOR_SRC_DIR}/stream/encoder.cpp"
+    "${COMPRESSOR_SRC_DIR}/stream/decoder.cpp"
 )
 
 add_library(${PROJECT_NAME} ${INCLUDE_FILES} ${SRC_FILES} )

@@ -1,17 +1,19 @@
 #ifndef MockICompressor_h
 #define MockICompressor_h
 
+#include <filesystem>
+
 #include <gmock/gmock.h>
 
 #include <compressor/compressor.h>
-#include <compressor/task/decoder.h>
-#include <compressor/task/encoder.h>
 
 class MockICompressor : public compressor::ICompressor
 {
 public:
-    MOCK_METHOD(bool, encode, (compressor::IEncoderTask&), (override));
-    MOCK_METHOD(bool, decode, (compressor::IDecoderTask&), (override));
+    MOCK_METHOD(bool, encode, (const std::filesystem::path&, const std::filesystem::path&),
+                (override));
+    MOCK_METHOD(bool, decode, (const std::filesystem::path&, const std::filesystem::path&),
+                (override));
 };
 
 #endif /* MockICompressor_h */

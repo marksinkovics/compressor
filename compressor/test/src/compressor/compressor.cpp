@@ -1,250 +1,206 @@
+#include <algorithm>
 #include <expected>
+#include <filesystem>
+#include <fstream>
+#include <istream>
+#include <iterator>
+#include <memory>
+#include <ostream>
 #include <sstream>
+#include <string>
+#include <system_error>
+#include <utility>
+#include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include <compressor/test/mock/task/decoder.h>
-#include <compressor/test/mock/task/encoder.h>
-
-#include <compressor/data/data.h>
-#include <compressor/data/reader.h>
+#include <compressor/compressor.h>
 #include <compressor/error.h>
-#include <compressor/test/mock/data/reader.h>
-#include <compressor/test/mock/data/writer.h>
-#include <compressor/test/mock/engine/engine.h>
+#include <compressor/test/mock/stream/decoder.h>
+#include <compressor/test/mock/stream/encoder.h>
+
+namespace
+{
+
+namespace fs = std::filesystem;
+using ::testing::_;
+using ::testing::HasSubstr;
+using ::testing::Return;
+
+std::string read_file(const fs::path& path)
+{
+    std::ifstream stream(path, std::ios::in | std::ios::binary);
+    return {std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()};
+}
+
+void write_file(const fs::path& path, const std::string& bytes)
+{
+    std::ofstream stream(path, std::ios::out | std::ios::trunc | std::ios::binary);
+    stream << bytes;
+}
+
+// Copies the input to the output in upper case, standing in for either coder.
+std::expected<void, compressor::Error> shout(std::istream& in, std::ostream& out)
+{
+    std::string text{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+    std::ranges::transform(text, text.begin(), [](char c) {
+        return static_cast<char>(c >= 'a' && c <= 'z' ? c - 'a' + 'A' : c);
+    });
+    out << text;
+    return {};
+}
+
+// Writes something first, so a failure leaves a partial output behind.
+std::expected<void, compressor::Error> fail_halfway(std::istream& /*in*/, std::ostream& out)
+{
+    out << "partial";
+    return std::unexpected(compressor::Error::checksum_mismatch);
+}
+
+} // namespace
 
 class CompressorTests : public ::testing::Test
 {
 protected:
-    void SetUp() override {}
+    void SetUp() override
+    {
+        const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
+        dir_ = fs::temp_directory_path() / (std::string("compressor_compressor_") + info->name());
+        fs::remove_all(dir_);
+        fs::create_directories(dir_);
+        input_ = dir_ / "input.txt";
+        output_ = dir_ / "output.bin";
+        write_file(input_, "abc");
+    }
+
+    void TearDown() override
+    {
+        std::error_code error;
+        fs::remove_all(dir_, error);
+    }
+
+    compressor::Compressor make_compressor()
+    {
+        return {std::move(encoder_), std::move(decoder_), err_};
+    }
+
+    std::vector<std::string> files() const
+    {
+        std::vector<std::string> names;
+        for (const auto& entry : fs::directory_iterator(dir_))
+        {
+            names.push_back(entry.path().filename().string());
+        }
+        std::ranges::sort(names);
+        return names;
+    }
+
+    fs::path dir_;
+    fs::path input_;
+    fs::path output_;
+    std::unique_ptr<MockIBlockEncoder> encoder_ = std::make_unique<MockIBlockEncoder>();
+    std::unique_ptr<MockIBlockDecoder> decoder_ = std::make_unique<MockIBlockDecoder>();
+    std::ostringstream err_;
 };
 
-TEST_F(CompressorTests, Encoding)
+TEST_F(CompressorTests, Encode_streams_the_input_file_into_the_output_file)
 {
-    std::string input_file{"input_file"};
-    std::string output_file{"output_file"};
-    compressor::DecodedData decoded_data;
-    compressor::EncodedData encoded_data;
+    EXPECT_CALL(*encoder_, encode(_, _)).WillOnce(shout);
+    EXPECT_CALL(*decoder_, decode(_, _)).Times(0);
 
-    MockIDataReader<compressor::DecodedData> reader;
-    EXPECT_CALL(reader, open(testing::StrEq(input_file))).WillOnce(testing::Return(true));
-    EXPECT_CALL(reader, read()).WillOnce(testing::Return(decoded_data));
-    EXPECT_CALL(reader, close()).Times(1);
-
-    MockIEngine engine;
-    EXPECT_CALL(engine, encode(testing::Eq(decoded_data))).WillOnce(testing::Return(encoded_data));
-
-    MockIDataWriter<compressor::EncodedData> writer;
-    EXPECT_CALL(writer, open(testing::StrEq(output_file))).WillOnce(testing::Return(true));
-    EXPECT_CALL(writer, write(testing::Eq(encoded_data))).Times(1);
-    EXPECT_CALL(writer, close()).Times(1);
-
-    testing::NiceMock<MockIEncoderTask> task;
-    ON_CALL(task, input_file()).WillByDefault(testing::Return(input_file));
-    ON_CALL(task, output_file()).WillByDefault(testing::Return(output_file));
-    ON_CALL(task, engine()).WillByDefault(testing::ReturnRef(engine));
-    ON_CALL(task, reader()).WillByDefault(testing::ReturnRef(reader));
-    ON_CALL(task, writer()).WillByDefault(testing::ReturnRef(writer));
-
-    compressor::Compressor compressor;
-    EXPECT_TRUE(compressor.encode(task));
+    EXPECT_TRUE(make_compressor().encode(input_, output_));
+    EXPECT_EQ(read_file(output_), "ABC");
+    EXPECT_EQ(files(), (std::vector<std::string>{"input.txt", "output.bin"}));
 }
 
-TEST_F(CompressorTests, Decoding)
+TEST_F(CompressorTests, Decode_streams_the_input_file_into_the_output_file)
 {
-    std::string input_file{"input_file"};
-    std::string output_file{"output_file"};
-    compressor::DecodedData decoded_data;
-    compressor::EncodedData encoded_data;
+    EXPECT_CALL(*encoder_, encode(_, _)).Times(0);
+    EXPECT_CALL(*decoder_, decode(_, _)).WillOnce(shout);
 
-    MockIDataReader<compressor::EncodedData> reader;
-    EXPECT_CALL(reader, open(testing::StrEq(input_file))).WillOnce(testing::Return(true));
-    EXPECT_CALL(reader, read()).WillOnce(testing::Return(encoded_data));
-    EXPECT_CALL(reader, close()).Times(1);
-
-    MockIEngine engine;
-    EXPECT_CALL(engine, decode(testing::Eq(encoded_data))).WillOnce(testing::Return(decoded_data));
-
-    MockIDataWriter<compressor::DecodedData> writer;
-    EXPECT_CALL(writer, open(testing::StrEq(output_file))).WillOnce(testing::Return(true));
-    EXPECT_CALL(writer, write(testing::Eq(decoded_data))).Times(1);
-    EXPECT_CALL(writer, close()).Times(1);
-
-    testing::NiceMock<MockIDecoderTask> task;
-    ON_CALL(task, input_file()).WillByDefault(testing::Return(input_file));
-    ON_CALL(task, output_file()).WillByDefault(testing::Return(output_file));
-    ON_CALL(task, engine()).WillByDefault(testing::ReturnRef(engine));
-    ON_CALL(task, reader()).WillByDefault(testing::ReturnRef(reader));
-    ON_CALL(task, writer()).WillByDefault(testing::ReturnRef(writer));
-
-    compressor::Compressor compressor;
-    EXPECT_TRUE(compressor.decode(task));
+    EXPECT_TRUE(make_compressor().decode(input_, output_));
+    EXPECT_EQ(read_file(output_), "ABC");
+    EXPECT_EQ(files(), (std::vector<std::string>{"input.txt", "output.bin"}));
 }
 
-TEST_F(CompressorTests, Encoding_stops_when_the_input_cannot_be_opened)
+TEST_F(CompressorTests, An_existing_output_is_replaced)
 {
-    testing::NiceMock<MockIDataReader<compressor::DecodedData>> reader;
-    EXPECT_CALL(reader, open(testing::_)).WillOnce(testing::Return(false));
-    EXPECT_CALL(reader, read()).Times(0);
+    write_file(output_, std::string(4096, 'x'));
+    EXPECT_CALL(*decoder_, decode(_, _)).WillOnce(shout);
 
-    MockIEngine engine;
-    EXPECT_CALL(engine, encode(testing::_)).Times(0);
-
-    MockIDataWriter<compressor::EncodedData> writer;
-    EXPECT_CALL(writer, open(testing::_)).Times(0);
-    EXPECT_CALL(writer, write(testing::_)).Times(0);
-
-    testing::NiceMock<MockIEncoderTask> task;
-    ON_CALL(task, input_file()).WillByDefault(testing::Return("input_file"));
-    ON_CALL(task, output_file()).WillByDefault(testing::Return("output_file"));
-    ON_CALL(task, engine()).WillByDefault(testing::ReturnRef(engine));
-    ON_CALL(task, reader()).WillByDefault(testing::ReturnRef(reader));
-    ON_CALL(task, writer()).WillByDefault(testing::ReturnRef(writer));
-
-    compressor::Compressor compressor;
-    EXPECT_FALSE(compressor.encode(task));
+    EXPECT_TRUE(make_compressor().decode(input_, output_));
+    EXPECT_EQ(read_file(output_), "ABC");
 }
 
-TEST_F(CompressorTests, Decoding_stops_when_the_input_cannot_be_opened)
+TEST_F(CompressorTests, Encoding_a_file_onto_itself_works)
 {
-    testing::NiceMock<MockIDataReader<compressor::EncodedData>> reader;
-    EXPECT_CALL(reader, open(testing::_)).WillOnce(testing::Return(false));
-    EXPECT_CALL(reader, read()).Times(0);
+    EXPECT_CALL(*encoder_, encode(_, _)).WillOnce(shout);
 
-    MockIEngine engine;
-    EXPECT_CALL(engine, decode(testing::_)).Times(0);
-
-    MockIDataWriter<compressor::DecodedData> writer;
-    EXPECT_CALL(writer, open(testing::_)).Times(0);
-    EXPECT_CALL(writer, write(testing::_)).Times(0);
-
-    testing::NiceMock<MockIDecoderTask> task;
-    ON_CALL(task, input_file()).WillByDefault(testing::Return("input_file"));
-    ON_CALL(task, output_file()).WillByDefault(testing::Return("output_file"));
-    ON_CALL(task, engine()).WillByDefault(testing::ReturnRef(engine));
-    ON_CALL(task, reader()).WillByDefault(testing::ReturnRef(reader));
-    ON_CALL(task, writer()).WillByDefault(testing::ReturnRef(writer));
-
-    compressor::Compressor compressor;
-    EXPECT_FALSE(compressor.decode(task));
+    EXPECT_TRUE(make_compressor().encode(input_, input_));
+    EXPECT_EQ(read_file(input_), "ABC");
+    EXPECT_EQ(files(), (std::vector<std::string>{"input.txt"}));
 }
 
-TEST_F(CompressorTests, Encoding_fails_without_writing_when_the_output_cannot_be_opened)
+TEST_F(CompressorTests, A_missing_input_fails_without_running_the_coder)
 {
-    testing::NiceMock<MockIDataReader<compressor::DecodedData>> reader;
-    ON_CALL(reader, open(testing::_)).WillByDefault(testing::Return(true));
+    write_file(output_, "keep");
+    EXPECT_CALL(*encoder_, encode(_, _)).Times(0);
+    EXPECT_CALL(*decoder_, decode(_, _)).Times(0);
+    compressor::Compressor compressor = make_compressor();
 
-    testing::NiceMock<MockIEngine> engine;
-
-    MockIDataWriter<compressor::EncodedData> writer;
-    EXPECT_CALL(writer, open(testing::_)).WillOnce(testing::Return(false));
-    EXPECT_CALL(writer, write(testing::_)).Times(0);
-    EXPECT_CALL(writer, close()).Times(0);
-
-    testing::NiceMock<MockIEncoderTask> task;
-    ON_CALL(task, input_file()).WillByDefault(testing::Return("input_file"));
-    ON_CALL(task, output_file()).WillByDefault(testing::Return("output_file"));
-    ON_CALL(task, engine()).WillByDefault(testing::ReturnRef(engine));
-    ON_CALL(task, reader()).WillByDefault(testing::ReturnRef(reader));
-    ON_CALL(task, writer()).WillByDefault(testing::ReturnRef(writer));
-
-    compressor::Compressor compressor;
-    EXPECT_FALSE(compressor.encode(task));
+    EXPECT_FALSE(compressor.encode(dir_ / "missing", output_));
+    EXPECT_FALSE(compressor.decode(dir_ / "missing", output_));
+    EXPECT_EQ(read_file(output_), "keep");
+    EXPECT_THAT(err_.str(), HasSubstr("Cannot open input file"));
 }
 
-TEST_F(CompressorTests, Decoding_fails_without_writing_when_the_output_cannot_be_opened)
+TEST_F(CompressorTests, An_output_in_a_missing_directory_fails_without_running_the_coder)
 {
-    testing::NiceMock<MockIDataReader<compressor::EncodedData>> reader;
-    ON_CALL(reader, open(testing::_)).WillByDefault(testing::Return(true));
+    EXPECT_CALL(*encoder_, encode(_, _)).Times(0);
 
-    testing::NiceMock<MockIEngine> engine;
-
-    MockIDataWriter<compressor::DecodedData> writer;
-    EXPECT_CALL(writer, open(testing::_)).WillOnce(testing::Return(false));
-    EXPECT_CALL(writer, write(testing::_)).Times(0);
-    EXPECT_CALL(writer, close()).Times(0);
-
-    testing::NiceMock<MockIDecoderTask> task;
-    ON_CALL(task, input_file()).WillByDefault(testing::Return("input_file"));
-    ON_CALL(task, output_file()).WillByDefault(testing::Return("output_file"));
-    ON_CALL(task, engine()).WillByDefault(testing::ReturnRef(engine));
-    ON_CALL(task, reader()).WillByDefault(testing::ReturnRef(reader));
-    ON_CALL(task, writer()).WillByDefault(testing::ReturnRef(writer));
-
-    compressor::Compressor compressor;
-    EXPECT_FALSE(compressor.decode(task));
+    EXPECT_FALSE(make_compressor().encode(input_, dir_ / "missing" / "output.bin"));
+    EXPECT_THAT(err_.str(), HasSubstr("Cannot open output file"));
 }
 
-TEST_F(CompressorTests, Encoding_fails_without_writing_when_the_input_cannot_be_read)
+TEST_F(CompressorTests, A_failed_decode_leaves_the_output_untouched_and_no_temporary_file)
 {
-    testing::NiceMock<MockIDataReader<compressor::DecodedData>> reader;
-    ON_CALL(reader, open(testing::_)).WillByDefault(testing::Return(true));
-    EXPECT_CALL(reader, read())
-        .WillOnce(testing::Return(std::unexpected(compressor::Error::read_failed)));
+    write_file(output_, "keep");
+    EXPECT_CALL(*decoder_, decode(_, _)).WillOnce(fail_halfway);
 
-    MockIEngine engine;
-    EXPECT_CALL(engine, encode(testing::_)).Times(0);
-
-    MockIDataWriter<compressor::EncodedData> writer;
-    EXPECT_CALL(writer, open(testing::_)).Times(0);
-    EXPECT_CALL(writer, write(testing::_)).Times(0);
-
-    testing::NiceMock<MockIEncoderTask> task;
-    ON_CALL(task, input_file()).WillByDefault(testing::Return("input_file"));
-    ON_CALL(task, output_file()).WillByDefault(testing::Return("output_file"));
-    ON_CALL(task, engine()).WillByDefault(testing::ReturnRef(engine));
-    ON_CALL(task, reader()).WillByDefault(testing::ReturnRef(reader));
-    ON_CALL(task, writer()).WillByDefault(testing::ReturnRef(writer));
-
-    compressor::Compressor compressor;
-    EXPECT_FALSE(compressor.encode(task));
+    EXPECT_FALSE(make_compressor().decode(input_, output_));
+    EXPECT_EQ(read_file(output_), "keep");
+    EXPECT_EQ(files(), (std::vector<std::string>{"input.txt", "output.bin"}));
+    EXPECT_THAT(err_.str(), HasSubstr("Cannot decode"));
+    EXPECT_THAT(err_.str(), HasSubstr("checksum"));
 }
 
-TEST_F(CompressorTests, Decoding_fails_without_writing_when_the_header_is_corrupt)
+TEST_F(CompressorTests, A_failed_decode_creates_no_output)
 {
-    testing::NiceMock<MockIDataReader<compressor::EncodedData>> reader;
-    ON_CALL(reader, open(testing::_)).WillByDefault(testing::Return(true));
-    EXPECT_CALL(reader, read())
-        .WillOnce(testing::Return(std::unexpected(compressor::Error::corrupt_header)));
+    EXPECT_CALL(*decoder_, decode(_, _)).WillOnce(fail_halfway);
 
-    MockIEngine engine;
-    EXPECT_CALL(engine, decode(testing::_)).Times(0);
-
-    MockIDataWriter<compressor::DecodedData> writer;
-    EXPECT_CALL(writer, open(testing::_)).Times(0);
-    EXPECT_CALL(writer, write(testing::_)).Times(0);
-
-    testing::NiceMock<MockIDecoderTask> task;
-    ON_CALL(task, input_file()).WillByDefault(testing::Return("input_file"));
-    ON_CALL(task, output_file()).WillByDefault(testing::Return("output_file"));
-    ON_CALL(task, engine()).WillByDefault(testing::ReturnRef(engine));
-    ON_CALL(task, reader()).WillByDefault(testing::ReturnRef(reader));
-    ON_CALL(task, writer()).WillByDefault(testing::ReturnRef(writer));
-
-    compressor::Compressor compressor;
-    EXPECT_FALSE(compressor.decode(task));
+    EXPECT_FALSE(make_compressor().decode(input_, output_));
+    EXPECT_EQ(files(), (std::vector<std::string>{"input.txt"}));
 }
 
-TEST_F(CompressorTests, Decoding_fails_without_writing_when_the_payload_is_corrupt)
+TEST_F(CompressorTests, A_failed_encode_leaves_the_output_untouched)
 {
-    testing::NiceMock<MockIDataReader<compressor::EncodedData>> reader;
-    ON_CALL(reader, open(testing::_)).WillByDefault(testing::Return(true));
+    write_file(output_, "keep");
+    EXPECT_CALL(*encoder_, encode(_, _))
+        .WillOnce(Return(std::unexpected(compressor::Error::read_failed)));
 
-    MockIEngine engine;
-    EXPECT_CALL(engine, decode(testing::_))
-        .WillOnce(testing::Return(std::unexpected(compressor::Error::corrupt_payload)));
-
-    MockIDataWriter<compressor::DecodedData> writer;
-    EXPECT_CALL(writer, open(testing::_)).Times(0);
-    EXPECT_CALL(writer, write(testing::_)).Times(0);
-
-    testing::NiceMock<MockIDecoderTask> task;
-    ON_CALL(task, input_file()).WillByDefault(testing::Return("input_file"));
-    ON_CALL(task, output_file()).WillByDefault(testing::Return("output_file"));
-    ON_CALL(task, engine()).WillByDefault(testing::ReturnRef(engine));
-    ON_CALL(task, reader()).WillByDefault(testing::ReturnRef(reader));
-    ON_CALL(task, writer()).WillByDefault(testing::ReturnRef(writer));
-
-    compressor::Compressor compressor;
-    EXPECT_FALSE(compressor.decode(task));
+    EXPECT_FALSE(make_compressor().encode(input_, output_));
+    EXPECT_EQ(read_file(output_), "keep");
+    EXPECT_EQ(files(), (std::vector<std::string>{"input.txt", "output.bin"}));
+    EXPECT_THAT(err_.str(), HasSubstr("Cannot encode"));
 }
+
+#ifndef _WIN32
+TEST_F(CompressorTests, A_device_output_is_written_in_place)
+{
+    EXPECT_CALL(*encoder_, encode(_, _)).WillOnce(shout);
+
+    EXPECT_TRUE(make_compressor().encode(input_, "/dev/null"));
+    EXPECT_EQ(err_.str(), "");
+}
+#endif

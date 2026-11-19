@@ -61,15 +61,13 @@ int CLI::run(std::span<const char* const> args)
 
     if (encode->parsed())
     {
-        EncoderTask task(encode_paths.input, encode_paths.output);
-        if (compressor_->encode(task))
+        if (compressor_->encode(encode_paths.input, encode_paths.output))
             return EXIT_SUCCESS;
         err_ << "Encoding " << encode_paths.input << " failed\n";
         return EXIT_FAILURE;
     }
 
-    DecoderTask task(decode_paths.input, decode_paths.output);
-    if (compressor_->decode(task))
+    if (compressor_->decode(decode_paths.input, decode_paths.output))
         return EXIT_SUCCESS;
     err_ << "Decoding " << decode_paths.input << " failed\n";
     return EXIT_FAILURE;

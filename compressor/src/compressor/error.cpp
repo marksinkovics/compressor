@@ -11,6 +11,8 @@ std::string_view describe(Error error)
     {
     case Error::read_failed:
         return "the input could not be read";
+    case Error::write_failed:
+        return "the output could not be written";
     case Error::not_ingot:
         return "it is not an ingot file";
     case Error::unsupported_version:

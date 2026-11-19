@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <expected>
 #include <iosfwd>
+#include <optional>
 #include <vector>
 
 namespace compressor
@@ -63,6 +64,30 @@ struct EncodedData : IData
     std::vector<EncodedBlock> blocks_;
 
     bool operator==(const EncodedData&) const = default;
+};
+
+// The container written piece by piece; operator<< on EncodedData is the three in order.
+void write_frame_header(std::ostream& ostream, uint8_t block_size_log2);
+void write_block(std::ostream& ostream, const EncodedBlock& block);
+void write_end_block(std::ostream& ostream, uint64_t total_size);
+
+// Reads a container one block at a time, checking every rule that needs no decoding.
+class FrameReader
+{
+public:
+    explicit FrameReader(std::istream& istream);
+
+    // Returns the block size log2.
+    std::expected<uint8_t, Error> read_header();
+    // Fills `block`, reusing its payload's capacity, and returns true; returns false once the end
+    // block's total matches and nothing follows it. Only after read_header().
+    std::expected<bool, Error> read_block(EncodedBlock& block);
+
+private:
+    std::istream& istream_;
+    uint64_t block_size_ = 0;
+    uint64_t total_ = 0;
+    std::optional<uint32_t> last_size_;
 };
 
 std::ostream& operator<<(std::ostream& ostream, const EncodedData& data);

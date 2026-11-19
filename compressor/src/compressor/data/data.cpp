@@ -129,39 +129,52 @@ uint64_t max_huffman_payload(uint64_t size)
 
 } // namespace
 
-std::ostream& operator<<(std::ostream& ostream, const EncodedData& data)
+void write_frame_header(std::ostream& ostream, uint8_t block_size_log2)
 {
     std::string header(magic.begin(), magic.end());
     header.push_back(static_cast<char>(format_version));
-    header.push_back(static_cast<char>(data.block_size_log2_));
+    header.push_back(static_cast<char>(block_size_log2));
     put_le<2>(header, 0);
     ostream.write(header.data(), static_cast<std::streamsize>(header.size()));
+}
 
+void write_block(std::ostream& ostream, const EncodedBlock& block)
+{
+    std::string header;
+    header.push_back(static_cast<char>(block.method_));
+    put_le<4>(header, block.size_);
+    put_le<4>(header, encoded_size(block));
+    put_le<4>(header, block.crc_);
+    if (block.method_ == Method::huffman)
+    {
+        for (std::size_t i = 0; i < code_lengths_bytes; ++i)
+        {
+            const auto low = static_cast<unsigned>(block.code_lengths_[2 * i] & 0x0FU);
+            const auto high = static_cast<unsigned>(block.code_lengths_[(2 * i) + 1] & 0x0FU);
+            header.push_back(static_cast<char>(low | (high << 4U)));
+        }
+    }
+    ostream.write(header.data(), static_cast<std::streamsize>(header.size()));
+    write_bytes(ostream, block.payload_);
+}
+
+void write_end_block(std::ostream& ostream, uint64_t total_size)
+{
+    std::string end_block(1, static_cast<char>(end_marker));
+    put_le<8>(end_block, total_size);
+    ostream.write(end_block.data(), static_cast<std::streamsize>(end_block.size()));
+}
+
+std::ostream& operator<<(std::ostream& ostream, const EncodedData& data)
+{
+    write_frame_header(ostream, data.block_size_log2_);
     uint64_t total = 0;
     for (const EncodedBlock& block : data.blocks_)
     {
-        std::string block_header;
-        block_header.push_back(static_cast<char>(block.method_));
-        put_le<4>(block_header, block.size_);
-        put_le<4>(block_header, encoded_size(block));
-        put_le<4>(block_header, block.crc_);
-        if (block.method_ == Method::huffman)
-        {
-            for (std::size_t i = 0; i < code_lengths_bytes; ++i)
-            {
-                const auto low = static_cast<unsigned>(block.code_lengths_[2 * i] & 0x0FU);
-                const auto high = static_cast<unsigned>(block.code_lengths_[(2 * i) + 1] & 0x0FU);
-                block_header.push_back(static_cast<char>(low | (high << 4U)));
-            }
-        }
-        ostream.write(block_header.data(), static_cast<std::streamsize>(block_header.size()));
-        write_bytes(ostream, block.payload_);
+        write_block(ostream, block);
         total += block.size_;
     }
-
-    std::string end_block(1, static_cast<char>(end_marker));
-    put_le<8>(end_block, total);
-    ostream.write(end_block.data(), static_cast<std::streamsize>(end_block.size()));
+    write_end_block(ostream, total);
     return ostream;
 }
 
@@ -179,26 +192,25 @@ std::expected<void, Error> read_exactly(std::istream& istream, std::span<unsigne
     return std::unexpected(istream.bad() ? Error::read_failed : Error::truncated);
 }
 
-std::expected<EncodedBlock, Error> read_block(std::istream& istream, Method method,
-                                              uint64_t block_size)
+std::expected<void, Error> read_block_body(std::istream& istream, uint64_t block_size,
+                                           EncodedBlock& block)
 {
     std::array<unsigned char, block_header_bytes - 1> fields{};
     if (auto read = read_exactly(istream, fields); !read)
     {
-        return std::unexpected(read.error());
+        return read;
     }
-    EncodedBlock block;
-    block.method_ = method;
     block.size_ = static_cast<uint32_t>(get_le<4>(fields));
     const uint64_t encoded = get_le<4>(std::span(fields).subspan(4));
     block.crc_ = static_cast<uint32_t>(get_le<4>(std::span(fields).subspan(8)));
+    block.code_lengths_ = {};
 
     if (block.size_ == 0 || block.size_ > block_size)
     {
         return std::unexpected(Error::corrupt_header);
     }
     uint64_t payload_bytes = encoded;
-    if (method == Method::stored)
+    if (block.method_ == Method::stored)
     {
         if (encoded != block.size_)
         {
@@ -216,7 +228,7 @@ std::expected<EncodedBlock, Error> read_block(std::istream& istream, Method meth
         std::array<unsigned char, code_lengths_bytes> lengths{};
         if (auto read = read_exactly(istream, lengths); !read)
         {
-            return std::unexpected(read.error());
+            return read;
         }
         for (std::size_t i = 0; i < code_lengths_bytes; ++i)
         {
@@ -230,22 +242,23 @@ std::expected<EncodedBlock, Error> read_block(std::istream& istream, Method meth
     }
 
     block.payload_.resize(payload_bytes);
-    if (auto read = read_exactly(istream, block.payload_); !read)
-    {
-        return std::unexpected(read.error());
-    }
-    return block;
+    return read_exactly(istream, block.payload_);
 }
 
 } // namespace
 
-std::expected<EncodedData, Error> read_encoded(std::istream& istream)
+FrameReader::FrameReader(std::istream& istream)
+    : istream_(istream)
+{
+}
+
+std::expected<uint8_t, Error> FrameReader::read_header()
 {
     std::array<unsigned char, frame_header_bytes> header{};
-    istream.read(reinterpret_cast<char*>(header.data()),
-                 static_cast<std::streamsize>(header.size()));
-    const auto got = static_cast<std::size_t>(istream.gcount());
-    if (istream.bad())
+    istream_.read(reinterpret_cast<char*>(header.data()),
+                  static_cast<std::streamsize>(header.size()));
+    const auto got = static_cast<std::size_t>(istream_.gcount());
+    if (istream_.bad())
     {
         return std::unexpected(Error::read_failed);
     }
@@ -261,59 +274,85 @@ std::expected<EncodedData, Error> read_encoded(std::istream& istream)
     {
         return std::unexpected(Error::unsupported_version);
     }
-    EncodedData data;
-    data.block_size_log2_ = header[5];
-    if (data.block_size_log2_ < min_block_size_log2 ||
-        data.block_size_log2_ > max_block_size_log2 || header[6] != 0 || header[7] != 0)
+    const uint8_t block_size_log2 = header[5];
+    if (block_size_log2 < min_block_size_log2 || block_size_log2 > max_block_size_log2 ||
+        header[6] != 0 || header[7] != 0)
     {
         return std::unexpected(Error::corrupt_header);
     }
-    const uint64_t block_size = uint64_t{1} << data.block_size_log2_;
+    block_size_ = uint64_t{1} << block_size_log2;
+    total_ = 0;
+    last_size_.reset();
+    return block_size_log2;
+}
 
-    uint64_t total = 0;
-    while (true)
-    {
-        std::array<unsigned char, 1> method{};
-        if (auto read = read_exactly(istream, method); !read)
-        {
-            return std::unexpected(read.error());
-        }
-        if (method[0] == end_marker)
-        {
-            break;
-        }
-        if (method[0] > static_cast<unsigned char>(Method::huffman))
-        {
-            return std::unexpected(Error::corrupt_header);
-        }
-        // Only the last block may be shorter than the block size.
-        if (!data.blocks_.empty() && data.blocks_.back().size_ != block_size)
-        {
-            return std::unexpected(Error::corrupt_header);
-        }
-        auto block = read_block(istream, static_cast<Method>(method[0]), block_size);
-        if (!block)
-        {
-            return std::unexpected(block.error());
-        }
-        total += block->size_;
-        data.blocks_.push_back(std::move(*block));
-    }
-
-    std::array<unsigned char, end_block_bytes - 1> end{};
-    if (auto read = read_exactly(istream, end); !read)
+std::expected<bool, Error> FrameReader::read_block(EncodedBlock& block)
+{
+    std::array<unsigned char, 1> method{};
+    if (auto read = read_exactly(istream_, method); !read)
     {
         return std::unexpected(read.error());
     }
-    if (get_le<8>(end) != total || istream.peek() != std::istream::traits_type::eof())
+    if (method[0] == end_marker)
+    {
+        std::array<unsigned char, end_block_bytes - 1> end{};
+        if (auto read = read_exactly(istream_, end); !read)
+        {
+            return std::unexpected(read.error());
+        }
+        if (get_le<8>(end) != total_ || istream_.peek() != std::istream::traits_type::eof())
+        {
+            return std::unexpected(Error::corrupt_header);
+        }
+        if (istream_.bad())
+        {
+            return std::unexpected(Error::read_failed);
+        }
+        return false;
+    }
+    if (method[0] > static_cast<unsigned char>(Method::huffman))
     {
         return std::unexpected(Error::corrupt_header);
     }
-    if (istream.bad())
+    // Only the last block may be shorter than the block size.
+    if (last_size_ && *last_size_ != block_size_)
     {
-        return std::unexpected(Error::read_failed);
+        return std::unexpected(Error::corrupt_header);
     }
-    return data;
+    block.method_ = static_cast<Method>(method[0]);
+    if (auto read = read_block_body(istream_, block_size_, block); !read)
+    {
+        return std::unexpected(read.error());
+    }
+    last_size_ = block.size_;
+    total_ += block.size_;
+    return true;
+}
+
+std::expected<EncodedData, Error> read_encoded(std::istream& istream)
+{
+    FrameReader reader(istream);
+    auto block_size_log2 = reader.read_header();
+    if (!block_size_log2)
+    {
+        return std::unexpected(block_size_log2.error());
+    }
+    EncodedData data;
+    data.block_size_log2_ = *block_size_log2;
+    while (true)
+    {
+        EncodedBlock block;
+        auto more = reader.read_block(block);
+        if (!more)
+        {
+            return std::unexpected(more.error());
+        }
+        if (!*more)
+        {
+            return data;
+        }
+        data.blocks_.push_back(std::move(block));
+    }
 }
 
 std::istream& operator>>(std::istream& istream, EncodedData& data)

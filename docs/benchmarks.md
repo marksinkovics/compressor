@@ -150,3 +150,12 @@ After the "Stored fallback" step: the encoded file starts with a method byte, an
 - **Incompressible input no longer grows by more than the 9-byte header:** `flower.png` 734,560 → 734,569 B (ratio 1.0000, was 1.0001 with Huffman), `lena.jpg` 91,814 → 91,823 B (1.0001, was 1.0005). Both are stored.
 - **Stored speed:** encode 1,450–2,700 MiB/s (counting frequencies and building code lengths, then one copy), decode 42,000–72,000 MiB/s (one copy).
 - **Every other file:** still Huffman; the header grows by 1 byte to 137, and ratios are unchanged at three decimals.
+
+## Block streaming (2026-11-19)
+
+After container step 2 ([roadmap.md](roadmap.md#container-format-and-streaming)): the CLI streams 1 MiB blocks instead of holding whole files, and writes a temporary file that it renames over the output. Three builds were measured back to back on an Apple M3 Max under load average 10–28, so differences under about 10% are noise: `fcf63ab` (before CRC32), `18b8d64` (container step 1, CRC32) and this step. In-memory results are in `docs/benchmarks/block-streaming.json`, CLI results (hyperfine, 10 runs) in `docs/benchmarks/block-streaming-cli.json`.
+
+- **Memory:** the CLI's peak RSS on `mozilla` (51 MB) drops from 89 MiB to 5 MiB, for encode and decode alike. It no longer depends on the file size.
+- **CRC32 cost (step 1, not measured then):** on Huffman blocks, encode and decode get 10–15% slower (geomean on Canterbury and Silesia). Stored blocks are now limited by the CRC: decode drops from about 70,000 MiB/s (one copy) to about 1,900 MiB/s, which is the slicing-by-8 CRC's own speed; stored encode drops from 1,700–2,700 to 850–1,150 MiB/s.
+- **Streaming itself:** the in-memory `Engine` numbers are unchanged within noise.
+- **CLI time:** on `mozilla`, encode 172 → 181 ms (+5%, within σ) and decode 265 → 294 ms (+11%). The decode gap is the file system, not the codec: the old binary truncates the existing output in place, the new one creates a new file and deletes the old one on rename. With the output removed before each run, both take 298–304 ms. The encoded bytes are identical to step 1's.

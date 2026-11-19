@@ -17,7 +17,6 @@
 
 #include <compressor/checksum/crc32.h>
 #include <compressor/data/data.h>
-#include <compressor/data/reader.h>
 #include <compressor/error.h>
 
 class CompressorDataTests : public ::testing::Test
@@ -407,78 +406,33 @@ TEST_F(CompressorDataTests, Encoded_data_reads_from_a_stream_that_cannot_seek)
     EXPECT_EQ(output_data, input_data);
 }
 
-namespace
+TEST_F(CompressorDataTests, Frame_reader_returns_blocks_one_at_a_time_without_checking_crcs)
 {
+    std::string bytes = serialized(container(
+        {stored_block(std::string(4096, 'x')), stored_block(std::string(4096, 'y'))}, 12));
+    // The second block's first payload byte, which only the engine's CRC check catches.
+    bytes[8 + 13 + 4096 + 13] = 'z';
+    stream.str(bytes);
 
-class TempFile
-{
-public:
-    explicit TempFile(const std::string& bytes)
-        : path_(std::filesystem::temp_directory_path() /
-                (std::string("compressor_data_") +
-                 testing::UnitTest::GetInstance()->current_test_info()->name()))
-    {
-        std::ofstream stream(path_, std::ios::out | std::ios::trunc | std::ios::binary);
-        stream << bytes;
-    }
-
-    ~TempFile()
-    {
-        std::error_code error;
-        std::filesystem::remove(path_, error);
-    }
-
-    TempFile(const TempFile&) = delete;
-    TempFile& operator=(const TempFile&) = delete;
-    TempFile(TempFile&&) = delete;
-    TempFile& operator=(TempFile&&) = delete;
-
-    std::string path() const
-    {
-        return path_.string();
-    }
-
-private:
-    std::filesystem::path path_;
-};
-
-template <class T> std::expected<T, compressor::Error> read_file(const TempFile& file)
-{
-    compressor::DataReader<T> reader;
-    EXPECT_TRUE(reader.open(file.path()));
-    auto result = reader.read();
-    reader.close();
-    return result;
+    compressor::FrameReader reader(stream);
+    ASSERT_EQ(reader.read_header(), 12);
+    compressor::EncodedBlock block;
+    ASSERT_EQ(reader.read_block(block), true);
+    EXPECT_EQ(block.payload_, std::vector<uint8_t>(4096, 'x'));
+    ASSERT_EQ(reader.read_block(block), true);
+    EXPECT_EQ(block.payload_[0], 'z');
+    EXPECT_EQ(reader.read_block(block), false);
 }
 
-} // namespace
-
-TEST_F(CompressorDataTests, Reader_returns_valid_encoded_data)
+TEST_F(CompressorDataTests, Frame_reader_rejects_a_block_after_a_short_one)
 {
-    const TempFile file(serialized(encoded_aab()));
+    const std::string bytes = serialized(
+        container({stored_block(std::string(100, 'x')), stored_block(std::string(100, 'y'))}, 12));
+    stream.str(bytes);
 
-    EXPECT_EQ(read_file<compressor::EncodedData>(file), encoded_aab());
-}
-
-TEST_F(CompressorDataTests, Reader_reports_a_truncated_file)
-{
-    const TempFile file(serialized(encoded_aab()).substr(0, 100));
-
-    EXPECT_EQ(read_file<compressor::EncodedData>(file),
-              std::unexpected(compressor::Error::truncated));
-}
-
-TEST_F(CompressorDataTests, Reader_reports_a_file_that_is_not_ingot)
-{
-    const TempFile file("hello");
-
-    EXPECT_EQ(read_file<compressor::EncodedData>(file),
-              std::unexpected(compressor::Error::not_ingot));
-}
-
-TEST_F(CompressorDataTests, Reader_returns_an_empty_file_as_empty_decoded_data)
-{
-    const TempFile file("");
-
-    EXPECT_EQ(read_file<compressor::DecodedData>(file), compressor::DecodedData{});
+    compressor::FrameReader reader(stream);
+    ASSERT_TRUE(reader.read_header());
+    compressor::EncodedBlock block;
+    ASSERT_EQ(reader.read_block(block), true);
+    EXPECT_EQ(reader.read_block(block), std::unexpected(compressor::Error::corrupt_header));
 }
