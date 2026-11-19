@@ -118,6 +118,9 @@ bash tools/fetch-corpus.sh               # once: Canterbury and Silesia into cor
 bash tools/bench.sh --out new.json       # all three sets, about 2 minutes (default: build/release/benchmark.json)
 bash tools/bench.sh --filter 'Engine/.*/canterbury'
 python3 tools/bench-compare.py docs/benchmarks/decode-table.json new.json
+bash tools/bench-cli.sh --out cli.json  # compressor_app end to end, file I/O included
 ```
+
+`tools/bench-cli.sh` times `compressor_app encode`/`decode` on `kennedy.xls`, `webster` and `mozilla` (or the files given, relative to the repo root), after checking that each round-trips. It uses [hyperfine](https://github.com/sharkdp/hyperfine) 2.x (`brew install hyperfine`) and falls back to a python3 loop without it; both write `results[].summary.time_wall_clock`, and the script prints a table from it.
 
 How the benchmarks work, what the counters mean and the baseline numbers are in [benchmarks.md](benchmarks.md).

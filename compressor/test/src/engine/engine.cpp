@@ -2,12 +2,25 @@
 #include <cstdint>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <gtest/gtest.h>
 
 #include <compressor/data/data.h>
 #include <compressor/engine/engine.h>
+
+namespace
+{
+
+compressor::DecodedData decoded(std::string_view text)
+{
+    compressor::DecodedData data;
+    data.data_.assign(text.begin(), text.end());
+    return data;
+}
+
+} // namespace
 
 class EngineTests : public ::testing::Test
 {
@@ -29,7 +42,7 @@ protected:
 TEST_F(EngineTests, Compression_with_text)
 {
     compressor::Engine comp1;
-    compressor::EncodedData encoded_data = comp1.encode(compressor::DecodedData(input));
+    compressor::EncodedData encoded_data = comp1.encode(decoded(input));
 
     compressor::Engine comp2;
     compressor::DecodedData decoded_data = comp2.decode(encoded_data);
@@ -42,7 +55,7 @@ TEST_F(EngineTests, Compression_with_text)
 TEST_F(EngineTests, Compression_with_long_text)
 {
     compressor::Engine comp1;
-    compressor::EncodedData encoded_data = comp1.encode(compressor::DecodedData(longInput));
+    compressor::EncodedData encoded_data = comp1.encode(decoded(longInput));
 
     compressor::Engine comp2;
     compressor::DecodedData decoded_data = comp2.decode(encoded_data);
@@ -56,7 +69,7 @@ TEST_F(EngineTests, Stream)
 {
     std::stringstream stream;
     compressor::Engine comp1;
-    compressor::EncodedData encoded_data = comp1.encode(compressor::DecodedData(input));
+    compressor::EncodedData encoded_data = comp1.encode(decoded(input));
 
     stream << encoded_data;
 
@@ -74,11 +87,11 @@ TEST_F(EngineTests, Stream)
 TEST_F(EngineTests, Encoding_twice_gives_the_same_result_as_a_fresh_engine)
 {
     compressor::Engine reused;
-    reused.encode(compressor::DecodedData(longInput));
-    compressor::EncodedData second = reused.encode(compressor::DecodedData(input));
+    reused.encode(decoded(longInput));
+    compressor::EncodedData second = reused.encode(decoded(input));
 
     compressor::Engine fresh;
-    EXPECT_EQ(second, fresh.encode(compressor::DecodedData(input)));
+    EXPECT_EQ(second, fresh.encode(decoded(input)));
 }
 
 TEST_F(EngineTests, Skewed_input_with_capped_codes_round_trips)
@@ -96,7 +109,7 @@ TEST_F(EngineTests, Skewed_input_with_capped_codes_round_trips)
     }
 
     compressor::Engine encoder;
-    const compressor::EncodedData encoded = encoder.encode(compressor::DecodedData(skewed));
+    const compressor::EncodedData encoded = encoder.encode(decoded(skewed));
     EXPECT_EQ(*std::ranges::max_element(encoded.code_lengths_), compressor::max_code_length);
 
     std::stringstream stream;
@@ -115,7 +128,7 @@ TEST_F(EngineTests, Encode_packs_codes_first_bit_most_significant)
 {
     // a and b both get length 1: a = 0, b = 1.
     compressor::Engine engine;
-    EXPECT_EQ(engine.encode(compressor::DecodedData("aab")).payload_, std::vector<uint8_t>{0x20});
+    EXPECT_EQ(engine.encode(decoded("aab")).payload_, std::vector<uint8_t>{0x20});
 }
 
 TEST_F(EngineTests, Encode_packs_codes_across_bytes_and_pads_the_last_one)
@@ -127,14 +140,14 @@ TEST_F(EngineTests, Encode_packs_codes_across_bytes_and_pads_the_last_one)
         input += "abac";
     }
     compressor::Engine engine;
-    EXPECT_EQ(engine.encode(compressor::DecodedData(input)).payload_,
+    EXPECT_EQ(engine.encode(decoded(input)).payload_,
               (std::vector<uint8_t>{0x4D, 0x34, 0xD3, 0x4D, 0x30}));
 }
 
 TEST_F(EngineTests, A_truncated_payload_decodes_to_nothing)
 {
     compressor::Engine encoder;
-    compressor::EncodedData encoded = encoder.encode(compressor::DecodedData(longInput));
+    compressor::EncodedData encoded = encoder.encode(decoded(longInput));
     encoded.payload_.resize(encoded.payload_.size() / 2);
 
     compressor::Engine decoder;
@@ -144,7 +157,7 @@ TEST_F(EngineTests, A_truncated_payload_decodes_to_nothing)
 TEST_F(EngineTests, Print_dict_lists_the_canonical_codes)
 {
     compressor::Engine engine;
-    engine.encode(compressor::DecodedData("aab"));
+    engine.encode(decoded("aab"));
 
     testing::internal::CaptureStdout();
     engine.print_dict();
@@ -154,7 +167,7 @@ TEST_F(EngineTests, Print_dict_lists_the_canonical_codes)
 TEST_F(EngineTests, Print_graph_rebuilds_the_tree_from_the_codes)
 {
     compressor::Engine engine;
-    engine.encode(compressor::DecodedData("aab"));
+    engine.encode(decoded("aab"));
 
     testing::internal::CaptureStdout();
     engine.print_graph();
@@ -170,7 +183,7 @@ TEST_F(EngineTests, Print_graph_rebuilds_the_tree_from_the_codes)
 TEST_F(EngineTests, Print_graph_handles_a_single_symbol)
 {
     compressor::Engine engine;
-    engine.encode(compressor::DecodedData("aaaa"));
+    engine.encode(decoded("aaaa"));
 
     testing::internal::CaptureStdout();
     engine.print_graph();

@@ -4,7 +4,6 @@
 #include <compressor/huffman/huffman.h>
 #include <cstdint>
 #include <iosfwd>
-#include <string>
 #include <vector>
 
 namespace compressor
@@ -16,12 +15,6 @@ struct IData
 
 struct DecodedData : IData
 {
-    DecodedData() = default;
-    DecodedData(const std::string& input)
-    {
-        std::vector<uint8_t> input_data(input.begin(), input.end());
-        this->data_ = std::move(input_data);
-    }
     std::vector<uint8_t> data_;
 };
 

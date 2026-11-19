@@ -181,8 +181,14 @@ Measure first, then make the existing codec fast, one change per step, each with
 
     66/66 pass (86 − 22 deleted + 2) in `debug` and `release`; `quality.sh check` passes; `compressor_app` round-trips `grammar.lsp`, `mozilla` and `flower.png`.
   - CLI on `mozilla`: encode 0.3 s, decode 0.85 s (was 1.9 s). The rest is the byte-wise stream I/O for the next step.
-- [ ] **Copies and I/O (next):** no full copies of the input in `Engine::encode`/`decode`, no detour through `std::string`, and reader/writer that move whole buffers instead of `istreambuf_iterator`/`ostream_iterator` byte by byte. Add an end-to-end CLI timing (e.g. `hyperfine`) to the benchmark docs.
-- [ ] **Report corrupt input:** `IDataReader::read()` (and the mocks) returns an error, so `Compressor::decode` fails and `compressor_app` exits non-zero on a corrupt header or a payload that ends early. Today these decode to an empty output file with exit code 0.
+- [x] **Copies and I/O (done):** numbers in [benchmarks.md](benchmarks.md) ("Copies and I/O"), reference results in `docs/benchmarks/copies-and-io.json`. CLI on `mozilla`: decode 0.80 → 0.22 s, encode 0.26 → 0.15 s; peak RSS 93 MB (input + output). The file format and encoded bytes are unchanged.
+  - `data.cpp` (anonymous namespace): `read_rest` reserves the rest of a seekable stream, then reads in 64 KiB `sgetn` blocks, so pipes still work; it checks for EOF before growing an exactly reserved buffer. `write_bytes` writes a buffer with one `write`. Both `operator>>` and `operator<<` use them.
+  - `Engine::encode`/`decode` already took `const&` and `Compressor` moves the results, so the only copy left was the test-only `DecodedData(const std::string&)`. It's gone, and `DecodedData` is a plain aggregate; the engine tests build input through a local `decoded(std::string_view)`.
+  - `tools/bench-cli.sh`: hyperfine (or a python3 fallback with the same `summary.time_wall_clock` JSON) on `compressor_app encode`/`decode`, after a round-trip check; see `docs/development.md`.
+  - Tests in `compressor/test/src/data/data.cpp`: `Decoded_data_round_trips_every_byte_value` (also replaces old content), `Decoded_data_reads_across_blocks` (3 MiB + 7), and `Decoded_data_reads_from_a_stream_that_cannot_seek` and `Encoded_data_reads_from_a_stream_that_cannot_seek` (a `PipeBuffer` streambuf handing out 1000 bytes per underflow).
+
+    70/70 pass in `debug` and `release`; `quality.sh check` passes.
+- [ ] **Report corrupt input (next):** `IDataReader::read()` (and the mocks) returns an error, so `Compressor::decode` fails and `compressor_app` exits non-zero on a corrupt header or a payload that ends early. Today these decode to an empty output file with exit code 0.
 - [ ] **Stored fallback:** store the input as is, with a flag, when Huffman doesn't shrink it. Needed: `flower.png` grows from 734,560 to 737,072 bytes today. The container format later does this per block.
 
 After Phase 5, continue with the features in their suggested order, starting with the container format.

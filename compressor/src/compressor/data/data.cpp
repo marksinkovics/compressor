@@ -3,27 +3,86 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
+#include <cstdint>
+#include <ios>
 #include <istream>
-#include <iterator>
 #include <ostream>
+#include <streambuf>
+#include <string>
 #include <utility>
 #include <vector>
 
 namespace compressor
 {
 
+namespace
+{
+
+// Reserves the remaining size when the stream can seek, then reads in blocks, so pipes work too.
+void read_rest(std::istream& istream, std::vector<uint8_t>& out)
+{
+    if (!istream.good())
+    {
+        return;
+    }
+    const std::istream::pos_type start = istream.tellg();
+    if (start != std::istream::pos_type(-1) && istream.seekg(0, std::ios::end))
+    {
+        const std::istream::pos_type end = istream.tellg();
+        istream.seekg(start);
+        if (end > start)
+        {
+            out.reserve(out.size() + static_cast<std::size_t>(end - start));
+        }
+    }
+    istream.clear();
+
+    constexpr std::size_t block_bytes = std::size_t{1} << 16U;
+    std::streambuf* buffer = istream.rdbuf();
+    while (true)
+    {
+        std::size_t room = out.capacity() - out.size();
+        if (room == 0)
+        {
+            // Don't grow a buffer that was reserved exactly.
+            if (buffer->sgetc() == std::char_traits<char>::eof())
+            {
+                break;
+            }
+            room = block_bytes;
+        }
+        const std::size_t old_size = out.size();
+        out.resize(old_size + room);
+        const std::streamsize got = buffer->sgetn(reinterpret_cast<char*>(out.data() + old_size),
+                                                  static_cast<std::streamsize>(room));
+        out.resize(old_size + static_cast<std::size_t>(got));
+        if (std::cmp_less(got, room))
+        {
+            break;
+        }
+    }
+    istream.setstate(std::ios::eofbit);
+}
+
+void write_bytes(std::ostream& ostream, const std::vector<uint8_t>& bytes)
+{
+    ostream.write(reinterpret_cast<const char*>(bytes.data()),
+                  static_cast<std::streamsize>(bytes.size()));
+}
+
+} // namespace
+
 std::ostream& operator<<(std::ostream& ostream, const DecodedData& data)
 {
-    std::ostream_iterator<uint8_t> output_iterator(ostream);
-    std::ranges::copy(data.data_, output_iterator);
+    write_bytes(ostream, data.data_);
     return ostream;
 }
 
 std::istream& operator>>(std::istream& istream, DecodedData& data)
 {
-    std::vector<uint8_t> input_data((std::istreambuf_iterator<char>(istream)),
-                                    std::istreambuf_iterator<char>());
-    data.data_ = std::move(input_data);
+    data.data_.clear();
+    read_rest(istream, data.data_);
     return istream;
 }
 
@@ -55,8 +114,7 @@ std::ostream& operator<<(std::ostream& ostream, const EncodedData& data)
     }
     ostream.write(header.data(), header.size());
 
-    ostream.write(reinterpret_cast<const char*>(data.payload_.data()),
-                  static_cast<std::streamsize>(data.payload_.size()));
+    write_bytes(ostream, data.payload_);
     return ostream;
 }
 
@@ -91,8 +149,7 @@ std::istream& operator>>(std::istream& istream, EncodedData& data)
         return istream;
     }
 
-    result.payload_.assign(std::istreambuf_iterator<char>(istream),
-                           std::istreambuf_iterator<char>());
+    read_rest(istream, result.payload_);
 
     data = std::move(result);
     return istream;

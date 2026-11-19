@@ -3,8 +3,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <sstream>
+#include <streambuf>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -32,6 +34,91 @@ TEST_F(CompressorDataTests, DataStream)
 
     EXPECT_EQ(input_data.data_, output_data.data_);
     EXPECT_THAT(output_data.data_, testing::ElementsAre(1, 2, 3, 4, 5));
+}
+
+namespace
+{
+
+// Every byte value, then a pseudo-random tail, `size` bytes in all.
+std::vector<uint8_t> all_byte_values(std::size_t size)
+{
+    std::vector<uint8_t> bytes(size);
+    uint32_t state = 12345;
+    for (std::size_t i = 0; i < size; ++i)
+    {
+        state = (state * 1103515245U) + 12345U;
+        bytes[i] = i < 256 ? static_cast<uint8_t>(i) : static_cast<uint8_t>(state >> 16U);
+    }
+    return bytes;
+}
+
+// Hands out `chunk` bytes per underflow and can't seek, like a pipe.
+class PipeBuffer : public std::streambuf
+{
+public:
+    PipeBuffer(std::string bytes, std::size_t chunk)
+        : bytes_(std::move(bytes))
+        , chunk_(chunk)
+    {
+    }
+
+protected:
+    int_type underflow() override
+    {
+        if (next_ >= bytes_.size())
+        {
+            return traits_type::eof();
+        }
+        const std::size_t count = std::min(chunk_, bytes_.size() - next_);
+        char* begin = bytes_.data() + next_;
+        setg(begin, begin, begin + count);
+        next_ += count;
+        return traits_type::to_int_type(*begin);
+    }
+
+private:
+    std::string bytes_;
+    std::size_t chunk_;
+    std::size_t next_ = 0;
+};
+
+} // namespace
+
+TEST_F(CompressorDataTests, Decoded_data_round_trips_every_byte_value)
+{
+    compressor::DecodedData input_data;
+    input_data.data_ = all_byte_values(256);
+    stream << input_data;
+
+    compressor::DecodedData output_data;
+    output_data.data_ = {9, 9, 9};
+    stream >> output_data;
+
+    EXPECT_EQ(output_data, input_data);
+}
+
+TEST_F(CompressorDataTests, Decoded_data_reads_across_blocks)
+{
+    compressor::DecodedData input_data;
+    input_data.data_ = all_byte_values((std::size_t{3} << 20U) + 7);
+    stream << input_data;
+
+    compressor::DecodedData output_data;
+    stream >> output_data;
+
+    EXPECT_EQ(output_data, input_data);
+}
+
+TEST_F(CompressorDataTests, Decoded_data_reads_from_a_stream_that_cannot_seek)
+{
+    const std::vector<uint8_t> bytes = all_byte_values(200'000);
+    PipeBuffer pipe(std::string(bytes.begin(), bytes.end()), 1000);
+    std::istream input(&pipe);
+
+    compressor::DecodedData output_data;
+    input >> output_data;
+
+    EXPECT_EQ(output_data.data_, bytes);
 }
 
 namespace
@@ -131,4 +218,19 @@ TEST_F(CompressorDataTests, Invalid_headers_fail)
         EXPECT_TRUE(input.fail()) << name;
         EXPECT_EQ(output_data, compressor::EncodedData{}) << name;
     }
+}
+
+TEST_F(CompressorDataTests, Encoded_data_reads_from_a_stream_that_cannot_seek)
+{
+    compressor::EncodedData input_data = encoded_aab();
+    input_data.payload_ = all_byte_values(100'000);
+    stream << input_data;
+    PipeBuffer pipe(stream.str(), 1000);
+    std::istream input(&pipe);
+
+    compressor::EncodedData output_data;
+    input >> output_data;
+
+    ASSERT_FALSE(input.fail());
+    EXPECT_EQ(output_data, input_data);
 }

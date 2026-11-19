@@ -128,3 +128,17 @@ After the "Encode bit buffer" step: `Engine::encode` packs codes into bytes thro
 - **Decode:** unchanged within noise (0.96–1.41×). Dropping the bit-reversal lookup barely matters next to the decode table.
 - **Ratio:** unchanged; the encoded bytes are identical to before (checked on `mozilla`).
 - **CLI:** `compressor_app` on `mozilla` (51 MB) encodes in 0.3 s and decodes in 0.85 s (was 1.9 s, since `operator>>` no longer converts bit by bit). The remaining decode time is mostly the byte-wise stream I/O for the "Copies and I/O" step.
+
+## Copies and I/O (2026-11-19)
+
+After the "Copies and I/O" step: `operator>>` reads the rest of the stream in 64 KiB blocks into a buffer reserved from the remaining size, and `operator<<` writes each buffer with one `write`, instead of `istreambuf_iterator`/`ostream_iterator` byte by byte. The codec and the encoded bytes are unchanged. End-to-end numbers come from `tools/bench-cli.sh` (hyperfine, 10 runs, release, load average about 7); results are in `docs/benchmarks/copies-and-io.json`. "Before" is the previous commit, timed with the same script's python3 fallback.
+
+| Input | Size | Encode before | Encode after | Decode before | Decode after |
+|---|---:|---:|---:|---:|---:|
+| canterbury/kennedy.xls | 1.0 MB | 0.011 s | 0.006 s | 0.019 s | 0.006 s |
+| silesia/webster | 41 MB | 0.180 s | 0.096 s | 0.597 s | 0.192 s |
+| silesia/mozilla | 51 MB | 0.257 s | 0.149 s | 0.800 s | 0.223 s |
+
+- **Decode:** 3.1–3.6× faster end to end. On `mozilla` the CLI (0.22 s) is now close to the in-memory decode (about 0.2 s), so file I/O no longer dominates.
+- **Encode:** 1.7–1.9× faster.
+- **Memory:** peak RSS on `mozilla` is 93 MB, about input plus output (51 + 40 MB), so no stage holds an extra full copy.

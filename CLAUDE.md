@@ -12,8 +12,8 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 - Phase 3 (build, tooling and platforms) in progress: steps "CMake" (CMake 3.25+, C++23), "Flags per target" (`COMPRESSOR_*` options, native arm64 Xcode) and "vcpkg" (manifest, global warning flags, ASan triplets), "Presets" and "Quality tools on the new build" are done; step "CI" is deferred.
 - Phase 4 (CLI11) is done: `argparser/` deleted, `encode`/`decode` subcommands with `-i`/`-o`, `--help`, `--version`; 65/65 pass.
 - The `asan` workflow passes 65/65 when run by hand (it can't run in Claude's sandbox).
-- Phase 5 (benchmarks and performance) in progress: steps "Benchmark harness and baseline" (`docs/benchmarks.md`, `docs/benchmarks/baseline.json`), "Canonical Huffman with length-limited codes" (`compressor/huffman/`, format in `docs/file_format.md`), "Decode lookup table" (15-bit cap, decode 170–340 MiB/s) and "Encode bit buffer" (encode 210–960 MiB/s, `bitset` and boost deleted, all clang-tidy checks on; `docs/benchmarks/encode-bit-buffer.json`) are done; 66/66 pass. The freestanding core is postponed to Phase 6.
-- **Next:** Phase 5 step "Copies and I/O" (`docs/roadmap.md`); start with a plan for approval.
+- Phase 5 (benchmarks and performance) in progress: steps "Benchmark harness and baseline" (`docs/benchmarks.md`, `docs/benchmarks/baseline.json`), "Canonical Huffman with length-limited codes" (`compressor/huffman/`, format in `docs/file_format.md`), "Decode lookup table" (15-bit cap, decode 170–340 MiB/s) and "Encode bit buffer" (encode 210–960 MiB/s, `bitset` and boost deleted, all clang-tidy checks on; `docs/benchmarks/encode-bit-buffer.json`) and "Copies and I/O" (block stream I/O, CLI decode on `mozilla` 0.22 s; `tools/bench-cli.sh`) are done; 70/70 pass. The freestanding core is postponed to Phase 6.
+- **Next:** Phase 5 step "Report corrupt input" (`docs/roadmap.md`); start with a plan for approval.
 
 ## Commands
 
@@ -24,6 +24,7 @@ ctest --preset debug -R EngineTests
 ./build/debug/compressor/test/compressor_test_app --gtest_filter='EngineTests.*'
 bash tools/quality.sh check       # clang-format, clang-tidy, shellcheck, shfmt (see docs/development.md)
 bash tools/bench.sh               # release benchmarks -> JSON; corpora via tools/fetch-corpus.sh (docs/benchmarks.md)
+bash tools/bench-cli.sh           # compressor_app end to end with hyperfine (python3 fallback)
 ```
 
 - Needs `VCPKG_ROOT` set to a vcpkg checkout; the root `CMakeLists.txt` takes vcpkg's toolchain from there, and configure installs `vcpkg.json` (gtest, benchmark, cli11, zlib). Third-party code comes only through vcpkg. Every port, transitive and host ones included, needs an exact `overrides` pin in `vcpkg.json`; configure fails otherwise.
