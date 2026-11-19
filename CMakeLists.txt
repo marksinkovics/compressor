@@ -14,16 +14,11 @@ endif()
 
 enable_testing()
 
-project(CompressionProject CXX)
+project(CompressionProject VERSION 0.0.1 LANGUAGES CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # -std=c++23, not gnu++23, for the cxx_std_23 our libraries require.
 set(CMAKE_CXX_EXTENSIONS OFF)
-
-set(VERSION_MAJOR 0 CACHE STRING "Project major version number.")
-set(VERSION_MINOR 0 CACHE STRING "Project minor version number.")
-set(VERSION_PATCH 1 CACHE STRING "Project patch version number.")
-mark_as_advanced(VERSION_MAJOR VERSION_MINOR VERSION_PATCH)
 
 option(COMPRESSOR_ASAN "Build our code with AddressSanitizer (needs an -asan triplet)." OFF)
 option(COMPRESSOR_PROFILING "Make the PROFILE_* macros write result.json." OFF)
@@ -55,8 +50,8 @@ endif()
 find_package(GTest CONFIG REQUIRED)
 find_package(benchmark CONFIG REQUIRED)
 find_package(boost_dynamic_bitset CONFIG REQUIRED)
+find_package(CLI11 CONFIG REQUIRED)
 
-add_subdirectory(argparser)
 add_subdirectory(compressor)
 add_subdirectory(compressor_cli)
 add_subdirectory(compressor_app)

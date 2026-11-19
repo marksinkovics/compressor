@@ -9,8 +9,9 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 - Phase 0 (pre-commit hooks and code quality) is done: `tools/quality.sh`, pre-commit hooks installed, Claude format hook in `.claude/settings.json`.
 - Phase 1 (safety-net tests) is done: round-trip tests over `compressor_example/samples/raw/` and 7 `DISABLED_` edge-case tests for the Phase 2 bugs.
 - Phase 2 (bug fixes) is done: all edge-case tests enabled, 91/91 pass; `compressor_app` returns non-zero on failure.
-- Phase 3 (build, tooling and platforms) in progress: steps "CMake" (CMake 3.25+, C++23), "Flags per target" (`COMPRESSOR_*` options, native arm64 Xcode) and "vcpkg" (manifest, global warning flags, ASan triplets), "Presets" and "Quality tools on the new build" are done.
-- **Next:** run `cmake --workflow --preset asan` once outside Claude's sandbox (never verified), then Phase 3 step "CI" (`docs/roadmap.md`).
+- Phase 3 (build, tooling and platforms) in progress: steps "CMake" (CMake 3.25+, C++23), "Flags per target" (`COMPRESSOR_*` options, native arm64 Xcode) and "vcpkg" (manifest, global warning flags, ASan triplets), "Presets" and "Quality tools on the new build" are done; step "CI" is deferred.
+- Phase 4 (CLI11) is done: `argparser/` deleted, `encode`/`decode` subcommands with `-i`/`-o`, `--help`, `--version`; 65/65 pass.
+- **Next:** run `cmake --workflow --preset asan` once outside Claude's sandbox (never verified), then Phase 5 step "Freestanding core" (`docs/roadmap.md`).
 
 ## Commands
 
@@ -22,12 +23,12 @@ ctest --preset debug -R BitsetTests
 bash tools/quality.sh check       # clang-format, clang-tidy, shellcheck, shfmt (see docs/development.md)
 ```
 
-- Needs `VCPKG_ROOT` set to a vcpkg checkout; the root `CMakeLists.txt` takes vcpkg's toolchain from there, and configure installs `vcpkg.json` (gtest, benchmark, boost-dynamic-bitset). Third-party code comes only through vcpkg. Every port, transitive and host ones included, needs an exact `overrides` pin in `vcpkg.json`; configure fails otherwise.
+- Needs `VCPKG_ROOT` set to a vcpkg checkout; the root `CMakeLists.txt` takes vcpkg's toolchain from there, and configure installs `vcpkg.json` (gtest, benchmark, boost-dynamic-bitset, cli11). Third-party code comes only through vcpkg. Every port, transitive and host ones included, needs an exact `overrides` pin in `vcpkg.json`; configure fails otherwise.
 - Options: `COMPRESSOR_ASAN` (the `asan` preset; needs an `-asan` triplet from `triplets/`), `COMPRESSOR_PROFILING` (`PROFILE_*` macros write `result.json`). Presets set `CMAKE_COMPILE_WARNING_AS_ERROR`; warning flags are global (`docs/development.md`).
 
 ## Architecture
 
-`compressor_app` → `compressor_cli` → `compressor` + `argparser` → `lib/instrumentor`.
+`compressor_app` → `compressor_cli` (CLI11) → `compressor` → `lib/instrumentor`.
 
 - `compressor/`: `Compressor` runs task.reader() → task.engine() → task.writer(). `Engine` holds the Huffman logic (frequency count, tree build, codes as `bitset`, bit-by-bit decode through `bit_dict_`). The file format is the `operator<<`/`operator>>` on `EncodedData` in `data/data.cpp`.
 - Every component sits behind an interface (`ICompressor`, `IEngine`, `IEncoderTask`, `IDataReader<T>`, …) with a gmock mock in `<pkg>/test/include/<pkg>/test/mock/`.

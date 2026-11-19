@@ -1,57 +1,77 @@
 #include <compressor/cli.h>
 
 #include <cstdlib>
-#include <iostream>
+#include <string>
 
-#include <argparser/argparser.h>
+#include <CLI/CLI.hpp>
+
 #include <compressor/compressor.h>
 
 namespace compressor
 {
 
-CLI::CLI(std::unique_ptr<argparser::IArgparser>&& parser,
-         std::unique_ptr<compressor::ICompressor>&& compressor)
-    : parser_(std::move(parser))
-    , compressor_(std::move(compressor))
+namespace
 {
-    parser_->add_argument(argparser::CreateArg("encode", "Compress the given file.", false));
-    parser_->add_argument(argparser::CreateArg("decode", "Decompress the given file.", false));
-    parser_->add_argument(argparser::CreateArg("--input", "Input file path", std::string("")));
-    parser_->add_argument(argparser::CreateArg("--output", "Output file path", std::string("")));
-    options_ = parser_->parse();
+
+struct Paths
+{
+    std::string input;
+    std::string output;
+};
+
+::CLI::App* add_command(::CLI::App& app, const std::string& name, const std::string& description,
+                        Paths& paths)
+{
+    auto* command = app.add_subcommand(name, description);
+    command->add_option("-i,--input", paths.input, "Input file")
+        ->required()
+        ->check(::CLI::ExistingFile);
+    command->add_option("-o,--output", paths.output, "Output file")->required();
+    return command;
 }
 
-int CLI::run()
+} // namespace
+
+CLI::CLI(std::unique_ptr<ICompressor> compressor, std::ostream& out, std::ostream& err)
+    : compressor_(std::move(compressor))
+    , out_(out)
+    , err_(err)
 {
-    std::string input_file, output_file;
-    if (parser_->has_argument("input"))
+}
+
+int CLI::run(std::span<const char* const> args)
+{
+    ::CLI::App app("Huffman-coding compressor", "compressor");
+    app.set_version_flag("--version", COMPRESSOR_VERSION);
+    app.require_subcommand(1);
+
+    Paths encode_paths;
+    Paths decode_paths;
+    auto* encode = add_command(app, "encode", "Compress a file", encode_paths);
+    add_command(app, "decode", "Decompress a file", decode_paths);
+
+    try
     {
-        input_file =
-            std::dynamic_pointer_cast<argparser::Arg<std::string>>(options_["input"])->value();
-        std::cout << "Input file: " << input_file << '\n';
+        app.parse(static_cast<int>(args.size()), args.data());
+    }
+    catch (const ::CLI::ParseError& e)
+    {
+        return app.exit(e, out_, err_);
     }
 
-    if (parser_->has_argument("output"))
+    if (encode->parsed())
     {
-        output_file =
-            std::dynamic_pointer_cast<argparser::Arg<std::string>>(options_["output"])->value();
-        std::cout << "Output file: " << output_file << '\n';
+        EncoderTask task(encode_paths.input, encode_paths.output);
+        if (compressor_->encode(task))
+            return EXIT_SUCCESS;
+        err_ << "Encoding " << encode_paths.input << " failed\n";
+        return EXIT_FAILURE;
     }
 
-    if (parser_->has_argument("encode"))
-    {
-        std::cout << "Encode\n";
-        EncoderTask task(input_file, output_file);
-        return compressor_->encode(task) ? EXIT_SUCCESS : EXIT_FAILURE;
-    }
-    else if (parser_->has_argument("decode"))
-    {
-        std::cout << "Decode\n";
-        DecoderTask task(input_file, output_file);
-        return compressor_->decode(task) ? EXIT_SUCCESS : EXIT_FAILURE;
-    }
-
-    parser_->print_help();
+    DecoderTask task(decode_paths.input, decode_paths.output);
+    if (compressor_->decode(task))
+        return EXIT_SUCCESS;
+    err_ << "Decoding " << decode_paths.input << " failed\n";
     return EXIT_FAILURE;
 }
 

@@ -17,9 +17,7 @@ Checks: >
   -bugprone-exception-escape,
   -bugprone-derived-method-shadowing-base-method
 WarningsAsErrors: '*'
-# googletest and benchmark are downloaded into build/; Boost comes in as a system header.
-# argparser/ has its own exceptions (argparser/.clang-tidy), which don't reach its headers when
-# other packages include them; Phase 4 deletes it.
+# vcpkg ports are installed under build/ and come in as system headers.
 HeaderFilterRegex: '.*'
-ExcludeHeaderFilterRegex: '.*/(build|argparser)/.*'
+ExcludeHeaderFilterRegex: '.*/build/.*'
 FormatStyle: file

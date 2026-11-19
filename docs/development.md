@@ -94,7 +94,7 @@ tools/quality.sh stages                       # list the stage names
 
 - Files are the tracked and new, not ignored files (`git ls-files`), so `build/` is skipped. C++ means `*.cpp *.h *.hpp`; shell means `*.sh`.
 - With `-- file...`, clang-tidy checks only the sources that include those files, using `ninja -t deps` (changing `bitset.h` selects 19 of 41 sources). A full run takes about 30 s.
-- Settings live in `.clang-format`, `.clang-tidy` (plus nested ones in `argparser/` and `compressor_benchmark/`), `.shellcheckrc` and `.editorconfig` (shfmt reads its options from there).
+- Settings live in `.clang-format`, `.clang-tidy` (plus a nested one in `compressor_benchmark/`), `.shellcheckrc` and `.editorconfig` (shfmt reads its options from there).
 
 ### pre-commit hooks
 

@@ -28,10 +28,13 @@ target_include_directories(${PROJECT_NAME}
         ${SRC_DIR}
 )
 
+target_compile_definitions(${PROJECT_NAME} PRIVATE COMPRESSOR_VERSION="${CMAKE_PROJECT_VERSION}")
+
 target_link_libraries(${PROJECT_NAME}
     PUBLIC
         compressor
-        argparser
+    PRIVATE
+        CLI11::CLI11
 )
 
 add_subdirectory(test)

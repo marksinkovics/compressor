@@ -1,5 +1,6 @@
 #include <filesystem>
-#include <iostream>
+#include <memory>
+#include <string>
 #include <vector>
 
 #include <compressor/cli.h>
@@ -10,25 +11,17 @@ int main([[maybe_unused]] int argc, char** argv)
         "samples/raw/lorem_5p.txt",  "samples/raw/lorem_10p.txt", "samples/raw/lorem_20p.txt",
         "samples/raw/lorem_50p.txt", "samples/raw/lena.jpg",      "samples/raw/flower.png",
     };
-    std::string current_path = std::filesystem::path(argv[0]).remove_filename().c_str();
+    const std::string current_path = std::filesystem::path(argv[0]).remove_filename().string();
 
     for (const auto& input : inputs)
     {
-        std::vector<std::string> arguments = {
-            "example", "encode", "--input", current_path + input, "--output", "/dev/null",
+        const std::string input_path = current_path + input;
+        const std::vector<const char*> args = {
+            "example", "encode", "--input", input_path.c_str(), "--output", "/dev/null",
         };
 
-        std::vector<char*> command_arguments;
-        command_arguments.reserve(arguments.size() + 1);
-        for (auto& arg : arguments)
-            command_arguments.push_back(arg.data());
-        command_arguments.push_back(nullptr);
-        size_t command_arguments_count = command_arguments.size() - 1;
-
-        compressor::CLI cmd(std::make_unique<argparser::Argparser>(command_arguments_count,
-                                                                   command_arguments.data()),
-                            std::make_unique<compressor::Compressor>());
-        cmd.run();
+        compressor::CLI cli(std::make_unique<compressor::Compressor>());
+        cli.run(args);
     }
 
     return 0;

@@ -104,12 +104,19 @@ Behaviour stays the same; the Phase 1 tests prove it.
   - **Not verified:** the `asan` workflow. Auto mode refused to run it outside Claude's sandbox, and inside it the ASan `try_run` checks in benchmark's configure hang (see the vcpkg step). Run `cmake --workflow --preset asan` by hand once.
   - Linux gets its own `asan` variant (with `x64-linux-asan`) in the CI step; presets can't pick a triplet per host, so it needs a separate preset or a `condition` per platform.
 - [x] **Quality tools on the new build (done with Presets):** the `debug` preset builds in `build/debug`, which is where `tools/quality.sh` and the clang-tidy hook already read `compile_commands.json`; only the "no compile database" hint changed to `cmake --preset debug`.
-- [ ] **CI:** GitHub Actions on macOS first, then Linux (GCC and Clang) and Windows (MSVC), all through the workflow presets (with `VCPKG_ROOT` from the runner's vcpkg or `lukka/run-vcpkg`), plus `pre-commit run --all-files`. Expect MSVC to need its own warning flags and fixes for binary-mode file I/O.
+- [ ] **CI (deferred, 2026-11-18):** not needed for now; Phase 4 goes ahead without it. When picked up: GitHub Actions on macOS first, then Linux (GCC and Clang) and Windows (MSVC), all through the workflow presets (with `VCPKG_ROOT` from the runner's vcpkg or `lukka/run-vcpkg`), plus `pre-commit run --all-files`. Expect MSVC to need its own warning flags and fixes for binary-mode file I/O.
 
-### Phase 4: CLI11
+### Phase 4: CLI11 (done)
 
-- [ ] Add `cli11` to `vcpkg.json`. `encode` and `decode` become CLI11 subcommands with `-i/--input` (validated with `CLI::ExistingFile`), `-o/--output`, `--help` and `--version`, and proper exit codes. `--help` must print once and exit 0 (the old argparser prints it twice and exits 1).
-- [ ] Delete `argparser/`, its tests and the `IArgparser` mock. CLI tests check how a given argv is parsed instead of using mocks.
+The hand-written `argparser/` is replaced by CLI11; `compressor_app` has `encode`/`decode` subcommands, `--help` prints once and exits 0, and every parse error exits non-zero. 65/65 tests pass (the argparser tests are gone; 13 new CLI tests).
+
+- [x] **CLI11 (done):** `cli11` 2.6.2 in `vcpkg.json` (with its `overrides` pin), `find_package(CLI11 CONFIG REQUIRED)` in the root, linked `PRIVATE` into `compressor_cli`, so `cli.h` doesn't include it. vcpkg's port builds CLI11 as a compiled library (`CLI11_COMPILE`).
+  - `compressor::CLI(std::unique_ptr<ICompressor>, std::ostream& out = std::cout, std::ostream& err = std::cerr)` and `int run(std::span<const char* const> args)`: the `CLI::App` is built inside `run` (inside namespace `compressor`, CLI11's namespace is spelled `::CLI`). `encode` and `decode` subcommands, exactly one required, each with required `-i/--input` (`CLI::ExistingFile`) and `-o/--output`; `--version` prints `COMPRESSOR_VERSION`. Parse errors, `--help` and `--version` go through `app.exit(e, out, err)`; a failed encode/decode writes `Encoding <input> failed` to `err` and returns `EXIT_FAILURE`. The old `Input file:`/`Encode` prints are gone.
+  - The version comes from `project(CompressionProject VERSION 0.0.1 ...)` as a `PRIVATE` `COMPRESSOR_VERSION` definition on `compressor_cli` (and on both CLI test targets); the unused `VERSION_MAJOR/MINOR/PATCH` cache variables are removed. Keep it in step with `vcpkg.json`'s `version`.
+  - CLI11 2.6's help has no `Usage:` line; it starts with the description, then `compressor [OPTIONS] SUBCOMMAND` and an `OPTIONS:` section.
+- [x] **Delete `argparser/` (done):** the directory, its tests, the `IArgparser` mock and `argparser/.clang-tidy` are gone; the root `.clang-tidy` no longer excludes `argparser/` headers. `compressor_app` and `compressor_example` call `CLI::run` with an argv span.
+  - `CLITests` (`compressor_cli/test/src/cli.cpp`) run real argv through `CLI::run` with a `MockICompressor` and captured streams, and a real input file in `$TMPDIR/compressor_cli_<test>/` for `ExistingFile`: the paths reach the encoder/decoder task, failed encode/decode exit non-zero, `--help` prints the `OPTIONS:` section once and exits 0, `encode --help` and `--version` exit 0, and no subcommand, two subcommands, a missing input file, `--input` as the last token, a missing `--output` and an unknown option all fail without calling the compressor.
+  - Checked by hand: `compressor_app` round-trips `lena.jpg`; a missing input exits 105, a trailing `--input` 114, no subcommand 106 (CLI11's exit codes). `cmake --workflow --preset debug|release|xcode` pass 65/65; `compressor_example` runs; `quality.sh check` passes.
 
 ### Phase 5: Core codec redesign
 
@@ -143,8 +150,8 @@ Each issue names the phase that handles it.
 - [x] **Input with only one distinct byte is lost** (Phase 2). For input like `aaaa`, the root is the only node and its code is an empty bitset. The encoded payload is 0 bits and decoding returns nothing.
 - [x] **`Engine::find_path` returns wrong codes** (Phase 2, delete). Inside the loop it checks `node` instead of `innerNode`, so every step pushes the same bit. Nothing calls it, but it is part of `IEngine`.
 - [x] **`Engine` state isn't reset** (Phase 2). `_symbols_dict` and the byte/bit dictionaries carry over between `encode()` calls. Each task currently creates its own `Engine`, which hides this.
-- [ ] **Argparser can read past the end of `argv`** (Phase 4, replaced). In `Argparser::parse` ([argparser.cpp](../argparser/src/argparser/argparser.cpp)), a value argument given as the last token (`compressor_app encode --input`) makes `inputs_[++i]` index out of range.
-- [ ] **Numeric parsing is lossy** (Phase 4, replaced). `ValueParser<uint32_t/uint64_t>` ([valueparser.cpp](../argparser/src/argparser/valueparser.cpp)) uses `std::atoi`, which overflows above `INT_MAX` and quietly turns invalid input into 0.
+- [x] **Argparser can read past the end of `argv`** (Phase 4, replaced; covered by `CLITests.Option_without_a_value_at_the_end_fails`). In `Argparser::parse` ([argparser.cpp](../argparser/src/argparser/argparser.cpp)), a value argument given as the last token (`compressor_app encode --input`) makes `inputs_[++i]` index out of range.
+- [x] **Numeric parsing is lossy** (Phase 4, replaced). `ValueParser<uint32_t/uint64_t>` ([valueparser.cpp](../argparser/src/argparser/valueparser.cpp)) uses `std::atoi`, which overflows above `INT_MAX` and quietly turns invalid input into 0.
 - [x] **The CLI does nothing silently** (Phase 2). If neither `encode` nor `decode` is given, `CLI::run` exits with code 0 and prints no error or help.
 
 ### File format

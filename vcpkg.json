@@ -6,6 +6,7 @@
   "dependencies": [
     "benchmark",
     "boost-dynamic-bitset",
+    "cli11",
     "gtest"
   ],
   "overrides": [
@@ -21,6 +22,7 @@
     { "name": "boost-mp11", "version": "1.90.0", "port-version": 1 },
     { "name": "boost-throw-exception", "version": "1.90.0", "port-version": 1 },
     { "name": "boost-uninstall", "version": "1.90.0", "port-version": 1 },
+    { "name": "cli11", "version": "2.6.2" },
     { "name": "gtest", "version": "1.17.0", "port-version": 2 },
     { "name": "vcpkg-boost", "version": "2025-03-29" },
     { "name": "vcpkg-cmake", "version": "2024-04-23" },

@@ -22,6 +22,9 @@ package_add_test(
         ${SRC_FILES}
     LIBRARIES
         compressor_test
-        argparser_test
         compressor_cli
 )
+
+foreach(target ${PROJECT_NAME} ${PROJECT_NAME}_app)
+    target_compile_definitions(${target} PRIVATE COMPRESSOR_VERSION="${CMAKE_PROJECT_VERSION}")
+endforeach()
