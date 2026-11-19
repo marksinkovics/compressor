@@ -31,8 +31,10 @@ public:
     void print_graph() const override;
     void print_dict() const override;
 
+    // Uses whichever of stored and Huffman gives the smaller file.
     EncodedData encode(const DecodedData& data) override;
-    // Fails unless the payload holds exactly data.size_ codes followed by zero padding.
+    // Fails unless a stored payload is data.size_ bytes, or a Huffman payload holds exactly
+    // data.size_ codes followed by zero padding.
     std::expected<DecodedData, Error> decode(const EncodedData& data) override;
 
 private:

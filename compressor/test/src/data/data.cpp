@@ -140,16 +140,26 @@ compressor::EncodedData encoded_aab()
     return data;
 }
 
+compressor::EncodedData stored_abc()
+{
+    compressor::EncodedData data;
+    data.method_ = compressor::Method::stored;
+    data.size_ = 3;
+    data.payload_ = {'a', 'b', 'c'};
+    return data;
+}
+
 std::string header_bytes(uint64_t size, const compressor::CodeLengths& lengths)
 {
-    std::string bytes(136, '\0');
+    std::string bytes(137, '\0');
+    bytes[0] = '\x01';
     for (std::size_t i = 0; i < 8; ++i)
     {
-        bytes[i] = static_cast<char>((size >> (8 * i)) & 0xFFU);
+        bytes[1 + i] = static_cast<char>((size >> (8 * i)) & 0xFFU);
     }
     for (std::size_t i = 0; i < 128; ++i)
     {
-        bytes[8 + i] = static_cast<char>(static_cast<unsigned>(lengths[2 * i]) |
+        bytes[9 + i] = static_cast<char>(static_cast<unsigned>(lengths[2 * i]) |
                                          (static_cast<unsigned>(lengths[(2 * i) + 1]) << 4U));
     }
     return bytes;
@@ -162,14 +172,45 @@ TEST_F(CompressorDataTests, Encoded_data_is_written_in_the_portable_format)
     stream << encoded_aab();
     const std::string bytes = stream.str();
 
-    ASSERT_EQ(bytes.size(), 137U);
-    EXPECT_EQ(bytes.substr(0, 8), std::string("\x03\0\0\0\0\0\0\0", 8));
+    ASSERT_EQ(bytes.size(), 138U);
+    EXPECT_EQ(bytes[0], '\x01');
+    EXPECT_EQ(bytes.substr(1, 8), std::string("\x03\0\0\0\0\0\0\0", 8));
     // 'a' (97) is odd: the high nibble of byte 48; 'b' (98) the low nibble of byte 49.
-    EXPECT_EQ(bytes[8 + 48], '\x10');
-    EXPECT_EQ(bytes[8 + 49], '\x01');
-    EXPECT_EQ(std::ranges::count(bytes.substr(8, 128), '\0'), 126);
+    EXPECT_EQ(bytes[9 + 48], '\x10');
+    EXPECT_EQ(bytes[9 + 49], '\x01');
+    EXPECT_EQ(std::ranges::count(bytes.substr(9, 128), '\0'), 126);
     // Payload 001, first bit in the most significant bit.
-    EXPECT_EQ(bytes[136], '\x20');
+    EXPECT_EQ(bytes[137], '\x20');
+}
+
+TEST_F(CompressorDataTests, Stored_data_is_written_without_code_lengths)
+{
+    stream << stored_abc();
+
+    EXPECT_EQ(stream.str(), std::string("\x00\x03\0\0\0\0\0\0\0abc", 12));
+}
+
+TEST_F(CompressorDataTests, Stored_data_round_trips_through_a_stream)
+{
+    stream << stored_abc();
+
+    compressor::EncodedData output_data;
+    stream >> output_data;
+
+    ASSERT_FALSE(stream.fail());
+    EXPECT_EQ(output_data, stored_abc());
+}
+
+TEST_F(CompressorDataTests, A_short_stored_header_fails)
+{
+    stream << stored_abc();
+    std::stringstream truncated(stream.str().substr(0, 5));
+
+    compressor::EncodedData output_data;
+    truncated >> output_data;
+
+    EXPECT_TRUE(truncated.fail());
+    EXPECT_EQ(output_data, compressor::EncodedData{});
 }
 
 TEST_F(CompressorDataTests, EncodedDataStream)
@@ -209,11 +250,15 @@ TEST_F(CompressorDataTests, Invalid_headers_fail)
     valid['a'] = 1;
     valid['b'] = 1;
 
-    const std::array<std::pair<const char*, std::string>, 4> cases{{
+    std::string unknown_method = header_bytes(3, valid);
+    unknown_method[0] = '\x02';
+
+    const std::array<std::pair<const char*, std::string>, 5> cases{{
         {"Kraft sum below 1", header_bytes(3, incomplete)},
         {"Kraft sum above 1", header_bytes(3, oversubscribed)},
         {"codes for empty data", header_bytes(0, valid)},
         {"no codes for non-empty data", header_bytes(3, compressor::CodeLengths{})},
+        {"unknown method", unknown_method},
     }};
     for (const auto& [name, bytes] : cases)
     {

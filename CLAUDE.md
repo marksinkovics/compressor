@@ -12,8 +12,8 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 - Phase 3 (build, tooling and platforms) in progress: steps "CMake" (CMake 3.25+, C++23), "Flags per target" (`COMPRESSOR_*` options, native arm64 Xcode) and "vcpkg" (manifest, global warning flags, ASan triplets), "Presets" and "Quality tools on the new build" are done; step "CI" is deferred.
 - Phase 4 (CLI11) is done: `argparser/` deleted, `encode`/`decode` subcommands with `-i`/`-o`, `--help`, `--version`; 65/65 pass.
 - The `asan` workflow passes 65/65 when run by hand (it can't run in Claude's sandbox).
-- Phase 5 (benchmarks and performance) in progress: steps "Benchmark harness and baseline" (`docs/benchmarks.md`, `docs/benchmarks/baseline.json`), "Canonical Huffman with length-limited codes" (`compressor/huffman/`, format in `docs/file_format.md`), "Decode lookup table" (15-bit cap, decode 170–340 MiB/s) and "Encode bit buffer" (encode 210–960 MiB/s, `bitset` and boost deleted, all clang-tidy checks on; `docs/benchmarks/encode-bit-buffer.json`), "Copies and I/O" (block stream I/O, CLI decode on `mozilla` 0.22 s; `tools/bench-cli.sh`) and "Report corrupt input" (`compressor::Error`, `std::expected` from `IDataReader::read` and `IEngine::decode`; strict trailing-byte and padding checks) are done; 84/84 pass. The freestanding core is postponed to Phase 6.
-- **Next:** Phase 5 step "Stored fallback" (`docs/roadmap.md`); start with a plan for approval.
+- Phase 5 (benchmarks and performance) is done: canonical length-limited Huffman (`compressor/huffman/`), decode table, 64-bit bit writer, block stream I/O, corrupt input as `compressor::Error`, and a stored fallback behind a method byte (format in `docs/file_format.md`, numbers in `docs/benchmarks.md`); 94/94 pass. The freestanding core is postponed to Phase 6.
+- **Next:** the container format, the first feature in `docs/roadmap.md` ("Features", "Suggested order"); start with a plan for approval.
 
 ## Commands
 
@@ -34,7 +34,7 @@ bash tools/bench-cli.sh           # compressor_app end to end with hyperfine (py
 
 `compressor_app` → `compressor_cli` (CLI11) → `compressor` → `lib/instrumentor`.
 
-- `compressor/`: `Compressor` runs task.reader() → task.engine() → task.writer(). `huffman/` computes length-limited code lengths (package-merge) and canonical codes; `Engine` counts frequencies, encodes through a 64-bit `BitWriter` into an MSB-first byte payload, decodes through a `DecodeTable` indexed by the next 15 bits, and rebuilds a `tree/` only for `print_graph`. The file format (`docs/file_format.md`) is the `operator<<`/`operator>>` on `EncodedData` in `data/data.cpp`.
+- `compressor/`: `Compressor` runs task.reader() → task.engine() → task.writer(). `huffman/` computes length-limited code lengths (package-merge) and canonical codes; `Engine` counts frequencies, encodes through a 64-bit `BitWriter` into an MSB-first byte payload, decodes through a `DecodeTable` indexed by the next 15 bits, and rebuilds a `tree/` only for `print_graph`. `encode` stores the input as is when that gives the smaller file. The file format (`docs/file_format.md`: method byte, size, code lengths, payload) is the `operator<<`/`operator>>` on `EncodedData` in `data/data.cpp`.
 - Every component sits behind an interface (`ICompressor`, `IEngine`, `IEncoderTask`, `IDataReader<T>`, …) with a gmock mock in `<pkg>/test/include/<pkg>/test/mock/`.
 - `cmake/PackageTest.cmake`'s `package_add_test` builds each test package twice: as a library, so other test packages can reuse its mocks, and as `<name>_app`, the runnable gtest binary.
 - Source files are listed explicitly in each `CMakeLists.txt`; add new files there.

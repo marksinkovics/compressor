@@ -238,20 +238,32 @@ EncodedData Engine::encode(const DecodedData& data)
 
     EncodedData encoded;
     encoded.size_ = data.data_.size();
+    CodeLengths lengths{};
     {
         PROFILE_SCOPE("Code lengths")
-        encoded.code_lengths_ = code_lengths(frequencies_);
-        set_codes(encoded.code_lengths_);
+        lengths = code_lengths(frequencies_);
+        set_codes(lengths);
+    }
+
+    uint64_t bit_count = 0;
+    for (std::size_t symbol = 0; symbol < symbol_count; ++symbol)
+    {
+        bit_count += frequencies_[symbol] * codes_[symbol].length;
+    }
+    const uint64_t payload_bytes = (bit_count + 7) / 8;
+    // Ties go to stored, which decodes faster.
+    if (stored_header_bytes + encoded.size_ <= huffman_header_bytes + payload_bytes)
+    {
+        codes_ = {};
+        encoded.method_ = Method::stored;
+        encoded.payload_ = data.data_;
+        return encoded;
     }
 
     {
         PROFILE_SCOPE("Encode symbols")
-        uint64_t bit_count = 0;
-        for (std::size_t symbol = 0; symbol < symbol_count; ++symbol)
-        {
-            bit_count += frequencies_[symbol] * codes_[symbol].length;
-        }
-        encoded.payload_.resize((bit_count + 7) / 8);
+        encoded.code_lengths_ = lengths;
+        encoded.payload_.resize(payload_bytes);
         BitWriter writer(encoded.payload_);
         for (const uint8_t symbol : data.data_)
         {
@@ -268,6 +280,15 @@ std::expected<DecodedData, Error> Engine::decode(const EncodedData& data)
     set_codes(data.code_lengths_);
 
     DecodedData result;
+    if (data.method_ == Method::stored)
+    {
+        if (data.payload_.size() != data.size_)
+        {
+            return std::unexpected(Error::corrupt_payload);
+        }
+        result.data_ = data.payload_;
+        return result;
+    }
     if (data.size_ == 0)
     {
         if (!data.payload_.empty())

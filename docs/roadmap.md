@@ -118,7 +118,9 @@ The hand-written `argparser/` is replaced by CLI11; `compressor_app` has `encode
   - `CLITests` (`compressor_cli/test/src/cli.cpp`) run real argv through `CLI::run` with a `MockICompressor` and captured streams, and a real input file in `$TMPDIR/compressor_cli_<test>/` for `ExistingFile`: the paths reach the encoder/decoder task, failed encode/decode exit non-zero, `--help` prints the `OPTIONS:` section once and exits 0, `encode --help` and `--version` exit 0, and no subcommand, two subcommands, a missing input file, `--input` as the last token, a missing `--output` and an unknown option all fail without calling the compressor.
   - Checked by hand: `compressor_app` round-trips `lena.jpg`; a missing input exits 105, a trailing `--input` 114, no subcommand 106 (CLI11's exit codes). `cmake --workflow --preset debug|release|xcode` pass 65/65; `compressor_example` runs; `quality.sh check` passes.
 
-### Phase 5: Benchmarks and performance
+### Phase 5: Benchmarks and performance (done)
+
+Done 2026-11-19: canonical length-limited Huffman with a decode table and a 64-bit bit writer (encode 210–960 MiB/s, decode 170–340 MiB/s), block stream I/O, corrupt input reported through `std::expected`, and a stored fallback behind a method byte.
 
 Measure first, then make the existing codec fast, one change per step, each with a before/after benchmark diff. Decided 2026-11-18: the freestanding core is postponed (Phase 6); zlib's Huffman-only mode is the reference; both the Canterbury and the Silesia corpus are used.
 
@@ -195,7 +197,13 @@ Measure first, then make the existing codec fast, one change per step, each with
   - Tests: `EngineTests.A_trailing_byte_after_the_codes_is_corrupt`, `Non_zero_padding_is_corrupt`, `A_payload_for_empty_data_is_corrupt`, `Codes_that_fill_the_last_byte_exactly_decode` (the three earlier `..._decodes_to_nothing` tests are now `..._is_corrupt`); `CompressorDataTests.Reader_*` (four, through real files); `CompressorTests.Encoding_fails_without_writing_when_the_input_cannot_be_read`, `Decoding_fails_without_writing_when_the_header_is_corrupt`/`_payload_is_corrupt`; `EdgeCaseTests.Decoding_a_truncated_header_fails_and_creates_no_output`, `Decoding_a_truncated_payload_fails_and_leaves_the_output_untouched`, `Decoding_with_bytes_appended_fails`. The round-trip helpers now return and assert the `bool`.
 
     84/84 pass in `debug` and `release`; `quality.sh check` passes. The same three cases checked by hand with `compressor_app`.
-- [ ] **Stored fallback (next):** store the input as is, with a flag, when Huffman doesn't shrink it. Needed: `flower.png` grows from 734,560 to 737,072 bytes today. The container format later does this per block.
+- [x] **Stored fallback (done):** the encoded file starts with a method byte, and the encoder stores the input as is when that gives the smaller file. Format in [file_format.md](file_format.md), numbers in [benchmarks.md](benchmarks.md) ("Stored fallback"), reference results in `docs/benchmarks/stored-fallback.json`. `flower.png` is now 734,569 B (737,072 at the Phase 5 baseline).
+  - Decided 2026-11-19: an explicit method byte at offset 0 (`0` stored, `1` Huffman, `2`–`255` reserved for later entropy coders such as rANS and rejected as `corrupt_header`), breaking the format, rather than overloading all-zero code lengths or a bit of the size field. Stored files skip the 128-byte length table: header 9 B, Huffman 137 B. Transforms and the pipeline ID are left to the container format.
+  - `data.h`: `enum class Method : uint8_t { stored, huffman }`, `EncodedData::method_`, and `stored_header_bytes`/`huffman_header_bytes` (`static_assert`ed against the field sizes in `data.cpp`).
+  - `Engine::encode` computes the Huffman bit count before writing any code and stores when `9 + size <= 137 + payload bytes`; ties go to stored, which decodes as one copy. So every input up to 147 bytes, empty input included, is stored. `codes_` is cleared, so `print_dict`/`print_graph` print nothing for a stored file. `Engine::decode` returns `corrupt_payload` when a stored payload's length differs from the size. No coder interface yet: stored is a branch in `Engine`, to be pulled out when a second real coder arrives.
+  - Tests: `CompressorDataTests` golden bytes for both methods, `Stored_data_round_trips_through_a_stream`, `A_short_stored_header_fails`, an unknown method in `Invalid_headers_fail`; `EngineTests.Input_that_huffman_cannot_shrink_is_stored`, `Short_input_is_stored_because_the_huffman_header_costs_more`, `Empty_input_is_stored_and_round_trips`, `A_tie_is_stored_and_one_byte_saved_is_huffman` (147 vs 148 bytes), `Print_dict_and_print_graph_are_empty_after_storing`, `A_stored_payload_of_the_wrong_size_is_corrupt`; `EdgeCaseTests.Incompressible_input_is_stored_with_a_nine_byte_header` (`flower.png`). Huffman tests that used tiny inputs now use a few hundred bytes (`aab` × 201 and similar), and the corrupt-file edge cases use `abracadabra` × 50.
+
+    94/94 pass in `debug` and `release`; `quality.sh check` passes.
 
 After Phase 5, continue with the features in their suggested order, starting with the container format.
 

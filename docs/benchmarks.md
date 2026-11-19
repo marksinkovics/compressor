@@ -142,3 +142,11 @@ After the "Copies and I/O" step: `operator>>` reads the rest of the stream in 64
 - **Decode:** 3.1–3.6× faster end to end. On `mozilla` the CLI (0.22 s) is now close to the in-memory decode (about 0.2 s), so file I/O no longer dominates.
 - **Encode:** 1.7–1.9× faster.
 - **Memory:** peak RSS on `mozilla` is 93 MB, about input plus output (51 + 40 MB), so no stage holds an extra full copy.
+
+## Stored fallback (2026-11-19)
+
+After the "Stored fallback" step: the encoded file starts with a method byte, and the encoder stores the input as is when that gives the smaller file ([file_format.md](file_format.md)). `Engine` on the samples and Canterbury sets, release, load average about 20; results are in `docs/benchmarks/stored-fallback.json`.
+
+- **Incompressible input no longer grows by more than the 9-byte header:** `flower.png` 734,560 → 734,569 B (ratio 1.0000, was 1.0001 with Huffman), `lena.jpg` 91,814 → 91,823 B (1.0001, was 1.0005). Both are stored.
+- **Stored speed:** encode 1,450–2,700 MiB/s (counting frequencies and building code lengths, then one copy), decode 42,000–72,000 MiB/s (one copy).
+- **Every other file:** still Huffman; the header grows by 1 byte to 137, and ratios are unchanged at three decimals.

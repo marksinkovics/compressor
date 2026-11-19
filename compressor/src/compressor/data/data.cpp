@@ -8,6 +8,7 @@
 #include <ios>
 #include <istream>
 #include <ostream>
+#include <span>
 #include <streambuf>
 #include <string>
 #include <utility>
@@ -94,59 +95,88 @@ bool operator==(const DecodedData& lhs, const DecodedData& rhs)
 namespace
 {
 
+constexpr std::size_t method_field_bytes = 1;
 constexpr std::size_t size_field_bytes = 8;
 constexpr std::size_t lengths_field_bytes = symbol_count / 2;
+static_assert(stored_header_bytes == method_field_bytes + size_field_bytes);
+static_assert(huffman_header_bytes == stored_header_bytes + lengths_field_bytes);
 
 } // namespace
 
 std::ostream& operator<<(std::ostream& ostream, const EncodedData& data)
 {
-    std::array<char, size_field_bytes + lengths_field_bytes> header{};
+    std::array<char, method_field_bytes + size_field_bytes + lengths_field_bytes> header{};
+    header[0] = static_cast<char>(data.method_);
     for (std::size_t i = 0; i < size_field_bytes; ++i)
     {
-        header[i] = static_cast<char>((data.size_ >> (8 * i)) & 0xFFU);
+        header[method_field_bytes + i] = static_cast<char>((data.size_ >> (8 * i)) & 0xFFU);
     }
-    for (std::size_t i = 0; i < lengths_field_bytes; ++i)
+    std::size_t header_size = method_field_bytes + size_field_bytes;
+    if (data.method_ == Method::huffman)
     {
-        const auto low = static_cast<unsigned>(data.code_lengths_[2 * i] & 0x0FU);
-        const auto high = static_cast<unsigned>(data.code_lengths_[(2 * i) + 1] & 0x0FU);
-        header[size_field_bytes + i] = static_cast<char>(low | (high << 4U));
+        for (std::size_t i = 0; i < lengths_field_bytes; ++i)
+        {
+            const auto low = static_cast<unsigned>(data.code_lengths_[2 * i] & 0x0FU);
+            const auto high = static_cast<unsigned>(data.code_lengths_[(2 * i) + 1] & 0x0FU);
+            header[header_size + i] = static_cast<char>(low | (high << 4U));
+        }
+        header_size += lengths_field_bytes;
     }
-    ostream.write(header.data(), header.size());
+    ostream.write(header.data(), static_cast<std::streamsize>(header_size));
 
     write_bytes(ostream, data.payload_);
     return ostream;
 }
 
+namespace
+{
+
+bool read_exactly(std::istream& istream, std::span<unsigned char> bytes)
+{
+    istream.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    return istream.gcount() == static_cast<std::streamsize>(bytes.size());
+}
+
+} // namespace
+
 std::istream& operator>>(std::istream& istream, EncodedData& data)
 {
     data = EncodedData{};
 
-    std::array<unsigned char, size_field_bytes + lengths_field_bytes> header{};
-    istream.read(reinterpret_cast<char*>(header.data()), header.size());
-    if (istream.gcount() != static_cast<std::streamsize>(header.size()))
+    std::array<unsigned char, method_field_bytes + size_field_bytes> fixed{};
+    if (!read_exactly(istream, fixed) || fixed[0] > static_cast<unsigned char>(Method::huffman))
     {
         istream.setstate(std::ios::failbit);
         return istream;
     }
 
     EncodedData result;
+    result.method_ = static_cast<Method>(fixed[0]);
     for (std::size_t i = 0; i < size_field_bytes; ++i)
     {
-        result.size_ |= static_cast<uint64_t>(header[i]) << (8 * i);
+        result.size_ |= static_cast<uint64_t>(fixed[method_field_bytes + i]) << (8 * i);
     }
-    bool any_code = false;
-    for (std::size_t i = 0; i < lengths_field_bytes; ++i)
+
+    if (result.method_ == Method::huffman)
     {
-        const unsigned char byte = header[size_field_bytes + i];
-        result.code_lengths_[2 * i] = byte & 0x0FU;
-        result.code_lengths_[(2 * i) + 1] = byte >> 4U;
-        any_code = any_code || byte != 0;
-    }
-    if (!valid_code_lengths(result.code_lengths_) || any_code != (result.size_ > 0))
-    {
-        istream.setstate(std::ios::failbit);
-        return istream;
+        std::array<unsigned char, lengths_field_bytes> lengths{};
+        if (!read_exactly(istream, lengths))
+        {
+            istream.setstate(std::ios::failbit);
+            return istream;
+        }
+        bool any_code = false;
+        for (std::size_t i = 0; i < lengths_field_bytes; ++i)
+        {
+            result.code_lengths_[2 * i] = lengths[i] & 0x0FU;
+            result.code_lengths_[(2 * i) + 1] = lengths[i] >> 4U;
+            any_code = any_code || lengths[i] != 0;
+        }
+        if (!valid_code_lengths(result.code_lengths_) || any_code != (result.size_ > 0))
+        {
+            istream.setstate(std::ios::failbit);
+            return istream;
+        }
     }
 
     read_rest(istream, result.payload_);
@@ -157,8 +187,8 @@ std::istream& operator>>(std::istream& istream, EncodedData& data)
 
 bool operator==(const EncodedData& lhs, const EncodedData& rhs)
 {
-    return lhs.size_ == rhs.size_ && lhs.code_lengths_ == rhs.code_lengths_ &&
-           lhs.payload_ == rhs.payload_;
+    return lhs.method_ == rhs.method_ && lhs.size_ == rhs.size_ &&
+           lhs.code_lengths_ == rhs.code_lengths_ && lhs.payload_ == rhs.payload_;
 }
 
 } // namespace compressor

@@ -153,6 +153,17 @@ protected:
         return {bytes.begin(), bytes.end()};
     }
 
+    // Long enough that Huffman beats storing it.
+    static std::string compressible()
+    {
+        std::string text;
+        for (int i = 0; i < 50; ++i)
+        {
+            text += "abracadabra";
+        }
+        return text;
+    }
+
     fs::path work_dir_;
     fs::path input_;
     fs::path encoded_;
@@ -212,7 +223,7 @@ TEST_F(EdgeCaseTests, Existing_longer_output_files_are_truncated)
 
 TEST_F(EdgeCaseTests, Decoding_a_truncated_header_fails_and_creates_no_output)
 {
-    write_bytes(encoded_, encoded_bytes("abracadabra").substr(0, 100));
+    write_bytes(encoded_, encoded_bytes(compressible()).substr(0, 100));
 
     EXPECT_FALSE(decode(encoded_, decoded_));
     EXPECT_FALSE(fs::exists(decoded_));
@@ -220,7 +231,7 @@ TEST_F(EdgeCaseTests, Decoding_a_truncated_header_fails_and_creates_no_output)
 
 TEST_F(EdgeCaseTests, Decoding_a_truncated_payload_fails_and_leaves_the_output_untouched)
 {
-    const std::string bytes = encoded_bytes("abracadabra");
+    const std::string bytes = encoded_bytes(compressible());
     write_bytes(encoded_, bytes.substr(0, bytes.size() - 1));
     write_bytes(decoded_, "keep");
 
@@ -229,9 +240,19 @@ TEST_F(EdgeCaseTests, Decoding_a_truncated_payload_fails_and_leaves_the_output_u
     EXPECT_EQ(read_bytes(decoded_), expected);
 }
 
+TEST_F(EdgeCaseTests, Incompressible_input_is_stored_with_a_nine_byte_header)
+{
+    const fs::path sample = fs::path(samples_dir) / "flower.png";
+    ASSERT_TRUE(fs::exists(sample));
+    ASSERT_TRUE(encode(sample, encoded_));
+
+    EXPECT_EQ(fs::file_size(encoded_), fs::file_size(sample) + 9);
+    EXPECT_EQ(read_bytes(encoded_).front(), '\0'); // method: stored
+}
+
 TEST_F(EdgeCaseTests, Decoding_with_bytes_appended_fails)
 {
-    write_bytes(encoded_, encoded_bytes("abracadabra") + "x");
+    write_bytes(encoded_, encoded_bytes(compressible()) + "x");
 
     EXPECT_FALSE(decode(encoded_, decoded_));
     EXPECT_FALSE(fs::exists(decoded_));
