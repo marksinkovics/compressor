@@ -159,8 +159,20 @@ Measure first, then make the existing codec fast, one change per step, each with
     - decode is unchanged.
   - The cap costs more than the expected 0.1% on a few large files. Measured ratios for caps 11/12/13/15 against uncapped: `reymont` 0.6218/0.6137/0.6102/0.6083 vs 0.6087 (cap 12 is 0.8% bigger), `dickens` 0.5729 vs 0.5717 (0.2%), the rest at most 0.1%. The 4-bit length field allows caps up to 15 without a format change, so the decode table step decides the final cap by measuring decode speed.
   - `ptt5`'s efficiency is 1.38: it has less than 1 bit of entropy per byte, and Huffman needs at least 1 bit per symbol. An entropy coder like ANS or arithmetic coding would fix that, not this step.
-- [ ] **Decode lookup table (next):** replace the bit-by-bit `std::map<bitset, uint8_t>` search with a single table indexed by the next `max_code_length` bits (2^12 entries of 2 bytes = 8 KB, fits in L1). Also decide the cap: measure decode speed with 12 and with 15 (64 KB table, or two levels), against the ratio cost above (`reymont` 0.9%). Afterwards Silesia joins `tools/bench.sh`'s default run.
-- [ ] **Encode bit buffer and arrays:** `std::array<uint32_t, 256>` frequencies, `std::array<Code, 256>` codes, an array-based tree with indices instead of `shared_ptr`/`weak_ptr`/`dynamic_pointer_cast`, and a 64-bit bit buffer that writes whole words instead of `bitset::append`.
+- [x] **Decode lookup table (done):** numbers in [benchmarks.md](benchmarks.md) ("Decode lookup table"), reference results in `docs/benchmarks/decode-table.json`. Decode runs at 170–340 MiB/s, up from 1.4–7.5.
+  - `huffman.h`: `DecodeEntry {symbol, length}` (length 0 = no code starts here), `DecodeTable` (`std::vector`, 2^`max_code_length` entries), `build_decode_table(codes)`.
+  - `bitset::data()` returns the blocks as `std::span<const uint8_t>`. It's named `data()` rather than the planned `blocks()`, which is the member's name.
+  - `Engine::decode` uses a `BitReader` (anonymous namespace in `engine.cpp`): a 64-bit MSB-first buffer, refilled a byte at a time through a `constexpr` bit-reversal table, zeros past the end, and `remaining()` for the real bit count. Each symbol is one `peek()`, one table lookup and one `consume(length)`. It returns empty data on a length-0 entry or a code longer than the remaining bits. `bit_dict_` is gone; the encoder still uses `code_bits_`.
+  - **Cap is now 15** (`max_code_length`), by the agreed rule: interleaved runs (median of 3, best of 2 rounds) gave 15/12 = 1.01× decode speed (geometric mean over Canterbury and Silesia); files of a few KB lose up to 10% from filling the 64 KB table. The ratio is now equal to or better than the baseline everywhere. A 4-bit length field can't exceed 15, so `CompressorDataTests.Invalid_headers_fail`'s "length above the cap" case became "Kraft sum below 1".
+  - `tools/bench.sh` lost `--all`; Silesia is in the default run (about 2 minutes in total).
+  - Tests:
+    - `BitsetTests.Data_holds_the_first_bit_in_the_least_significant_bit`;
+    - `HuffmanTests.Decode_table_maps_every_bit_pattern_to_the_code_it_starts_with` (RFC 1951 example, every entry) and `Decode_table_marks_patterns_that_start_no_code`;
+    - `EngineTests.A_bit_pattern_that_starts_no_code_decodes_to_nothing` and `A_code_that_ends_past_the_payload_decodes_to_nothing`.
+
+    86/86 pass; `quality.sh check` passes; `compressor_app` round-trips `grammar.lsp` and `mozilla`.
+  - Found: the CLI decodes `mozilla` in 1.9 s against 0.2 s in memory. `operator>>`'s bit-by-bit payload conversion and the byte-wise stream reads now dominate; the "Copies and I/O" step handles them.
+- [ ] **Encode bit buffer (next):** frequencies and codes are already arrays (canonical step), and the tree is only built for `print_graph`. What's left is the `bitset` on the encode path: `Engine::encode` appends a per-symbol `bitset` code bit by bit. Replace it with a 64-bit bit writer that packs `Code`s MSB-first straight into bytes. `EncodedData`'s payload becomes those bytes (plus the bit count, if needed in memory), so `operator<<`/`>>` copy bytes instead of converting bit by bit, and the decoder's `BitReader` drops the bit-reversal table. `code_bits_` goes away. The `bitset` then has no users in the codec; whether to delete it (and its tests and benchmarks) is decided in the plan.
 - [ ] **Copies and I/O:** no full copies of the input in `Engine::encode`/`decode`, no detour through `std::string`, and reader/writer that move whole buffers instead of `istreambuf_iterator`/`ostream_iterator` byte by byte. Add an end-to-end CLI timing (e.g. `hyperfine`) to the benchmark docs.
 - [ ] **Report corrupt input:** `IDataReader::read()` (and the mocks) returns an error, so `Compressor::decode` fails and `compressor_app` exits non-zero on a corrupt header or a payload that ends early. Today these decode to an empty output file with exit code 0.
 - [ ] **Stored fallback:** store the input as is, with a flag, when Huffman doesn't shrink it. Needed: `flower.png` grows from 734,560 to 737,072 bytes today. The container format later does this per block.
@@ -206,7 +218,7 @@ Each issue names the phase that handles it.
 
 ### Performance and limitations
 
-- [ ] **Slow decoding** (Phase 5 decode table). Each bit is pushed into a `bitset`, followed by a `std::map<bitset, uint8_t>` lookup.
+- [x] **Slow decoding** (Phase 5 decode table). Each bit was pushed into a `bitset`, followed by a `std::map<bitset, uint8_t>` lookup; now one table lookup per symbol.
 - [ ] **Everything is in memory, single-threaded** (container format with blocks).
 
 ### Build and tooling

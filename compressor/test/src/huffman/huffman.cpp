@@ -167,3 +167,43 @@ TEST(HuffmanTests, Invalid_code_lengths_are_rejected)
     single_too_long['a'] = 2;
     EXPECT_FALSE(compressor::valid_code_lengths(single_too_long));
 }
+
+TEST(HuffmanTests, Decode_table_maps_every_bit_pattern_to_the_code_it_starts_with)
+{
+    CodeLengths lengths{};
+    const std::string symbols = "ABCDEFGH";
+    const std::array<uint8_t, 8> example{3, 3, 3, 3, 3, 2, 4, 4};
+    for (std::size_t i = 0; i < symbols.size(); ++i)
+    {
+        lengths[static_cast<uint8_t>(symbols[i])] = example[i];
+    }
+    const compressor::Codes codes = compressor::canonical_codes(lengths);
+    const compressor::DecodeTable table = compressor::build_decode_table(codes);
+
+    ASSERT_EQ(table.size(), std::size_t{1} << compressor::max_code_length);
+    for (std::size_t pattern = 0; pattern < table.size(); ++pattern)
+    {
+        const char expected = *std::ranges::find_if(symbols, [&](char symbol) {
+            const compressor::Code& code = codes[static_cast<uint8_t>(symbol)];
+            return (pattern >> (compressor::max_code_length - code.length)) == code.bits;
+        });
+        ASSERT_EQ(table[pattern].symbol, static_cast<uint8_t>(expected)) << pattern;
+        ASSERT_EQ(table[pattern].length, lengths[static_cast<uint8_t>(expected)]) << pattern;
+    }
+}
+
+TEST(HuffmanTests, Decode_table_marks_patterns_that_start_no_code)
+{
+    const compressor::DecodeTable table = compressor::build_decode_table(
+        compressor::canonical_codes(compressor::code_lengths(frequencies_of("aaaa"))));
+
+    const std::size_t half = table.size() / 2;
+    for (std::size_t pattern = 0; pattern < table.size(); ++pattern)
+    {
+        ASSERT_EQ(table[pattern].length, pattern < half ? 1 : 0) << pattern;
+        if (pattern < half)
+        {
+            ASSERT_EQ(table[pattern].symbol, 'a') << pattern;
+        }
+    }
+}

@@ -115,9 +115,9 @@ Tool: [Google benchmark framework](https://github.com/google/benchmark) (vcpkg p
 
 ```bash
 bash tools/fetch-corpus.sh               # once: Canterbury and Silesia into corpus/ (git-ignored)
-bash tools/bench.sh                      # samples + Canterbury -> build/release/benchmark.json
-bash tools/bench.sh --all --out new.json # also Silesia (minutes with the current decoder)
-python3 tools/bench-compare.py docs/benchmarks/baseline.json new.json
+bash tools/bench.sh --out new.json       # all three sets, about 2 minutes (default: build/release/benchmark.json)
+bash tools/bench.sh --filter 'Engine/.*/canterbury'
+python3 tools/bench-compare.py docs/benchmarks/decode-table.json new.json
 ```
 
 How the benchmarks work, what the counters mean and the baseline numbers are in [benchmarks.md](benchmarks.md).

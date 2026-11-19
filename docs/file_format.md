@@ -10,7 +10,7 @@ An encoded file is one canonical Huffman code over the whole input: a fixed 136-
 
 ## Code lengths
 
-- No length exceeds `max_code_length` (12, in `compressor/include/compressor/huffman/huffman.h`). The encoder computes optimal lengths under that cap with package-merge (`code_lengths()`).
+- No length exceeds `max_code_length` (15, DEFLATE's limit and the most a 4-bit field holds, in `compressor/include/compressor/huffman/huffman.h`). The encoder computes optimal lengths under that cap with package-merge (`code_lengths()`).
 - A valid header has one of these:
   - all lengths 0, with a decoded size of 0;
   - exactly one byte value with length 1 (single-symbol input; its code is `0`);

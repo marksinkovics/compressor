@@ -114,6 +114,25 @@ Codes canonical_codes(const CodeLengths& lengths)
     return codes;
 }
 
+DecodeTable build_decode_table(const Codes& codes)
+{
+    DecodeTable table(std::size_t{1} << max_code_length);
+    for (std::size_t symbol = 0; symbol < symbol_count; ++symbol)
+    {
+        const Code& code = codes[symbol];
+        if (code.length == 0 || code.length > max_code_length)
+        {
+            continue;
+        }
+        const std::size_t shift = max_code_length - code.length;
+        const std::size_t first = std::size_t{code.bits} << shift;
+        const std::size_t count = std::size_t{1} << shift;
+        std::fill_n(table.begin() + static_cast<std::ptrdiff_t>(first), count,
+                    DecodeEntry{.symbol = static_cast<uint8_t>(symbol), .length = code.length});
+    }
+    return table;
+}
+
 bool valid_code_lengths(const CodeLengths& lengths)
 {
     uint64_t kraft_sum = 0; // in units of 2^-max_code_length

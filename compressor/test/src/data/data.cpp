@@ -114,9 +114,9 @@ TEST_F(CompressorDataTests, A_short_header_fails)
 
 TEST_F(CompressorDataTests, Invalid_headers_fail)
 {
-    compressor::CodeLengths too_long{};
-    too_long['a'] = 1;
-    too_long['b'] = 13;
+    compressor::CodeLengths incomplete{};
+    incomplete['a'] = 1;
+    incomplete['b'] = 2;
     compressor::CodeLengths oversubscribed{};
     oversubscribed['a'] = 1;
     oversubscribed['b'] = 1;
@@ -126,7 +126,7 @@ TEST_F(CompressorDataTests, Invalid_headers_fail)
     valid['b'] = 1;
 
     const std::array<std::pair<const char*, std::string>, 4> cases{{
-        {"length above the cap", header_bytes(3, too_long)},
+        {"Kraft sum below 1", header_bytes(3, incomplete)},
         {"Kraft sum above 1", header_bytes(3, oversubscribed)},
         {"codes for empty data", header_bytes(0, valid)},
         {"no codes for non-empty data", header_bytes(3, compressor::CodeLengths{})},

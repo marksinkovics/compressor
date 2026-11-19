@@ -267,6 +267,11 @@ std::size_t bitset::num_blocks() const noexcept
     return blocks.size();
 }
 
+std::span<const bitset::block_type> bitset::data() const noexcept
+{
+    return blocks;
+}
+
 // Iterator
 
 bitset_iterator bitset::begin() const noexcept

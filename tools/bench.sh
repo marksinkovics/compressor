@@ -1,10 +1,9 @@
 #!/bin/bash
 # Build the release preset and run compressor_benchmark, writing JSON results.
 #
-#   tools/bench.sh [--all] [--filter <regex>] [--out <file>] [-- <benchmark args>...]
+#   tools/bench.sh [--filter <regex>] [--out <file>] [-- <benchmark args>...]
 #
-#   --all       include the Silesia corpus (skipped by default: the current decoder needs minutes)
-#   --filter    a --benchmark_filter regex; overrides the default Silesia exclusion
+#   --filter    a --benchmark_filter regex (default: everything)
 #   --out       JSON output file (default: build/release/benchmark.json)
 #
 # Compare two runs with tools/bench-compare.py <old.json> <new.json>.
@@ -21,11 +20,10 @@ fail() {
 }
 
 main() {
-    local all=0 filter="" out="$BUILD_DIR/benchmark.json"
+    local filter="" out="$BUILD_DIR/benchmark.json"
     local extra=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --all) all=1 ;;
             --filter)
                 [[ $# -ge 2 ]] || fail "--filter needs a regex"
                 filter="$2"
@@ -45,10 +43,6 @@ main() {
         esac
         shift
     done
-
-    if [[ -z "$filter" && $all -eq 0 ]]; then
-        filter="-/silesia/"
-    fi
 
     cd "$REPO_ROOT"
     [[ -f "$BUILD_DIR/CMakeCache.txt" ]] || cmake --preset release

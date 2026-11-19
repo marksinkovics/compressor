@@ -1,14 +1,15 @@
 #include <algorithm>
+#include <array>
 #include <cstddef>
+#include <cstdint>
 #include <iostream>
-#include <map>
 #include <memory>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include <compressor/bitset/bitset.h>
-#include <compressor/bitset/bitset_iterator.h>
 #include <compressor/data/data.h>
 #include <compressor/engine/engine.h>
 #include <compressor/huffman/huffman.h>
@@ -89,6 +90,69 @@ std::shared_ptr<SymbolNode> build_subtree(const Codes& codes, const Frequencies&
     return node;
 }
 
+constexpr std::array<uint8_t, 256> reversed_bytes = [] {
+    std::array<uint8_t, 256> table{};
+    for (std::size_t byte = 0; byte < table.size(); ++byte)
+    {
+        uint8_t reversed = 0;
+        for (std::size_t bit = 0; bit < 8; ++bit)
+        {
+            if ((byte & (std::size_t{1} << bit)) != 0)
+            {
+                reversed = static_cast<uint8_t>(reversed | (0x80U >> bit));
+            }
+        }
+        table[byte] = reversed;
+    }
+    return table;
+}();
+
+// Reads a bitset's bits in order, most significant first in a 64-bit buffer. The bitset stores
+// each byte's first bit in its least significant bit, hence reversed_bytes. Past the end it
+// reads zeros; remaining() tells how many real bits are left.
+class BitReader
+{
+public:
+    BitReader(std::span<const uint8_t> bytes, std::size_t bit_count)
+        : bytes_(bytes)
+        , bit_count_(bit_count)
+    {
+    }
+
+    uint32_t peek()
+    {
+        while (buffered_ <= 56)
+        {
+            const uint64_t byte = next_ < bytes_.size() ? reversed_bytes[bytes_[next_]] : 0;
+            ++next_;
+            buffer_ |= byte << (56 - buffered_);
+            buffered_ += 8;
+        }
+        return static_cast<uint32_t>(buffer_ >> (64 - max_code_length));
+    }
+
+    // Only after peek(), with length <= max_code_length.
+    void consume(std::size_t length)
+    {
+        buffer_ <<= length;
+        buffered_ -= length;
+        position_ += length;
+    }
+
+    std::size_t remaining() const
+    {
+        return bit_count_ - position_;
+    }
+
+private:
+    std::span<const uint8_t> bytes_;
+    std::size_t bit_count_;
+    std::size_t next_ = 0;
+    std::size_t position_ = 0;
+    uint64_t buffer_ = 0;
+    std::size_t buffered_ = 0;
+};
+
 bitset to_bitset(const Code& code)
 {
     bitset bits(0);
@@ -104,14 +168,9 @@ bitset to_bitset(const Code& code)
 void Engine::set_codes(const CodeLengths& lengths)
 {
     codes_ = canonical_codes(lengths);
-    bit_dict_.clear();
     for (std::size_t symbol = 0; symbol < symbol_count; ++symbol)
     {
         code_bits_[symbol] = to_bitset(codes_[symbol]);
-        if (codes_[symbol].length > 0)
-        {
-            bit_dict_[code_bits_[symbol]] = static_cast<uint8_t>(symbol);
-        }
     }
 }
 
@@ -197,26 +256,19 @@ DecodedData Engine::decode(const EncodedData& data)
     // Every symbol takes at least one bit, so a corrupt size can't make this reserve too much.
     result.data_.reserve(std::min<std::size_t>(data.size_, data.data_.size()));
 
-    bitset current(0);
-    for (const bool bit : data.data_)
+    const DecodeTable table = build_decode_table(codes_);
+    BitReader reader(data.data_.data(), data.data_.size());
+    for (uint64_t decoded = 0; decoded < data.size_; ++decoded)
     {
-        current.push_back(bit);
-        auto search = bit_dict_.find(current);
-        if (search != bit_dict_.end())
+        const DecodeEntry entry = table[reader.peek()];
+        if (entry.length == 0 || entry.length > reader.remaining())
         {
-            result.data_.push_back(search->second);
-            if (result.data_.size() == data.size_)
-            {
-                return result;
-            }
-            current = bitset(0);
+            return {};
         }
-        else if (current.size() >= max_code_length)
-        {
-            break;
-        }
+        result.data_.push_back(entry.symbol);
+        reader.consume(entry.length);
     }
-    return {};
+    return result;
 }
 
 } // namespace compressor

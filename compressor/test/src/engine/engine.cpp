@@ -157,3 +157,33 @@ TEST_F(EngineTests, Print_graph_handles_a_single_symbol)
                                                       "\t\"n0\" [label=\"a [4, 0]\"];\n"
                                                       "}\n");
 }
+
+TEST_F(EngineTests, A_bit_pattern_that_starts_no_code_decodes_to_nothing)
+{
+    // A single symbol has the code 0, so no code starts with 1.
+    compressor::EncodedData encoded;
+    encoded.size_ = 2;
+    encoded.code_lengths_['a'] = 1;
+    encoded.data_ = compressor::bitset(0);
+    encoded.data_.push_back(false);
+    encoded.data_.push_back(true);
+
+    compressor::Engine decoder;
+    EXPECT_TRUE(decoder.decode(encoded).data_.empty());
+}
+
+TEST_F(EngineTests, A_code_that_ends_past_the_payload_decodes_to_nothing)
+{
+    // a = 0, b = 10, c = 11: after "a", the last bit 1 starts a two-bit code that doesn't fit.
+    compressor::EncodedData encoded;
+    encoded.size_ = 2;
+    encoded.code_lengths_['a'] = 1;
+    encoded.code_lengths_['b'] = 2;
+    encoded.code_lengths_['c'] = 2;
+    encoded.data_ = compressor::bitset(0);
+    encoded.data_.push_back(false);
+    encoded.data_.push_back(true);
+
+    compressor::Engine decoder;
+    EXPECT_TRUE(decoder.decode(encoded).data_.empty());
+}

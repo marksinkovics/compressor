@@ -32,7 +32,7 @@ Each decode benchmark compares its output with the input and fails with an error
 
 ## Baseline (2026-11-18)
 
-Phase 5 starting point, before any optimization: `docs/benchmarks/baseline.json` from `tools/bench.sh --all` on an Apple M3 Max (release, Apple Clang 17). The machine was not idle (load average about 7), so treat differences below about 10% as noise. Speeds are in MiB/s of original data. Silesia's `Engine` runs got one iteration each; the whole run took about 3 minutes.
+Phase 5 starting point, before any optimization: `docs/benchmarks/baseline.json` from `tools/bench.sh --all` (Silesia was opt-in then) on an Apple M3 Max (release, Apple Clang 17). The machine was not idle (load average about 7), so treat differences below about 10% as noise. Speeds are in MiB/s of original data. Silesia's `Engine` runs got one iteration each; the whole run took about 3 minutes.
 
 | Set | File | Engine ratio | Engine efficiency | Engine header (B) | Engine enc | Engine dec | zlib ratio | zlib enc | zlib dec |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -95,3 +95,28 @@ Ratio by cap (encode only, same build otherwise):
 | canterbury/plrabn12.txt | 0.5738 | 0.5741 | 0.5730 | 0.5725 | 0.5722 |
 
 The other files differ by at most 0.1% between caps. Up to 15 fits the format's 4-bit length field, so the decode-table step picks the cap from decode speed.
+
+## Decode lookup table (2026-11-19)
+
+After the "Decode lookup table" step, which also raised the cap to 15 bits. Results are in `docs/benchmarks/decode-table.json`; compare later steps against that file. Load average was about 18, so expect ±10% noise on speeds.
+
+- **Decode:** 170–340 MiB/s, up from 1.4–7.5: 42–220× faster on every file. On the Silesia text files that matches zlib's Huffman-only decoder (250–300 MiB/s); zlib is still 5× faster on the incompressible images, where it stores blocks raw.
+- **Encode:** unchanged since the canonical step (about 2× the baseline).
+- **Ratio:** with the 15-bit cap, equal to or better than the baseline on every file (`reymont` 0.6083 vs 0.6087, `dickens` 0.5717 for both).
+- **Runtime:** a full `tools/bench.sh` run takes about 2 minutes, so Silesia is in the default run.
+
+Decode speed by cap, as the median of 3 repetitions and the best of 2 interleaved rounds (MiB/s):
+
+| File | 12 bits (8 KB table) | 15 bits (64 KB table) | 15/12 |
+|---|---:|---:|---:|
+| canterbury/alice29.txt | 247 | 266 | 1.08 |
+| canterbury/grammar.lsp | 208 | 188 | 0.90 |
+| canterbury/xargs.1 | 221 | 209 | 0.95 |
+| silesia/dickens | 254 | 256 | 1.01 |
+| silesia/mozilla | 247 | 263 | 1.07 |
+| silesia/reymont | 245 | 256 | 1.04 |
+| silesia/webster | 243 | 249 | 1.02 |
+
+The geometric mean over Canterbury and Silesia is 1.01. Only the files of a few KB lose up to 10%, from filling the larger table, so the cap is 15.
+
+The CLI is now limited by I/O, not by the codec: `compressor_app decode` on `mozilla` (51 MB) takes 1.9 s, but the in-memory decode only 0.2 s. The rest is `operator>>` converting the payload bit by bit and the byte-wise stream reads; see the "Copies and I/O" step.

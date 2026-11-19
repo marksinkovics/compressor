@@ -4,13 +4,15 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace compressor
 {
 
 inline constexpr std::size_t symbol_count = 256;
-// Fits a 4-bit length field and keeps the decoder's lookup table at 2^12 entries.
-inline constexpr std::size_t max_code_length = 12;
+// DEFLATE's limit; the largest length a 4-bit field holds. Decoding speed measured the same as
+// with 12 (docs/benchmarks.md), and the ratio is better.
+inline constexpr std::size_t max_code_length = 15;
 
 using Frequencies = std::array<uint64_t, symbol_count>;
 using CodeLengths = std::array<uint8_t, symbol_count>;
@@ -30,6 +32,17 @@ CodeLengths code_lengths(const Frequencies& frequencies, std::size_t max_length 
 
 // Canonical codes (RFC 1951, 3.2.2): ordered by (length, symbol). Lengths must be valid.
 Codes canonical_codes(const CodeLengths& lengths);
+
+struct DecodeEntry
+{
+    uint8_t symbol = 0;
+    uint8_t length = 0; // 0: no code starts with this bit pattern
+};
+
+// Indexed by the next max_code_length bits of the payload, first bit most significant.
+using DecodeTable = std::vector<DecodeEntry>;
+
+DecodeTable build_decode_table(const Codes& codes);
 
 // True for all-zero lengths, a single length-1 symbol, or a complete prefix code (Kraft sum 1)
 // with no length above max_code_length.

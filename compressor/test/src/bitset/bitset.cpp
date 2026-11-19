@@ -299,3 +299,15 @@ TEST_F(BitsetTests, Copying)
     std::copy(v1.begin(), v1.end(), std::back_inserter(v2)); // NOLINT(modernize-use-ranges)
     EXPECT_EQ(v1, v2);
 }
+
+TEST_F(BitsetTests, Data_holds_the_first_bit_in_the_least_significant_bit)
+{
+    compressor::bitset bits(0);
+    for (const bool bit : {true, false, false, false, false, false, true, false, true})
+    {
+        bits.push_back(bit);
+    }
+    ASSERT_EQ(bits.data().size(), 2U);
+    EXPECT_EQ(bits.data()[0], 0b0100'0001);
+    EXPECT_EQ(bits.data()[1], 0b0000'0001);
+}

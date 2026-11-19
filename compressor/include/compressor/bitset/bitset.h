@@ -3,6 +3,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <span>
 #include <vector>
 
 #include <limits>
@@ -49,6 +50,8 @@ public:
     std::size_t size() const noexcept;
     std::size_t num_bytes() const noexcept;
     std::size_t num_blocks() const noexcept;
+    // Bit i is bit (i % 8) of block i / 8, counted from the least significant bit.
+    std::span<const block_type> data() const noexcept;
 
     // Relational operators
 
