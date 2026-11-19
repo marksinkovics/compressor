@@ -15,6 +15,7 @@ set(SRC_DIR ${PROJECT_SOURCE_DIR}/src)
 set(SRC_FILES
     "${SRC_DIR}/compressor/compressor.cpp"
     "${SRC_DIR}/engine/engine.cpp"
+    "${SRC_DIR}/huffman/huffman.cpp"
     "${SRC_DIR}/bitset/bitset.cpp"
     "${SRC_DIR}/bitset/bitset_iterator.cpp"
     "${SRC_DIR}/tree/binary/node.cpp"

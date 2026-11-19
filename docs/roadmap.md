@@ -134,10 +134,35 @@ Measure first, then make the existing codec fast, one change per step, each with
   - Baseline: `docs/benchmarks/baseline.json`, from `tools/bench.sh --all` (host name and absolute paths removed by hand). The full run took about 3 minutes, much less than estimated; `Engine` on Silesia takes about 85 s to decode in total.
   - Main findings: decoding runs at 1.4–7.5 MiB/s (zlib: 200–1600). Efficiency on large files is 1.004–1.009, so the code itself is near-optimal. The header (up to 2.8 KB) costs 27–39% on files of a few KB. `flower.png` and `lena.jpg` grow.
   - `quality.sh check` passes; 65/65 tests pass.
-- [ ] **Canonical Huffman with length-limited codes (next):** store only the code lengths, capped at 11–12 bits (zstd's Huffman coder uses 11, DEFLATE 15), in a portable byte order. This changes the file format and shrinks the header, which dominates the small samples. Comes before the decode table, so that one table level is enough.
-- [ ] **Decode lookup table:** replace the bit-by-bit `std::map<bitset, uint8_t>` search with a single table indexed by the next L bits (2^12 entries of 2 bytes = 8 KB, fits in L1). Afterwards Silesia joins `tools/bench.sh`'s default run.
+- [x] **Canonical Huffman with length-limited codes (done):** the format is in [file_format.md](file_format.md), the numbers are in [benchmarks.md](benchmarks.md). Decoding still runs bit by bit.
+  - `compressor/huffman/huffman.h`:
+    - types `Frequencies`, `CodeLengths`, `Code {bits, length}`, `Codes`, and `max_code_length = 12`;
+    - `code_lengths(frequencies, max_length)`: package-merge, building the levels deepest first, then counting the leaves in the chosen prefix of each level;
+    - `canonical_codes(lengths)`: RFC 1951;
+    - `valid_code_lengths(lengths)`: Kraft check, with the single-symbol and empty cases.
+  - `EncodedData` is `{size_, code_lengths_, data_}`. Header: 8-byte little-endian size, then 128 bytes of nibble lengths; the payload is MSB-first. The bitset keeps bits LSB-first, so `operator<<`/`>>` convert bit by bit (temporary until the bit-buffer step). `operator>>` resets the data and sets `failbit` on a short header, invalid lengths, codes with size 0, or no codes with size > 0. The payload read back is padded to whole bytes, so a stream round trip compares equal on size and lengths but not on `data_`.
+  - `Engine`:
+    - `encode` counts into `Frequencies`, then uses `code_lengths` and `canonical_codes`, with one precomputed `bitset` per symbol (`code_bits_`);
+    - `decode` keeps the bit-by-bit `std::map<bitset, uint8_t>` search, stops after `size_` symbols, and returns empty data when the payload runs out or 12 bits match no code;
+    - `IEngine` lost `build_dictionary`/`build_tree`/`create_hash_table`, in the mock too.
+  - Tree only for display, as decided: `print_graph` rebuilds a `SymbolNode` tree from the codes (`build_subtree` in `engine.cpp`, with parent links, which the pre-order iterator needs) and prints Graphviz with frequencies (0 after a decode) and codes. `print_dict` prints `code => [symbol]`, with non-printable bytes as `0xNN`. `tree/` and `SymbolNode` stay with their tests.
+  - Tests:
+    - `HuffmanTests` (8): empty input, single symbol, `"go go gophers"` = 37 bits, a 1/1/2/4 example with cap 3 and cap 2, Fibonacci frequencies (19 uncapped, 12 capped, valid), 256 equal frequencies → all 8, RFC 1951 codes, invalid lengths;
+    - `CompressorDataTests`: golden bytes for `"aab"`, stream round trip, short header, four invalid headers;
+    - `EngineTests`: a skewed round trip through a stream at the cap, a truncated payload decoding to nothing, `print_dict`, `print_graph` for two symbols and for one.
+
+    81/81 pass; `quality.sh check` passes.
+  - Benchmark against the baseline (machine heavily loaded, load average about 50, so speeds are rough):
+    - header 430–2825 B → 136 B for every file;
+    - small files compress much better (`grammar.lsp` 0.80 → 0.62, `xargs.1` 0.80 → 0.65, `lorem_5p.txt` 0.68 → 0.58), and `flower.png`/`lena.jpg` now grow by only 0.01%/0.05%;
+    - encode is about 2.2× faster (array lookups instead of a `std::map` and `shared_ptr` per byte);
+    - decode is unchanged.
+  - The cap costs more than the expected 0.1% on a few large files. Measured ratios for caps 11/12/13/15 against uncapped: `reymont` 0.6218/0.6137/0.6102/0.6083 vs 0.6087 (cap 12 is 0.8% bigger), `dickens` 0.5729 vs 0.5717 (0.2%), the rest at most 0.1%. The 4-bit length field allows caps up to 15 without a format change, so the decode table step decides the final cap by measuring decode speed.
+  - `ptt5`'s efficiency is 1.38: it has less than 1 bit of entropy per byte, and Huffman needs at least 1 bit per symbol. An entropy coder like ANS or arithmetic coding would fix that, not this step.
+- [ ] **Decode lookup table (next):** replace the bit-by-bit `std::map<bitset, uint8_t>` search with a single table indexed by the next `max_code_length` bits (2^12 entries of 2 bytes = 8 KB, fits in L1). Also decide the cap: measure decode speed with 12 and with 15 (64 KB table, or two levels), against the ratio cost above (`reymont` 0.9%). Afterwards Silesia joins `tools/bench.sh`'s default run.
 - [ ] **Encode bit buffer and arrays:** `std::array<uint32_t, 256>` frequencies, `std::array<Code, 256>` codes, an array-based tree with indices instead of `shared_ptr`/`weak_ptr`/`dynamic_pointer_cast`, and a 64-bit bit buffer that writes whole words instead of `bitset::append`.
 - [ ] **Copies and I/O:** no full copies of the input in `Engine::encode`/`decode`, no detour through `std::string`, and reader/writer that move whole buffers instead of `istreambuf_iterator`/`ostream_iterator` byte by byte. Add an end-to-end CLI timing (e.g. `hyperfine`) to the benchmark docs.
+- [ ] **Report corrupt input:** `IDataReader::read()` (and the mocks) returns an error, so `Compressor::decode` fails and `compressor_app` exits non-zero on a corrupt header or a payload that ends early. Today these decode to an empty output file with exit code 0.
 - [ ] **Stored fallback:** store the input as is, with a flag, when Huffman doesn't shrink it. Needed: `flower.png` grows from 734,560 to 737,072 bytes today. The container format later does this per block.
 
 After Phase 5, continue with the features in their suggested order, starting with the container format.
@@ -165,7 +190,7 @@ Each issue names the phase that handles it.
 
 - [x] **Output file must already exist** (Phase 2). `DataWriter::open` ([writer.h](../compressor/include/compressor/data/writer.h)) opens its `std::ofstream` with `std::ios::in | std::ios::binary`. Because of `in`, the open fails when the output file doesn't exist, and an existing file isn't truncated, so leftover bytes from a longer earlier file stay at the end.
 - [x] **Open failures are ignored** (Phase 2). `Compressor::encode/decode` ([compressor.cpp](../compressor/src/compressor/compressor.cpp)) ignore the `bool` that `open()` returns and go on to read from or write to a stream that failed to open.
-- [ ] **Truncated or corrupt encoded input isn't detected** (Phase 5 and the container format). `operator>>(istream&, EncodedData&)` ([data.cpp](../compressor/src/compressor/data/data.cpp)) doesn't check its reads, so a short file leaves `dict_size` uninitialized and decoding can hang or crash. The decoder fuzzing feature would catch it.
+- [ ] **Corrupt encoded input isn't reported** (Phase 5 "Report corrupt input"). Since the canonical step, `operator>>` validates the header and `Engine::decode` stops at the end of the payload, so corrupt input no longer hangs or crashes. It decodes to an empty file, though, and the exit code is still 0. The decoder fuzzing feature would test it further.
 - [x] **Empty input is undefined behaviour** (Phase 2). If the input is empty, `Engine::build_tree` ([engine.cpp](../compressor/src/compressor/engine/engine.cpp)) calls `_nodes.front()` on an empty vector.
 - [x] **Input with only one distinct byte is lost** (Phase 2). For input like `aaaa`, the root is the only node and its code is an empty bitset. The encoded payload is 0 bits and decoding returns nothing.
 - [x] **`Engine::find_path` returns wrong codes** (Phase 2, delete). Inside the loop it checks `node` instead of `innerNode`, so every step pushes the same bit. Nothing calls it, but it is part of `IEngine`.
@@ -176,12 +201,12 @@ Each issue names the phase that handles it.
 
 ### File format
 
-- [ ] **Files aren't portable** (Phase 5 and the container format). The dictionary size and every `bitset` length are written as raw `size_t` in native byte order ([data.cpp](../compressor/src/compressor/data/data.cpp), [bitset.cpp](../compressor/src/compressor/bitset/bitset.cpp)). There is no magic number or version field.
-- [ ] **No spec** (container format). [file_format.md](file_format.md) and [compression.md](compression.md) contain only a heading.
+- [x] **Files aren't portable** (Phase 5 canonical step; magic number and version still come with the container format). The dictionary size and every `bitset` length were written as raw `size_t` in native byte order. Now the size is little-endian and the lengths are nibbles ([file_format.md](file_format.md)).
+- [ ] **No spec** (container format). [file_format.md](file_format.md) describes the current format; [compression.md](compression.md) still contains only a heading.
 
 ### Performance and limitations
 
-- [ ] **Slow decoding** (Phase 5). Each bit is pushed into a new `bitset`, followed by a `std::map<bitset, uint8_t>` lookup.
+- [ ] **Slow decoding** (Phase 5 decode table). Each bit is pushed into a `bitset`, followed by a `std::map<bitset, uint8_t>` lookup.
 - [ ] **Everything is in memory, single-threaded** (container format with blocks).
 
 ### Build and tooling

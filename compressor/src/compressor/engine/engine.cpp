@@ -1,5 +1,5 @@
 #include <algorithm>
-#include <iomanip>
+#include <cstddef>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -9,207 +9,214 @@
 
 #include <compressor/bitset/bitset.h>
 #include <compressor/bitset/bitset_iterator.h>
+#include <compressor/data/data.h>
 #include <compressor/engine/engine.h>
+#include <compressor/huffman/huffman.h>
 #include <compressor/tree/binary/nodeiterator.h>
 #include <compressor/tree/binary/tree.h>
 #include <compressor/tree/symbolnode.h>
-
-#include <compressor/data/data.h>
 
 #include <instrumentor/instrumentor.h>
 
 namespace compressor
 {
 
-Engine::~Engine() = default;
-
-void Engine::build_dictionary()
+namespace
 {
-    for (const auto& symbol : data_.data_)
+
+std::string code_string(const Code& code)
+{
+    std::string text;
+    for (std::size_t i = code.length; i-- > 0;)
     {
-        auto pos = _symbols_dict.find(symbol);
-        if (pos != _symbols_dict.end())
-        {
-            ++(*pos->second);
-            continue;
-        }
-        auto node = std::make_shared<SymbolNode>(std::string(1, symbol));
-        auto pair = std::make_pair(symbol, node);
-        _symbols_dict.insert(pair);
+        text += ((code.bits >> i) & 1U) != 0 ? '1' : '0';
     }
+    return text;
 }
 
-void Engine::build_tree()
+std::string symbol_label(uint8_t symbol)
 {
-    _tree = std::make_shared<BinaryTree>();
-
-    auto second = [](std::pair<char, std::shared_ptr<SymbolNode>> const& pair) {
-        return pair.second;
-    };
-
-    auto lower = [](std::shared_ptr<SymbolNode> const& lhs,
-                    std::shared_ptr<SymbolNode> const& rhs) {
-        return lhs->frequency() < rhs->frequency();
-    };
-
-    std::vector<std::shared_ptr<SymbolNode>> _nodes;
-    std::ranges::transform(_symbols_dict, std::back_inserter(_nodes), second);
-
-    while (_nodes.size() > 1)
+    if (symbol >= 0x20 && symbol < 0x7F && symbol != '"' && symbol != '\\')
     {
-        std::ranges::sort(_nodes, lower);
-        auto left = _nodes.front(), right = (*(++_nodes.begin()));
-        auto parent = std::make_shared<SymbolNode>(left->value() + right->value(),
-                                                   left->frequency() + right->frequency());
-        parent->setLeft(left);
-        left->setParent(parent);
-        parent->setRight(right);
-        right->setParent(parent);
-        _nodes.erase(_nodes.begin(), _nodes.begin() + 2);
-        _nodes.push_back(parent);
+        return {static_cast<char>(symbol)};
     }
-
-    _tree->setRoot(_nodes.front());
+    constexpr const char* hex = "0123456789ABCDEF";
+    return std::string("0x") + hex[symbol >> 4U] + hex[symbol & 0x0FU];
 }
 
-void Engine::create_hash_table()
+// The subtree below the code prefix `bits` of length `length`, or null if no code starts with it.
+std::shared_ptr<SymbolNode> build_subtree(const Codes& codes, const Frequencies& frequencies,
+                                          uint32_t bits, std::size_t length)
 {
-    std::for_each(_tree->preOrderBegin(), _tree->preOrderEnd(),
-                  [](const std::shared_ptr<BinaryNode>& bin_node) {
-        auto node = std::dynamic_pointer_cast<SymbolNode>(bin_node);
-
-        if (!node->hasParent())
-        {
-            node->setTag(std::make_shared<compressor::bitset>(0));
-            // A lone leaf root needs a non-empty code, or the payload would be 0 bits.
-            if (!node->left() && !node->right())
-            {
-                node->tag()->push_back(false);
-            }
-            return;
-        }
-
-        bool isRightChild = (node->parent().lock()->right() == node);
-        std::shared_ptr<compressor::bitset> parentVector = node->parent().lock()->tag();
-        node->setTag(std::make_shared<bitset>(*parentVector));
-        node->tag()->push_back(isRightChild);
-    });
-
-    for (const auto& pair : this->_symbols_dict)
+    for (std::size_t symbol = 0; length > 0 && symbol < symbol_count; ++symbol)
     {
-        auto node = std::dynamic_pointer_cast<SymbolNode>(pair.second);
-        uint8_t c = node->value().c_str()[0];
-        byte_dict_[c] = *(node->tag());
-        bit_dict_[*(node->tag())] = c;
+        if (codes[symbol].length == length && codes[symbol].bits == bits)
+        {
+            auto leaf = std::make_shared<SymbolNode>(symbol_label(static_cast<uint8_t>(symbol)),
+                                                     frequencies[symbol]);
+            leaf->setTag(std::make_shared<bitset>(
+                code_string({.bits = bits, .length = static_cast<uint8_t>(length)})));
+            return leaf;
+        }
+    }
+    if (length >= max_code_length)
+    {
+        return nullptr;
+    }
+
+    auto left = build_subtree(codes, frequencies, bits << 1U, length + 1);
+    auto right = build_subtree(codes, frequencies, (bits << 1U) | 1U, length + 1);
+    if (!left && !right)
+    {
+        return nullptr;
+    }
+    const std::string value = (left ? left->value() : "") + (right ? right->value() : "");
+    const uint64_t frequency = (left ? left->frequency() : 0) + (right ? right->frequency() : 0);
+    auto node = std::make_shared<SymbolNode>(value, frequency);
+    node->setTag(std::make_shared<bitset>(
+        code_string({.bits = bits, .length = static_cast<uint8_t>(length)})));
+    // The pre-order iterator walks back up through the parents.
+    if (left)
+    {
+        left->setParent(node);
+        node->setLeft(left);
+    }
+    if (right)
+    {
+        right->setParent(node);
+        node->setRight(right);
+    }
+    return node;
+}
+
+bitset to_bitset(const Code& code)
+{
+    bitset bits(0);
+    for (std::size_t i = code.length; i-- > 0;)
+    {
+        bits.push_back(((code.bits >> i) & 1U) != 0);
+    }
+    return bits;
+}
+
+} // namespace
+
+void Engine::set_codes(const CodeLengths& lengths)
+{
+    codes_ = canonical_codes(lengths);
+    bit_dict_.clear();
+    for (std::size_t symbol = 0; symbol < symbol_count; ++symbol)
+    {
+        code_bits_[symbol] = to_bitset(codes_[symbol]);
+        if (codes_[symbol].length > 0)
+        {
+            bit_dict_[code_bits_[symbol]] = static_cast<uint8_t>(symbol);
+        }
     }
 }
 
 void Engine::print_graph() const
 {
+    auto root = build_subtree(codes_, frequencies_, 0, 0);
     std::cout << "digraph G {\n";
-    std::for_each(_tree->preOrderBegin(), _tree->preOrderEnd(),
-                  [](const std::shared_ptr<BinaryNode>& bin_node) {
-        auto node = std::dynamic_pointer_cast<SymbolNode>(bin_node);
-        auto vector = node->tag();
-        std::cout << "\"" << node->value() << "\""
-                  << "[label=\"" << node->value() << "[" << node->frequency() << ", "
-                  << node->tag()->str() << "]" << "\"];\n";
-        if (node->left())
-        {
-            auto leftNode = std::dynamic_pointer_cast<SymbolNode>(node->left());
-            std::cout << "\t\"" << node->value() << "\" -> \"" << leftNode->value() << "\";\n";
-        }
-
-        if (node->right())
-        {
-            auto rightNode = std::dynamic_pointer_cast<SymbolNode>(node->right());
-            std::cout << "\t\"" << node->value() << "\" -> \"" << rightNode->value() << "\";\n";
-        }
-    });
+    if (root)
+    {
+        BinaryTree tree;
+        tree.setRoot(root);
+        std::for_each(tree.preOrderBegin(), tree.preOrderEnd(),
+                      [](const std::shared_ptr<BinaryNode>& bin_node) {
+            auto node = std::static_pointer_cast<SymbolNode>(bin_node);
+            const std::string id = "n" + node->tag()->str();
+            std::cout << "\t\"" << id << "\" [label=\"" << node->value() << " ["
+                      << node->frequency() << ", " << node->tag()->str() << "]\"];\n";
+            for (const auto& child : {node->left(), node->right()})
+            {
+                if (child)
+                {
+                    std::cout << "\t\"" << id << "\" -> \"n" << child->tag()->str() << "\";\n";
+                }
+            }
+        });
+    }
     std::cout << "}\n";
 }
 
 void Engine::print_dict() const
 {
-    for (const auto& it : bit_dict_)
+    for (std::size_t symbol = 0; symbol < symbol_count; ++symbol)
     {
-        std::cout << it.first.str() << " => [";
-        std::cout << static_cast<char>(it.second);
-        std::cout << "]\n";
+        if (codes_[symbol].length > 0)
+        {
+            std::cout << code_string(codes_[symbol]) << " => ["
+                      << symbol_label(static_cast<uint8_t>(symbol)) << "]\n";
+        }
     }
 }
 
 EncodedData Engine::encode(const DecodedData& data)
 {
-    this->data_ = data;
-    this->encoded_data_ = EncodedData();
-    _tree.reset();
-    _symbols_dict.clear();
-    byte_dict_.clear();
-    bit_dict_.clear();
-
-    if (data_.data_.empty())
+    frequencies_ = {};
     {
-        return encoded_data_;
-    }
-
-    {
-        PROFILE_SCOPE("Build dictionary")
-        build_dictionary();
-    }
-
-    {
-        PROFILE_SCOPE("Build tree")
-        build_tree();
-    }
-
-    {
-        PROFILE_SCOPE("Create hash table")
-        create_hash_table();
-    }
-
-    {
-
-        bitset vector(0);
-        for (const auto& symbol : data_.data_)
+        PROFILE_SCOPE("Count frequencies")
+        for (const uint8_t symbol : data.data_)
         {
-            PROFILE_START(symbol_timer, "Symbol")
-            auto node = _symbols_dict[symbol];
-            PROFILE_END(symbol_timer, "Symbol")
-
-            auto tag = node->tag();
-
-            PROFILE_START(append_timer, "Symbol append")
-            vector.append(*tag);
-            PROFILE_END(append_timer, "Symbol append")
+            ++frequencies_[symbol];
         }
-        encoded_data_.data_ = std::move(vector);
-        encoded_data_.bit_dict_ = bit_dict_;
     }
 
-    return encoded_data_;
+    EncodedData encoded;
+    encoded.size_ = data.data_.size();
+    {
+        PROFILE_SCOPE("Code lengths")
+        encoded.code_lengths_ = code_lengths(frequencies_);
+        set_codes(encoded.code_lengths_);
+    }
+
+    {
+        PROFILE_SCOPE("Encode symbols")
+        bitset payload(0);
+        for (const uint8_t symbol : data.data_)
+        {
+            payload.append(code_bits_[symbol]);
+        }
+        encoded.data_ = std::move(payload);
+    }
+    return encoded;
 }
 
 DecodedData Engine::decode(const EncodedData& data)
 {
-    this->encoded_data_ = data;
-    auto current = std::make_unique<bitset>();
-    std::string str;
-    for (const bool bit : encoded_data_.data_)
+    frequencies_ = {};
+    set_codes(data.code_lengths_);
+
+    DecodedData result;
+    if (data.size_ == 0)
     {
-        current->push_back(bit);
-        auto search = encoded_data_.bit_dict_.find(*current);
-        if (search != encoded_data_.bit_dict_.end())
+        return result;
+    }
+    // Every symbol takes at least one bit, so a corrupt size can't make this reserve too much.
+    result.data_.reserve(std::min<std::size_t>(data.size_, data.data_.size()));
+
+    bitset current(0);
+    for (const bool bit : data.data_)
+    {
+        current.push_back(bit);
+        auto search = bit_dict_.find(current);
+        if (search != bit_dict_.end())
         {
-            uint8_t c = search->second;
-            str += c;
-            current = std::make_unique<bitset>();
+            result.data_.push_back(search->second);
+            if (result.data_.size() == data.size_)
+            {
+                return result;
+            }
+            current = bitset(0);
+        }
+        else if (current.size() >= max_code_length)
+        {
+            break;
         }
     }
-    std::vector<uint8_t> result_data(str.begin(), str.end());
-    DecodedData result;
-    result.data_ = std::move(result_data);
-    return result;
+    return {};
 }
 
 } // namespace compressor

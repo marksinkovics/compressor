@@ -6,15 +6,9 @@
 #include <compressor/compressor.h>
 #include <compressor/engine/engine.h>
 
-#include <compressor/bitset/bitset.h>
-#include <compressor/tree/symbolnode.h>
-
 class MockIEngine : public compressor::IEngine
 {
 public:
-    MOCK_METHOD(void, build_dictionary, (), (override));
-    MOCK_METHOD(void, build_tree, (), (override));
-    MOCK_METHOD(void, create_hash_table, (), (override));
     MOCK_METHOD(void, print_graph, (), (override, const));
     MOCK_METHOD(void, print_dict, (), (override, const));
     MOCK_METHOD(compressor::EncodedData, encode, (const compressor::DecodedData&), (override));

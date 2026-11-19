@@ -1,4 +1,7 @@
+#include <algorithm>
+#include <cstdint>
 #include <sstream>
+#include <string>
 
 #include <gtest/gtest.h>
 
@@ -75,4 +78,82 @@ TEST_F(EngineTests, Encoding_twice_gives_the_same_result_as_a_fresh_engine)
 
     compressor::Engine fresh;
     EXPECT_EQ(second, fresh.encode(compressor::DecodedData(input)));
+}
+
+TEST_F(EngineTests, Skewed_input_with_capped_codes_round_trips)
+{
+    // Fibonacci counts would need codes longer than max_code_length.
+    std::string skewed;
+    uint64_t a = 1;
+    uint64_t b = 1;
+    for (char symbol = 'a'; symbol < 'a' + 20; ++symbol)
+    {
+        skewed.append(a, symbol);
+        const uint64_t next = a + b;
+        a = b;
+        b = next;
+    }
+
+    compressor::Engine encoder;
+    const compressor::EncodedData encoded = encoder.encode(compressor::DecodedData(skewed));
+    EXPECT_EQ(*std::ranges::max_element(encoded.code_lengths_), compressor::max_code_length);
+
+    std::stringstream stream;
+    stream << encoded;
+    compressor::EncodedData read_back;
+    stream >> read_back;
+
+    compressor::Engine decoder;
+    const compressor::DecodedData decoded = decoder.decode(read_back);
+    EXPECT_EQ(std::string(decoded.data_.begin(), decoded.data_.end()), skewed);
+}
+
+TEST_F(EngineTests, A_truncated_payload_decodes_to_nothing)
+{
+    compressor::Engine encoder;
+    compressor::EncodedData encoded = encoder.encode(compressor::DecodedData(longInput));
+    encoded.data_.resize(encoded.data_.size() / 2);
+
+    compressor::Engine decoder;
+    EXPECT_TRUE(decoder.decode(encoded).data_.empty());
+}
+
+TEST_F(EngineTests, Print_dict_lists_the_canonical_codes)
+{
+    compressor::Engine engine;
+    engine.encode(compressor::DecodedData("aab"));
+
+    testing::internal::CaptureStdout();
+    engine.print_dict();
+    EXPECT_EQ(testing::internal::GetCapturedStdout(), "0 => [a]\n1 => [b]\n");
+}
+
+TEST_F(EngineTests, Print_graph_rebuilds_the_tree_from_the_codes)
+{
+    compressor::Engine engine;
+    engine.encode(compressor::DecodedData("aab"));
+
+    testing::internal::CaptureStdout();
+    engine.print_graph();
+    EXPECT_EQ(testing::internal::GetCapturedStdout(), "digraph G {\n"
+                                                      "\t\"n\" [label=\"ab [3, ]\"];\n"
+                                                      "\t\"n\" -> \"n0\";\n"
+                                                      "\t\"n\" -> \"n1\";\n"
+                                                      "\t\"n0\" [label=\"a [2, 0]\"];\n"
+                                                      "\t\"n1\" [label=\"b [1, 1]\"];\n"
+                                                      "}\n");
+}
+
+TEST_F(EngineTests, Print_graph_handles_a_single_symbol)
+{
+    compressor::Engine engine;
+    engine.encode(compressor::DecodedData("aaaa"));
+
+    testing::internal::CaptureStdout();
+    engine.print_graph();
+    EXPECT_EQ(testing::internal::GetCapturedStdout(), "digraph G {\n"
+                                                      "\t\"n\" [label=\"a [4, ]\"];\n"
+                                                      "\t\"n\" -> \"n0\";\n"
+                                                      "\t\"n0\" [label=\"a [4, 0]\"];\n"
+                                                      "}\n");
 }

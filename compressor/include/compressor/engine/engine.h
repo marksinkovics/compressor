@@ -1,30 +1,21 @@
 #ifndef Engine_h
 #define Engine_h
 
+#include <array>
+#include <cstdint>
 #include <map>
-#include <memory>
-#include <string>
 
+#include <compressor/bitset/bitset.h>
 #include <compressor/data/data.h>
+#include <compressor/huffman/huffman.h>
 
 namespace compressor
 {
-
-class BinaryTree;
-class SymbolNode;
-class bitset;
-
-struct Data;
-struct EncodedData;
 
 class IEngine
 {
 public:
     virtual ~IEngine() = default;
-
-    virtual void build_dictionary() = 0;
-    virtual void build_tree() = 0;
-    virtual void create_hash_table() = 0;
 
     virtual void print_graph() const = 0;
     virtual void print_dict() const = 0;
@@ -36,27 +27,21 @@ public:
 class Engine : public IEngine
 {
 public:
-    ~Engine() override;
-
-    void build_dictionary() override;
-    void build_tree() override;
-    void create_hash_table() override;
-
+    // Graphviz dot of the code tree of the last encode or decode, rebuilt from the codes.
     void print_graph() const override;
     void print_dict() const override;
 
     EncodedData encode(const DecodedData& data) override;
+    // Returns empty data when the payload ends before data.size_ symbols or holds no valid code.
     DecodedData decode(const EncodedData& data) override;
 
 private:
-    std::shared_ptr<BinaryTree> _tree;
-    std::map<uint8_t, std::shared_ptr<SymbolNode>> _symbols_dict;
+    void set_codes(const CodeLengths& lengths);
 
-    std::map<uint8_t, compressor::bitset> byte_dict_;
-    std::map<compressor::bitset, uint8_t> bit_dict_;
-
-    DecodedData data_;
-    EncodedData encoded_data_;
+    Frequencies frequencies_{}; // zero after decode: the format stores no frequencies
+    Codes codes_{};
+    std::array<bitset, symbol_count> code_bits_;
+    std::map<bitset, uint8_t> bit_dict_;
 };
 
 } // namespace compressor

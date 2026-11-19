@@ -2,7 +2,8 @@
 #define Data_h
 
 #include <compressor/bitset/bitset.h>
-#include <map>
+#include <compressor/huffman/huffman.h>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -30,7 +31,8 @@ bool operator==(const DecodedData& lhs, const DecodedData& rhs);
 
 struct EncodedData : IData
 {
-    std::map<bitset, uint8_t> bit_dict_;
+    uint64_t size_ = 0; // decoded size in bytes
+    CodeLengths code_lengths_{};
     bitset data_;
 };
 

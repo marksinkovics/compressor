@@ -73,3 +73,25 @@ Takeaways:
 - **On large files the code itself is near-optimal:** efficiency is 1.004–1.009, so the rest of Phase 5 can only gain ratio on small files.
 - **The header costs up to 2.8 KB** (one serialized `bitset` per symbol, plus 8-byte length fields). It dominates small files: 39% over entropy on `grammar.lsp` (3.7 KB), 27% on `lorem_5p.txt`. Canonical Huffman brings it to at most a few hundred bytes.
 - **Already-compressed input grows:** `flower.png` by 0.3%, `lena.jpg` by 2.7%. This needs the stored fallback.
+
+## Canonical Huffman (2026-11-19)
+
+After the "Canonical Huffman with length-limited codes" step, diffed with `tools/bench-compare.py` against the baseline. The machine was heavily loaded (load average about 50), so the speeds are rough; the ratios are exact. The JSON wasn't kept: the next step diffs against the baseline again.
+
+- **Header:** a fixed 136 B instead of 430–2825 B.
+- **Ratio on small files:** much better. `grammar.lsp` 0.802 → 0.620, `xargs.1` 0.803 → 0.648, `fields.c` 0.716 → 0.642, `lorem_5p.txt` 0.678 → 0.580. `flower.png` and `lena.jpg` now grow by only 0.01% and 0.05%.
+- **Ratio on large files:** the same within 0.1%, except where the 12-bit cap binds: `reymont` 0.6087 → 0.6137 (+0.8%), `dickens` 0.5717 → 0.5729 (+0.2%).
+- **Encode:** about 2.2× faster (e.g. `dickens` 28 → 64 MiB/s), from array lookups instead of a `std::map` and `shared_ptr` per byte.
+- **Decode:** unchanged (still bit by bit).
+
+Ratio by cap (encode only, same build otherwise):
+
+| File | Uncapped (baseline) | 11 | 12 | 13 | 15 |
+|---|---:|---:|---:|---:|---:|
+| silesia/reymont | 0.6087 | 0.6218 | 0.6137 | 0.6102 | 0.6083 |
+| silesia/dickens | 0.5717 | 0.5747 | 0.5729 | 0.5721 | 0.5717 |
+| silesia/webster | 0.6254 | 0.6270 | 0.6260 | 0.6256 | 0.6255 |
+| silesia/nci | 0.3047 | 0.3058 | 0.3052 | 0.3049 | 0.3047 |
+| canterbury/plrabn12.txt | 0.5738 | 0.5741 | 0.5730 | 0.5725 | 0.5722 |
+
+The other files differ by at most 0.1% between caps. Up to 15 fits the format's 4-bit length field, so the decode-table step picks the cap from decode speed.
