@@ -4,7 +4,7 @@ How to run them is in [development.md](development.md#run-benchmark). This page 
 
 ## What runs
 
-`compressor_benchmark` (Google Benchmark, `release` preset) has two groups:
+`compressor_benchmark` (Google Benchmark, `release` preset) runs the codec benchmarks:
 
 - **Codec benchmarks** (`compressor_benchmark/src/codec/codec.cpp`), registered at runtime for every file in three sets:
   - `samples`: `compressor_example/samples/raw/`, in the repo;
@@ -12,7 +12,6 @@ How to run them is in [development.md](development.md#run-benchmark). This page 
   - `silesia`: the [Silesia corpus](https://sun.aei.polsl.pl/~sdeor/index.php?page=silesia), 12 files, 211 MB.
 
   `tools/fetch-corpus.sh` downloads the corpora into `corpus/` (git-ignored) and checks each archive's SHA-256. A missing set is skipped with a note on `stderr`.
-- **Bitset micro-benchmarks** (`compressor_benchmark/src/bitset/`): `compressor::bitset` against `std::vector<bool>` and `boost::dynamic_bitset`.
 
 Codec benchmark names are `<codec>/<op>/<set>/<file>`, with non-alphanumerics in the file name replaced by `_`. For example, `Engine/Decode/silesia/dickens`.
 
@@ -120,3 +119,12 @@ Decode speed by cap, as the median of 3 repetitions and the best of 2 interleave
 The geometric mean over Canterbury and Silesia is 1.01. Only the files of a few KB lose up to 10%, from filling the larger table, so the cap is 15.
 
 The CLI is now limited by I/O, not by the codec: `compressor_app decode` on `mozilla` (51 MB) takes 1.9 s, but the in-memory decode only 0.2 s. The rest is `operator>>` converting the payload bit by bit and the byte-wise stream reads; see the "Copies and I/O" step.
+
+## Encode bit buffer (2026-11-19)
+
+After the "Encode bit buffer" step: `Engine::encode` packs codes into bytes through a 64-bit buffer instead of appending a `bitset` per symbol. Results are in `docs/benchmarks/encode-bit-buffer.json`; compare later steps against that file. Before and after ran back to back with load averages of 23 and 67, so expect noticeable noise on speeds.
+
+- **Encode:** 210–960 MiB/s, up from 25–138: 2.5–38× faster. The gain grows with the average code length, since the old encoder appended bit by bit: largest on the nearly incompressible files (`flower.png` 38×, `lena.jpg` 29×, `sao` 17×), smallest on `ptt5` (2.5×) and small files, where counting frequencies and building the codes take a larger share. `Engine` now encodes faster than zlib's Huffman-only mode (130–230 MiB/s) on every file.
+- **Decode:** unchanged within noise (0.96–1.41×). Dropping the bit-reversal lookup barely matters next to the decode table.
+- **Ratio:** unchanged; the encoded bytes are identical to before (checked on `mozilla`).
+- **CLI:** `compressor_app` on `mozilla` (51 MB) encodes in 0.3 s and decodes in 0.85 s (was 1.9 s, since `operator>>` no longer converts bit by bit). The remaining decode time is mostly the byte-wise stream I/O for the "Copies and I/O" step.

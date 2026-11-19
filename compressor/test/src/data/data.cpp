@@ -9,7 +9,6 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include <compressor/bitset/bitset.h>
 #include <compressor/data/data.h>
 
 class CompressorDataTests : public ::testing::Test
@@ -45,8 +44,7 @@ compressor::EncodedData encoded_aab()
     data.size_ = 3;
     data.code_lengths_['a'] = 1;
     data.code_lengths_['b'] = 1;
-    data.data_ = compressor::bitset(3);
-    data.data_.set(2);
+    data.payload_ = {0x20};
     return data;
 }
 
@@ -59,7 +57,8 @@ std::string header_bytes(uint64_t size, const compressor::CodeLengths& lengths)
     }
     for (std::size_t i = 0; i < 128; ++i)
     {
-        bytes[8 + i] = static_cast<char>(lengths[2 * i] | (lengths[(2 * i) + 1] << 4U));
+        bytes[8 + i] = static_cast<char>(static_cast<unsigned>(lengths[2 * i]) |
+                                         (static_cast<unsigned>(lengths[(2 * i) + 1]) << 4U));
     }
     return bytes;
 }
@@ -90,14 +89,7 @@ TEST_F(CompressorDataTests, EncodedDataStream)
     stream >> output_data;
 
     ASSERT_FALSE(stream.fail());
-    EXPECT_EQ(output_data.size_, input_data.size_);
-    EXPECT_EQ(output_data.code_lengths_, input_data.code_lengths_);
-    // The payload comes back padded to whole bytes.
-    ASSERT_EQ(output_data.data_.size(), 8U);
-    for (std::size_t bit = 0; bit < 8; ++bit)
-    {
-        EXPECT_EQ(output_data.data_.test(bit), bit == 2) << bit;
-    }
+    EXPECT_EQ(output_data, input_data);
 }
 
 TEST_F(CompressorDataTests, A_short_header_fails)

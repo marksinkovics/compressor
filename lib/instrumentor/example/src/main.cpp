@@ -1,3 +1,5 @@
+#include <cstdlib>
+#include <exception>
 #include <instrumentor/instrumentor.h>
 #include <iostream>
 #include <thread>
@@ -52,6 +54,7 @@ void f3()
 }
 
 int main()
+try
 {
     PROFILE_SESSION("test-main")
     std::vector<std::thread> workers;
@@ -66,4 +69,9 @@ int main()
     }
 
     return 0;
+}
+catch (const std::exception& error)
+{
+    std::cerr << error.what() << '\n';
+    return EXIT_FAILURE;
 }

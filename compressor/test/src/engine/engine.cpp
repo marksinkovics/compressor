@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -103,16 +104,38 @@ TEST_F(EngineTests, Skewed_input_with_capped_codes_round_trips)
     compressor::EncodedData read_back;
     stream >> read_back;
 
+    EXPECT_EQ(read_back, encoded);
+
     compressor::Engine decoder;
     const compressor::DecodedData decoded = decoder.decode(read_back);
     EXPECT_EQ(std::string(decoded.data_.begin(), decoded.data_.end()), skewed);
+}
+
+TEST_F(EngineTests, Encode_packs_codes_first_bit_most_significant)
+{
+    // a and b both get length 1: a = 0, b = 1.
+    compressor::Engine engine;
+    EXPECT_EQ(engine.encode(compressor::DecodedData("aab")).payload_, std::vector<uint8_t>{0x20});
+}
+
+TEST_F(EngineTests, Encode_packs_codes_across_bytes_and_pads_the_last_one)
+{
+    // a = 0, b = 10, c = 11, so "abac" is 010011; six of them are 36 bits, past one 32-bit write.
+    std::string input;
+    for (int i = 0; i < 6; ++i)
+    {
+        input += "abac";
+    }
+    compressor::Engine engine;
+    EXPECT_EQ(engine.encode(compressor::DecodedData(input)).payload_,
+              (std::vector<uint8_t>{0x4D, 0x34, 0xD3, 0x4D, 0x30}));
 }
 
 TEST_F(EngineTests, A_truncated_payload_decodes_to_nothing)
 {
     compressor::Engine encoder;
     compressor::EncodedData encoded = encoder.encode(compressor::DecodedData(longInput));
-    encoded.data_.resize(encoded.data_.size() / 2);
+    encoded.payload_.resize(encoded.payload_.size() / 2);
 
     compressor::Engine decoder;
     EXPECT_TRUE(decoder.decode(encoded).data_.empty());
@@ -164,9 +187,7 @@ TEST_F(EngineTests, A_bit_pattern_that_starts_no_code_decodes_to_nothing)
     compressor::EncodedData encoded;
     encoded.size_ = 2;
     encoded.code_lengths_['a'] = 1;
-    encoded.data_ = compressor::bitset(0);
-    encoded.data_.push_back(false);
-    encoded.data_.push_back(true);
+    encoded.payload_ = {0x40}; // 01
 
     compressor::Engine decoder;
     EXPECT_TRUE(decoder.decode(encoded).data_.empty());
@@ -174,15 +195,14 @@ TEST_F(EngineTests, A_bit_pattern_that_starts_no_code_decodes_to_nothing)
 
 TEST_F(EngineTests, A_code_that_ends_past_the_payload_decodes_to_nothing)
 {
-    // a = 0, b = 10, c = 11: after "a", the last bit 1 starts a two-bit code that doesn't fit.
+    // a = 0, b = 10, c = 11: after seven "a", the last bit 1 starts a two-bit code that doesn't
+    // fit.
     compressor::EncodedData encoded;
-    encoded.size_ = 2;
+    encoded.size_ = 8;
     encoded.code_lengths_['a'] = 1;
     encoded.code_lengths_['b'] = 2;
     encoded.code_lengths_['c'] = 2;
-    encoded.data_ = compressor::bitset(0);
-    encoded.data_.push_back(false);
-    encoded.data_.push_back(true);
+    encoded.payload_ = {0x01};
 
     compressor::Engine decoder;
     EXPECT_TRUE(decoder.decode(encoded).data_.empty());

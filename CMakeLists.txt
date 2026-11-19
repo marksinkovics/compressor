@@ -49,7 +49,6 @@ endif()
 
 find_package(GTest CONFIG REQUIRED)
 find_package(benchmark CONFIG REQUIRED)
-find_package(boost_dynamic_bitset CONFIG REQUIRED)
 find_package(CLI11 CONFIG REQUIRED)
 find_package(ZLIB REQUIRED)
 

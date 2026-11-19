@@ -1,8 +1,5 @@
 # Left out for good: easily-swappable-parameters and use-nodiscard flag nearly every function,
 # and trailing return types are a style choice we don't make.
-# Left out until Phase 5 replaces bitset, the tree and Engine, where every finding of these sits;
-# turn them back on there: signed-bitwise, narrowing-conversions, exception-escape (noexcept
-# functions that allocate; also the two example mains), derived-method-shadowing-base-method.
 Checks: >
   -*,
   bugprone-*,
@@ -11,11 +8,7 @@ Checks: >
   modernize-*,
   -bugprone-easily-swappable-parameters,
   -modernize-use-nodiscard,
-  -modernize-use-trailing-return-type,
-  -bugprone-signed-bitwise,
-  -bugprone-narrowing-conversions,
-  -bugprone-exception-escape,
-  -bugprone-derived-method-shadowing-base-method
+  -modernize-use-trailing-return-type
 WarningsAsErrors: '*'
 # vcpkg ports are installed under build/ and come in as system headers.
 HeaderFilterRegex: '.*'

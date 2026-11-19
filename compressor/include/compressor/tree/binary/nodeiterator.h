@@ -37,9 +37,11 @@ class BinaryNodePreOrderIterator : public BinaryNodeIterator
 {
 public:
     BinaryNodePreOrderIterator(std::shared_ptr<BinaryNode> node, uint64_t numerOfNodes);
-    // Pre- and post-incrementable.
+    // Shadows on purpose: each iterator returns its own type.
+    // NOLINTBEGIN(bugprone-derived-method-shadowing-base-method)
     BinaryNodePreOrderIterator& operator++();
     BinaryNodePreOrderIterator operator++(int);
+    // NOLINTEND(bugprone-derived-method-shadowing-base-method)
 
     //    // Pre- and post-decrementable.
     //    BinaryNodePreOrderIterator& operator--();

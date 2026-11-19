@@ -183,7 +183,7 @@ void engine_encode(::benchmark::State& state, const fs::path& path)
     }
     set_bytes_processed(state, file);
     const std::size_t total = serialized_size(encoded);
-    set_size_counters(state, file, total, total - encoded.data_.num_bytes());
+    set_size_counters(state, file, total, total - encoded.payload_.size());
     file.engine_encoded = std::move(encoded);
 }
 

@@ -14,7 +14,7 @@ Last checked with CMake 4.4.5, Apple Clang 17 (Xcode 26.2) and vcpkg 2025-12-16 
 
 ## Compile
 
-Third-party libraries come only from vcpkg in manifest mode: `vcpkg.json` lists them (googletest, google benchmark, `boost-dynamic-bitset` for the bitset tests and benchmark, zlib as the benchmark's reference codec) and pins the port versions through `builtin-baseline`. The root `CMakeLists.txt` uses `$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake` as the toolchain unless one is given, and configure installs the ports into `<build dir>/vcpkg_installed`; vcpkg's binary cache makes later configures fast. Every installed port, transitive and host ones included, is pinned to its exact version in `overrides`, and configure fails if one isn't (`cmake/VcpkgPins.cmake`). To add or update a dependency:
+Third-party libraries come only from vcpkg in manifest mode: `vcpkg.json` lists them (googletest, google benchmark, CLI11, zlib as the benchmark's reference codec) and pins the port versions through `builtin-baseline`. The root `CMakeLists.txt` uses `$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake` as the toolchain unless one is given, and configure installs the ports into `<build dir>/vcpkg_installed`; vcpkg's binary cache makes later configures fast. Every installed port, transitive and host ones included, is pinned to its exact version in `overrides`, and configure fails if one isn't (`cmake/VcpkgPins.cmake`). To add or update a dependency:
 
 1. Change `dependencies` (and `builtin-baseline` to a newer vcpkg commit when updating).
 2. Configure; the error lists every port without a matching override, with the version vcpkg chose.
@@ -57,7 +57,7 @@ Tools
 * [Google test framework](https://github.com/google/googletest)
 * [CTest](https://cmake.org/cmake/help/latest/module/CTest.html)
 
-Run `cmake --workflow --preset debug`, or `ctest --preset debug` after a build. A single binary runs directly too, for example `build/debug/compressor/test/compressor_test_app --gtest_filter='BitsetTests.*'`.
+Run `cmake --workflow --preset debug`, or `ctest --preset debug` after a build. A single binary runs directly too, for example `build/debug/compressor/test/compressor_test_app --gtest_filter='EngineTests.*'`.
 
 The round-trip tests (`RoundTripTests`) encode and decode every file in `compressor_example/samples/raw/` and compare the result byte for byte; a file added there is tested automatically.
 
@@ -93,7 +93,7 @@ tools/quality.sh stages                       # list the stage names
 ```
 
 - Files are the tracked and new, not ignored files (`git ls-files`), so `build/` is skipped. C++ means `*.cpp *.h *.hpp`; shell means `*.sh`.
-- With `-- file...`, clang-tidy checks only the sources that include those files, using `ninja -t deps` (changing `bitset.h` selects 19 of 41 sources). A full run takes about 30 s.
+- With `-- file...`, clang-tidy checks only the sources that include those files, using `ninja -t deps`. A full run takes about 30 s.
 - Settings live in `.clang-format`, `.clang-tidy` (plus a nested one in `compressor_benchmark/`), `.shellcheckrc` and `.editorconfig` (shfmt reads its options from there).
 
 ### pre-commit hooks
@@ -102,7 +102,7 @@ tools/quality.sh stages                       # list the stage names
 
 ```bash
 pre-commit run --all-files    # every hook on the whole tree
-pre-commit run clang-tidy --files compressor/include/compressor/bitset/bitset.h
+pre-commit run clang-tidy --files compressor/include/compressor/huffman/huffman.h
 ```
 
 ### Claude Code format hook

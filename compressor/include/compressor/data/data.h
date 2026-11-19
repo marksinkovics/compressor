@@ -1,9 +1,9 @@
 #ifndef Data_h
 #define Data_h
 
-#include <compressor/bitset/bitset.h>
 #include <compressor/huffman/huffman.h>
 #include <cstdint>
+#include <iosfwd>
 #include <string>
 #include <vector>
 
@@ -33,7 +33,7 @@ struct EncodedData : IData
 {
     uint64_t size_ = 0; // decoded size in bytes
     CodeLengths code_lengths_{};
-    bitset data_;
+    std::vector<uint8_t> payload_; // codes first bit most significant, zero-padded to a byte
 };
 
 std::ostream& operator<<(std::ostream& ostream, const EncodedData& data);

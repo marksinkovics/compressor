@@ -4,7 +4,6 @@
 #include <array>
 #include <cstdint>
 
-#include <compressor/bitset/bitset.h>
 #include <compressor/data/data.h>
 #include <compressor/huffman/huffman.h>
 
@@ -39,7 +38,6 @@ private:
 
     Frequencies frequencies_{}; // zero after decode: the format stores no frequencies
     Codes codes_{};
-    std::array<bitset, symbol_count> code_bits_;
 };
 
 } // namespace compressor

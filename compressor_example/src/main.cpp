@@ -1,4 +1,7 @@
+#include <cstdlib>
+#include <exception>
 #include <filesystem>
+#include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -6,6 +9,7 @@
 #include <compressor/cli.h>
 
 int main([[maybe_unused]] int argc, char** argv)
+try
 {
     const std::vector<std::string> inputs{
         "samples/raw/lorem_5p.txt",  "samples/raw/lorem_10p.txt", "samples/raw/lorem_20p.txt",
@@ -25,4 +29,9 @@ int main([[maybe_unused]] int argc, char** argv)
     }
 
     return 0;
+}
+catch (const std::exception& error)
+{
+    std::cerr << error.what() << '\n';
+    return EXIT_FAILURE;
 }

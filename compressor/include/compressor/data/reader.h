@@ -3,6 +3,9 @@
 
 #include <compressor/data/data.h>
 
+#include <fstream>
+#include <string>
+
 namespace compressor
 {
 

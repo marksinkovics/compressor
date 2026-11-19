@@ -6,8 +6,6 @@ set(INCLUDE_FILES)
 set(SRC_DIR ${PROJECT_SOURCE_DIR}/src)
 set(SRC_FILES
     "${SRC_DIR}/main.cpp"
-    "${SRC_DIR}/bitset/Creation.cpp"
-    "${SRC_DIR}/bitset/Access.cpp"
     "${SRC_DIR}/codec/codec.cpp"
     "${SRC_DIR}/codec/codec.h"
 )
@@ -30,6 +28,5 @@ target_link_libraries(${PROJECT_NAME}
     PRIVATE
         compressor
         benchmark::benchmark
-        Boost::dynamic_bitset
         ZLIB::ZLIB
 )

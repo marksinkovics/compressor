@@ -16,12 +16,9 @@ set(SRC_FILES
     "${SRC_DIR}/compressor/compressor.cpp"
     "${SRC_DIR}/engine/engine.cpp"
     "${SRC_DIR}/huffman/huffman.cpp"
-    "${SRC_DIR}/bitset/bitset.cpp"
-    "${SRC_DIR}/bitset/bitset_iterator.cpp"
     "${SRC_DIR}/tree/binary/node.cpp"
     "${SRC_DIR}/tree/binary/tree.cpp"
     "${SRC_DIR}/tree/binary/nodeiterator.cpp"
-    "${SRC_DIR}/utils/utils.cpp"
     "${SRC_DIR}/data/data.cpp"
     "${SRC_DIR}/roundtrip/roundtrip.cpp"
 )
@@ -40,7 +37,6 @@ package_add_test(
         ${SRC_FILES}
     LIBRARIES
         compressor
-        Boost::dynamic_bitset
 )
 
 foreach(target ${PROJECT_NAME} ${PROJECT_NAME}_app)

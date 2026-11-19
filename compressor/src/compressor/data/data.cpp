@@ -3,7 +3,9 @@
 
 #include <algorithm>
 #include <array>
+#include <istream>
 #include <iterator>
+#include <ostream>
 #include <utility>
 #include <vector>
 
@@ -53,18 +55,8 @@ std::ostream& operator<<(std::ostream& ostream, const EncodedData& data)
     }
     ostream.write(header.data(), header.size());
 
-    // The bitset keeps its first bit in the least significant bit; the format wants the most
-    // significant one.
-    std::vector<char> payload(data.data_.num_bytes());
-    for (std::size_t bit = 0; bit < data.data_.size(); ++bit)
-    {
-        if (data.data_.test(bit))
-        {
-            payload[bit / 8] = static_cast<char>(static_cast<unsigned char>(payload[bit / 8]) |
-                                                 (0x80U >> (bit % 8)));
-        }
-    }
-    ostream.write(payload.data(), static_cast<std::streamsize>(payload.size()));
+    ostream.write(reinterpret_cast<const char*>(data.payload_.data()),
+                  static_cast<std::streamsize>(data.payload_.size()));
     return ostream;
 }
 
@@ -99,13 +91,8 @@ std::istream& operator>>(std::istream& istream, EncodedData& data)
         return istream;
     }
 
-    const std::vector<unsigned char> payload((std::istreambuf_iterator<char>(istream)),
-                                             std::istreambuf_iterator<char>());
-    result.data_ = bitset(payload.size() * 8);
-    for (std::size_t bit = 0; bit < result.data_.size(); ++bit)
-    {
-        result.data_.set(bit, (payload[bit / 8] & (0x80U >> (bit % 8))) != 0);
-    }
+    result.payload_.assign(std::istreambuf_iterator<char>(istream),
+                           std::istreambuf_iterator<char>());
 
     data = std::move(result);
     return istream;
@@ -114,7 +101,7 @@ std::istream& operator>>(std::istream& istream, EncodedData& data)
 bool operator==(const EncodedData& lhs, const EncodedData& rhs)
 {
     return lhs.size_ == rhs.size_ && lhs.code_lengths_ == rhs.code_lengths_ &&
-           lhs.data_ == rhs.data_;
+           lhs.payload_ == rhs.payload_;
 }
 
 } // namespace compressor

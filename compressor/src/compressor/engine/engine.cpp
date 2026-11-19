@@ -9,7 +9,6 @@
 #include <utility>
 #include <vector>
 
-#include <compressor/bitset/bitset.h>
 #include <compressor/data/data.h>
 #include <compressor/engine/engine.h>
 #include <compressor/huffman/huffman.h>
@@ -55,8 +54,7 @@ std::shared_ptr<SymbolNode> build_subtree(const Codes& codes, const Frequencies&
         {
             auto leaf = std::make_shared<SymbolNode>(symbol_label(static_cast<uint8_t>(symbol)),
                                                      frequencies[symbol]);
-            leaf->setTag(std::make_shared<bitset>(
-                code_string({.bits = bits, .length = static_cast<uint8_t>(length)})));
+            leaf->setTag(code_string({.bits = bits, .length = static_cast<uint8_t>(length)}));
             return leaf;
         }
     }
@@ -74,8 +72,7 @@ std::shared_ptr<SymbolNode> build_subtree(const Codes& codes, const Frequencies&
     const std::string value = (left ? left->value() : "") + (right ? right->value() : "");
     const uint64_t frequency = (left ? left->frequency() : 0) + (right ? right->frequency() : 0);
     auto node = std::make_shared<SymbolNode>(value, frequency);
-    node->setTag(std::make_shared<bitset>(
-        code_string({.bits = bits, .length = static_cast<uint8_t>(length)})));
+    node->setTag(code_string({.bits = bits, .length = static_cast<uint8_t>(length)}));
     // The pre-order iterator walks back up through the parents.
     if (left)
     {
@@ -90,32 +87,13 @@ std::shared_ptr<SymbolNode> build_subtree(const Codes& codes, const Frequencies&
     return node;
 }
 
-constexpr std::array<uint8_t, 256> reversed_bytes = [] {
-    std::array<uint8_t, 256> table{};
-    for (std::size_t byte = 0; byte < table.size(); ++byte)
-    {
-        uint8_t reversed = 0;
-        for (std::size_t bit = 0; bit < 8; ++bit)
-        {
-            if ((byte & (std::size_t{1} << bit)) != 0)
-            {
-                reversed = static_cast<uint8_t>(reversed | (0x80U >> bit));
-            }
-        }
-        table[byte] = reversed;
-    }
-    return table;
-}();
-
-// Reads a bitset's bits in order, most significant first in a 64-bit buffer. The bitset stores
-// each byte's first bit in its least significant bit, hence reversed_bytes. Past the end it
-// reads zeros; remaining() tells how many real bits are left.
+// Past the end it reads zeros; remaining() tells how many real bits are left.
 class BitReader
 {
 public:
-    BitReader(std::span<const uint8_t> bytes, std::size_t bit_count)
+    explicit BitReader(std::span<const uint8_t> bytes)
         : bytes_(bytes)
-        , bit_count_(bit_count)
+        , bit_count_(bytes.size() * 8)
     {
     }
 
@@ -123,7 +101,7 @@ public:
     {
         while (buffered_ <= 56)
         {
-            const uint64_t byte = next_ < bytes_.size() ? reversed_bytes[bytes_[next_]] : 0;
+            const uint64_t byte = next_ < bytes_.size() ? bytes_[next_] : 0;
             ++next_;
             buffer_ |= byte << (56 - buffered_);
             buffered_ += 8;
@@ -153,25 +131,58 @@ private:
     std::size_t buffered_ = 0;
 };
 
-bitset to_bitset(const Code& code)
+// Writes 32 bits at a time: with codes of at most 15 bits, the buffer never holds more than 46.
+// `out` must have room for every code put, rounded up to a whole byte.
+class BitWriter
 {
-    bitset bits(0);
-    for (std::size_t i = code.length; i-- > 0;)
+public:
+    explicit BitWriter(std::span<uint8_t> out)
+        : out_(out)
     {
-        bits.push_back(((code.bits >> i) & 1U) != 0);
     }
-    return bits;
-}
+
+    void put(const Code& code)
+    {
+        buffer_ = (buffer_ << code.length) | code.bits;
+        buffered_ += code.length;
+        if (buffered_ >= 32)
+        {
+            buffered_ -= 32;
+            const auto word = static_cast<uint32_t>(buffer_ >> buffered_);
+            out_[next_++] = static_cast<uint8_t>(word >> 24U);
+            out_[next_++] = static_cast<uint8_t>(word >> 16U);
+            out_[next_++] = static_cast<uint8_t>(word >> 8U);
+            out_[next_++] = static_cast<uint8_t>(word);
+        }
+    }
+
+    // Pads the last byte with zeros.
+    void flush()
+    {
+        while (buffered_ >= 8)
+        {
+            buffered_ -= 8;
+            out_[next_++] = static_cast<uint8_t>(buffer_ >> buffered_);
+        }
+        if (buffered_ > 0)
+        {
+            out_[next_++] = static_cast<uint8_t>(buffer_ << (8 - buffered_));
+            buffered_ = 0;
+        }
+    }
+
+private:
+    std::span<uint8_t> out_;
+    std::size_t next_ = 0;
+    uint64_t buffer_ = 0;
+    std::size_t buffered_ = 0;
+};
 
 } // namespace
 
 void Engine::set_codes(const CodeLengths& lengths)
 {
     codes_ = canonical_codes(lengths);
-    for (std::size_t symbol = 0; symbol < symbol_count; ++symbol)
-    {
-        code_bits_[symbol] = to_bitset(codes_[symbol]);
-    }
 }
 
 void Engine::print_graph() const
@@ -185,14 +196,14 @@ void Engine::print_graph() const
         std::for_each(tree.preOrderBegin(), tree.preOrderEnd(),
                       [](const std::shared_ptr<BinaryNode>& bin_node) {
             auto node = std::static_pointer_cast<SymbolNode>(bin_node);
-            const std::string id = "n" + node->tag()->str();
+            const std::string id = "n" + node->tag();
             std::cout << "\t\"" << id << "\" [label=\"" << node->value() << " ["
-                      << node->frequency() << ", " << node->tag()->str() << "]\"];\n";
+                      << node->frequency() << ", " << node->tag() << "]\"];\n";
             for (const auto& child : {node->left(), node->right()})
             {
                 if (child)
                 {
-                    std::cout << "\t\"" << id << "\" -> \"n" << child->tag()->str() << "\";\n";
+                    std::cout << "\t\"" << id << "\" -> \"n" << child->tag() << "\";\n";
                 }
             }
         });
@@ -233,12 +244,18 @@ EncodedData Engine::encode(const DecodedData& data)
 
     {
         PROFILE_SCOPE("Encode symbols")
-        bitset payload(0);
+        uint64_t bit_count = 0;
+        for (std::size_t symbol = 0; symbol < symbol_count; ++symbol)
+        {
+            bit_count += frequencies_[symbol] * codes_[symbol].length;
+        }
+        encoded.payload_.resize((bit_count + 7) / 8);
+        BitWriter writer(encoded.payload_);
         for (const uint8_t symbol : data.data_)
         {
-            payload.append(code_bits_[symbol]);
+            writer.put(codes_[symbol]);
         }
-        encoded.data_ = std::move(payload);
+        writer.flush();
     }
     return encoded;
 }
@@ -254,10 +271,10 @@ DecodedData Engine::decode(const EncodedData& data)
         return result;
     }
     // Every symbol takes at least one bit, so a corrupt size can't make this reserve too much.
-    result.data_.reserve(std::min<std::size_t>(data.size_, data.data_.size()));
+    result.data_.reserve(std::min<std::size_t>(data.size_, data.payload_.size() * 8));
 
     const DecodeTable table = build_decode_table(codes_);
-    BitReader reader(data.data_.data(), data.data_.size());
+    BitReader reader(data.payload_);
     for (uint64_t decoded = 0; decoded < data.size_; ++decoded)
     {
         const DecodeEntry entry = table[reader.peek()];

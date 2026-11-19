@@ -1,7 +1,5 @@
 #include <compressor/tree/binary/node.h>
 
-#include <compressor/bitset/bitset.h>
-
 #include <utility>
 
 namespace compressor
@@ -42,12 +40,12 @@ bool BinaryNode::hasParent() const
     return !_parent.expired();
 }
 
-void BinaryNode::setTag(std::shared_ptr<compressor::bitset> tag)
+void BinaryNode::setTag(std::string tag)
 {
     _tag = std::move(tag);
 }
 
-std::shared_ptr<compressor::bitset> BinaryNode::tag() const
+const std::string& BinaryNode::tag() const
 {
     return _tag;
 }
