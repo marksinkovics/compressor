@@ -118,24 +118,44 @@ The hand-written `argparser/` is replaced by CLI11; `compressor_app` has `encode
   - `CLITests` (`compressor_cli/test/src/cli.cpp`) run real argv through `CLI::run` with a `MockICompressor` and captured streams, and a real input file in `$TMPDIR/compressor_cli_<test>/` for `ExistingFile`: the paths reach the encoder/decoder task, failed encode/decode exit non-zero, `--help` prints the `OPTIONS:` section once and exits 0, `encode --help` and `--version` exit 0, and no subcommand, two subcommands, a missing input file, `--input` as the last token, a missing `--output` and an unknown option all fail without calling the compressor.
   - Checked by hand: `compressor_app` round-trips `lena.jpg`; a missing input exits 105, a trailing `--input` 114, no subcommand 106 (CLI11's exit codes). `cmake --workflow --preset debug|release|xcode` pass 65/65; `compressor_example` runs; `quality.sh check` passes.
 
-### Phase 5: Core codec redesign
+### Phase 5: Benchmarks and performance
 
-The goal is a core that could run in a kernel or an experimental OS (see "Compressed file system" and "Compressed memory" under Features).
+Measure first, then make the existing codec fast, one change per step, each with a before/after benchmark diff. Decided 2026-11-18: the freestanding core is postponed (Phase 6); zlib's Huffman-only mode is the reference; both the Canterbury and the Silesia corpus are used.
 
-- [ ] **Freestanding core:** no iostreams, exceptions or RTTI, and ideally no memory allocation while compressing. Errors use `std::expected`. API:
-
-  ```cpp
-  size_t compress(std::span<const std::byte> in, std::span<std::byte> out);
-  size_t decompress(std::span<const std::byte> in, std::span<std::byte> out);
-  size_t max_compressed_size(size_t input_size);   // worst-case bound
-  ```
-
-- [ ] **Layers:** file handling and the CLI move into separate layers on top of the core. CI builds the core with `-fno-exceptions -fno-rtti` to keep it freestanding.
-- [ ] **Data structures:** an array-based Huffman tree with indices replaces the `shared_ptr`/`weak_ptr`/`dynamic_pointer_cast` tree. Code tables become `std::array<Code, 256>`, and decoding uses a lookup table instead of `std::map<bitset, uint8_t>`.
-- [ ] **Canonical Huffman:** store only the code lengths instead of the full dictionary. This changes the file format.
-- [ ] **Benchmarks:** compare the new codec with the old one on the sample files (ratio and speed).
+- [x] **Benchmark harness and baseline (done):** numbers and takeaways in [benchmarks.md](benchmarks.md); how to run in `docs/development.md` ("Run benchmark").
+  - `tools/fetch-corpus.sh [canterbury|silesia...]` downloads `cantrbry.tar.gz` and `silesia.zip` into `corpus/canterbury/` and `corpus/silesia/` (git-ignored). It checks each archive's SHA-256, pinned in the script, before unpacking, and skips a corpus whose directory exists. Tested: a wrong checksum fails and leaves no temporary files; an unknown name fails.
+  - `zlib` 1.3.1 in `vcpkg.json` with its `overrides` pin; `find_package(ZLIB REQUIRED)` in the root; only `compressor_benchmark` links `ZLIB::ZLIB`.
+  - `compressor_benchmark` has its own `src/main.cpp` (no `benchmark_main`), which calls `compressor::bench::register_codec_benchmarks()` (`src/codec/codec.cpp`). It registers `Engine/{Encode,Decode}` and `ZlibHuffman/{Encode,Decode}` for every file in the samples, `corpus/canterbury` and `corpus/silesia` (paths from the `COMPRESSOR_SAMPLES_DIR`/`COMPRESSOR_CORPUS_DIR` definitions), named `<codec>/<op>/<set>/<file>`. A static `Prepared` caches one file at a time (input, entropy, encoded data), so a decode benchmark reuses the output of the encode benchmark that ran just before it.
+    - Counters `bytes_per_second` (original bytes), `ratio`, `header` (`Engine` only) and `efficiency`. Efficiency uses the total compressed size for both codecs, not the payload as planned, because zlib's block headers can't be separated from its payload.
+    - Decode benchmarks compare their output with the input and call `SkipWithError` on a mismatch. This is the harness's correctness check. Unlike the plan, it runs after the timed loop, so no extra decode is needed.
+  - `Engine::encode` no longer prints `Encoded: … => …`.
+  - `tools/bench.sh [--all] [--filter <regex>] [--out <file>] [-- <args>]` builds `release` and runs the benchmark with JSON output (default `build/release/benchmark.json`). Without `--all` or `--filter`, it passes `--benchmark_filter=-/silesia/`. `tools/bench-compare.py old.json new.json` prints MB/s, speedup and ratio per benchmark.
+  - Bitset benchmarks take `std::size_t` sizes; the empty `Copying.cpp` is deleted.
+  - Baseline: `docs/benchmarks/baseline.json`, from `tools/bench.sh --all` (host name and absolute paths removed by hand). The full run took about 3 minutes, much less than estimated; `Engine` on Silesia takes about 85 s to decode in total.
+  - Main findings: decoding runs at 1.4–7.5 MiB/s (zlib: 200–1600). Efficiency on large files is 1.004–1.009, so the code itself is near-optimal. The header (up to 2.8 KB) costs 27–39% on files of a few KB. `flower.png` and `lena.jpg` grow.
+  - `quality.sh check` passes; 65/65 tests pass.
+- [ ] **Canonical Huffman with length-limited codes (next):** store only the code lengths, capped at 11–12 bits (zstd's Huffman coder uses 11, DEFLATE 15), in a portable byte order. This changes the file format and shrinks the header, which dominates the small samples. Comes before the decode table, so that one table level is enough.
+- [ ] **Decode lookup table:** replace the bit-by-bit `std::map<bitset, uint8_t>` search with a single table indexed by the next L bits (2^12 entries of 2 bytes = 8 KB, fits in L1). Afterwards Silesia joins `tools/bench.sh`'s default run.
+- [ ] **Encode bit buffer and arrays:** `std::array<uint32_t, 256>` frequencies, `std::array<Code, 256>` codes, an array-based tree with indices instead of `shared_ptr`/`weak_ptr`/`dynamic_pointer_cast`, and a 64-bit bit buffer that writes whole words instead of `bitset::append`.
+- [ ] **Copies and I/O:** no full copies of the input in `Engine::encode`/`decode`, no detour through `std::string`, and reader/writer that move whole buffers instead of `istreambuf_iterator`/`ostream_iterator` byte by byte. Add an end-to-end CLI timing (e.g. `hyperfine`) to the benchmark docs.
+- [ ] **Stored fallback:** store the input as is, with a flag, when Huffman doesn't shrink it. Needed: `flower.png` grows from 734,560 to 737,072 bytes today. The container format later does this per block.
 
 After Phase 5, continue with the features in their suggested order, starting with the container format.
+
+### Phase 6: Freestanding core (postponed 2026-11-18)
+
+The goal is a core that could run in a kernel or an experimental OS (see "Compressed file system" and "Compressed memory" under Features). Phase 5's data structures and canonical format do most of the groundwork.
+
+- [ ] **Freestanding core:** no iostreams, exceptions or RTTI, and no memory allocation while compressing; the caller owns both buffers. Errors use `std::expected` (never `.value()`, which throws). API:
+
+  ```cpp
+  std::expected<size_t, Error> compress(std::span<const std::byte> in, std::span<std::byte> out);
+  std::expected<size_t, Error> decompress(std::span<const std::byte> in, std::span<std::byte> out);
+  size_t max_compressed_size(size_t input_size);   // header + input_size: Huffman never beats a fixed 8-bit code by losing
+  ```
+
+  The header holds the original size, so `decompress` can check `out`; every read is bounds-checked against `in`.
+- [ ] **Layers:** file handling and the CLI move into separate layers on top of the core. CI builds the core with `-fno-exceptions -fno-rtti`, and a test that replaces `operator new` checks that compress and decompress don't allocate.
 
 ## Known issues
 
@@ -167,7 +187,7 @@ Each issue names the phase that handles it.
 ### Build and tooling
 
 - [x] **Wrong script name in the docs** (Phase 2). [development.md](development.md) says `./configure.sh`; the script is `./generate.sh`.
-- [ ] **Bitset benchmarks truncate their size** (Phase 5 benchmarks). `compressor_benchmark/src/bitset/*.cpp` store `state.range(0)` (up to 1024) in a `uint8_t`, so the larger runs measure sizes modulo 256.
+- [x] **Bitset benchmarks truncate their size** (Phase 5 benchmark harness). `compressor_benchmark/src/bitset/*.cpp` store `state.range(0)` (up to 1024) in a `uint8_t`, so the larger runs measure sizes modulo 256.
 - [x] **Benchmark builds aren't reproducible** (Phase 3, fixed by vcpkg's pinned baseline). google benchmark is downloaded from `master.zip`, not a pinned tag.
 - [x] **Dependencies are downloaded during configure** (Phase 3, now vcpkg ports, installed by the manifest). googletest and benchmark come from ExternalProject; Boost (1.81 or later) must be installed separately (`brew install boost`).
 - [x] **`Testing/` isn't gitignored** (Phase 2).

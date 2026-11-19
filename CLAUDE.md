@@ -12,7 +12,8 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 - Phase 3 (build, tooling and platforms) in progress: steps "CMake" (CMake 3.25+, C++23), "Flags per target" (`COMPRESSOR_*` options, native arm64 Xcode) and "vcpkg" (manifest, global warning flags, ASan triplets), "Presets" and "Quality tools on the new build" are done; step "CI" is deferred.
 - Phase 4 (CLI11) is done: `argparser/` deleted, `encode`/`decode` subcommands with `-i`/`-o`, `--help`, `--version`; 65/65 pass.
 - The `asan` workflow passes 65/65 when run by hand (it can't run in Claude's sandbox).
-- **Next:** Phase 5 step "Freestanding core" (`docs/roadmap.md`); start with a plan for approval.
+- Phase 5 (benchmarks and performance) in progress: step "Benchmark harness and baseline" is done (`docs/benchmarks.md`, `docs/benchmarks/baseline.json`). The freestanding core is postponed to Phase 6.
+- **Next:** Phase 5 step "Canonical Huffman with length-limited codes" (`docs/roadmap.md`); start with a plan for approval.
 
 ## Commands
 
@@ -22,6 +23,7 @@ cmake --build --preset debug
 ctest --preset debug -R BitsetTests
 ./build/debug/compressor/test/compressor_test_app --gtest_filter='BitsetTests.*'
 bash tools/quality.sh check       # clang-format, clang-tidy, shellcheck, shfmt (see docs/development.md)
+bash tools/bench.sh [--all]       # release benchmarks -> JSON; corpora via tools/fetch-corpus.sh (docs/benchmarks.md)
 ```
 
 - Needs `VCPKG_ROOT` set to a vcpkg checkout; the root `CMakeLists.txt` takes vcpkg's toolchain from there, and configure installs `vcpkg.json` (gtest, benchmark, boost-dynamic-bitset, cli11). Third-party code comes only through vcpkg. Every port, transitive and host ones included, needs an exact `overrides` pin in `vcpkg.json`; configure fails otherwise.

@@ -14,7 +14,7 @@ Last checked with CMake 4.4.5, Apple Clang 17 (Xcode 26.2) and vcpkg 2025-12-16 
 
 ## Compile
 
-Third-party libraries come only from vcpkg in manifest mode: `vcpkg.json` lists them (googletest, google benchmark, `boost-dynamic-bitset` for the bitset tests and benchmark) and pins the port versions through `builtin-baseline`. The root `CMakeLists.txt` uses `$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake` as the toolchain unless one is given, and configure installs the ports into `<build dir>/vcpkg_installed`; vcpkg's binary cache makes later configures fast. Every installed port, transitive and host ones included, is pinned to its exact version in `overrides`, and configure fails if one isn't (`cmake/VcpkgPins.cmake`). To add or update a dependency:
+Third-party libraries come only from vcpkg in manifest mode: `vcpkg.json` lists them (googletest, google benchmark, `boost-dynamic-bitset` for the bitset tests and benchmark, zlib as the benchmark's reference codec) and pins the port versions through `builtin-baseline`. The root `CMakeLists.txt` uses `$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake` as the toolchain unless one is given, and configure installs the ports into `<build dir>/vcpkg_installed`; vcpkg's binary cache makes later configures fast. Every installed port, transitive and host ones included, is pinned to its exact version in `overrides`, and configure fails if one isn't (`cmake/VcpkgPins.cmake`). To add or update a dependency:
 
 1. Change `dependencies` (and `builtin-baseline` to a newer vcpkg commit when updating).
 2. Configure; the error lists every port without a matching override, with the version vcpkg chose.
@@ -111,8 +111,13 @@ pre-commit run clang-tidy --files compressor/include/compressor/bitset/bitset.h
 
 ## Run benchmark
 
-Tool: [Google benchmark framework](https://github.com/google/benchmark) (vcpkg port)
+Tool: [Google benchmark framework](https://github.com/google/benchmark) (vcpkg port). Always benchmark the `release` preset.
 
-:warning: Always use release configuration for benchmarking
+```bash
+bash tools/fetch-corpus.sh               # once: Canterbury and Silesia into corpus/ (git-ignored)
+bash tools/bench.sh                      # samples + Canterbury -> build/release/benchmark.json
+bash tools/bench.sh --all --out new.json # also Silesia (minutes with the current decoder)
+python3 tools/bench-compare.py docs/benchmarks/baseline.json new.json
+```
 
-`cmake --build --preset release`, then run `build/release/compressor_benchmark/compressor_benchmark`.
+How the benchmarks work, what the counters mean and the baseline numbers are in [benchmarks.md](benchmarks.md).

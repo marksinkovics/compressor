@@ -187,13 +187,6 @@ EncodedData Engine::encode(const DecodedData& data)
         encoded_data_.bit_dict_ = bit_dict_;
     }
 
-    std::size_t original_size = data_.data_.size();
-    std::size_t encoded_size = encoded_data_.data_.num_bytes();
-
-    std::cout << "Encoded: " << original_size << " => " << encoded_size << " ("
-              << (static_cast<double>(encoded_size) / static_cast<double>(original_size) * 100.0)
-              << "%)\n";
-
     return encoded_data_;
 }
 
