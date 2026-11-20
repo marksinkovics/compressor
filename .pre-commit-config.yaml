@@ -1,8 +1,8 @@
 # Install once: brew install pre-commit llvm shellcheck shfmt && pre-commit install
 minimum_pre_commit_version: "3.0.0"
 
-# Sample inputs for the example app: binary files and text whose exact bytes matter.
-exclude: ^compressor_example/samples/
+# Sample inputs and fuzz seeds: binary files and text whose exact bytes matter.
+exclude: ^(compressor_example/samples|fuzz/corpus)/
 
 # Each quality.sh stage is its own hook, so a commit shows which one runs, fails or takes the
 # time, and skips the ones whose files it does not touch. `verbose` makes pre-commit print each
