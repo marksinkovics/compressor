@@ -358,9 +358,9 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
                 rans_encode(std::vector<uint16_t>(input.begin(), input.end()), 256, coded);
                 break;
             case Coder::lzr:
-                // Its 1 MiB window makes long chains slow; level 8 searches like level 7.
-                coded = lzr_encode(
-                    input, lz77_options_for_level(level_ >= max_level ? level_ : auto_level));
+                // Its 1 MiB window makes long chains slow: level 9's took 17 s per MiB of a photo
+                // and gained nothing on Silesia, so every level searches like level 7.
+                coded = lzr_encode(input, lz77_options_for_level(auto_level));
                 break;
             case Coder::cm:
                 coded = cm_encode(input);
