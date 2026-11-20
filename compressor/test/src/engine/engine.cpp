@@ -696,3 +696,35 @@ TEST_F(EngineTests, Noisy_samples_take_a_delta_and_the_tans_coder)
     EXPECT_LT(mixed.payload_.size(), block.payload_.size());
     EXPECT_EQ(decode_block(best, mixed), decoded(samples));
 }
+
+TEST_F(EngineTests, At_level_7_far_repeats_take_the_lzt_coder)
+{
+    // Noise repeated beyond Deflate's 32 KiB window: only LZT reaches it at level 7.
+    std::string chunk(100'000, '\0');
+    uint32_t state = 21;
+    for (char& c : chunk)
+    {
+        state = (state * 1103515245U) + 12345U;
+        c = static_cast<char>(state >> 16U);
+    }
+    const std::string input = chunk + chunk;
+    compressor::Engine engine(compressor::default_block_size_log2, compressor::auto_level);
+    const compressor::EncodedBlock block = engine.encode_block(bytes(input));
+    ASSERT_EQ(block.method_, compressor::Method::pipeline);
+    EXPECT_EQ(block.payload_[(block.payload_[0] * 5) + 1],
+              static_cast<uint8_t>(compressor::Coder::lzt));
+    EXPECT_LT(block.payload_.size(), chunk.size() + 2'000);
+    EXPECT_EQ(decode_block(engine, block), decoded(input));
+
+    for (const unsigned level : {6U, compressor::bwt_level})
+    {
+        compressor::Engine other(compressor::default_block_size_log2, level);
+        const compressor::EncodedBlock coded = other.encode_block(bytes(input));
+        if (coded.method_ == compressor::Method::pipeline)
+        {
+            EXPECT_NE(coded.payload_[(coded.payload_[0] * 5) + 1],
+                      static_cast<uint8_t>(compressor::Coder::lzt))
+                << level;
+        }
+    }
+}

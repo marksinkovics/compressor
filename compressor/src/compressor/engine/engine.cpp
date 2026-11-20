@@ -26,6 +26,7 @@
 #include <compressor/huffman/huffman.h>
 #include <compressor/lz77/lz77.h>
 #include <compressor/lzr/lzr.h>
+#include <compressor/lzt/lzt.h>
 #include <compressor/transform/transform.h>
 #include <compressor/tree/binary/nodeiterator.h>
 #include <compressor/tree/binary/tree.h>
@@ -301,6 +302,19 @@ std::expected<DecodedData, Error> Engine::decode(const EncodedData& data)
     return result;
 }
 
+namespace
+{
+
+// Level 7's search over the whole block (level 6's: 1% larger, a quarter faster).
+Lz77Options lzt_options(std::size_t block_size)
+{
+    Lz77Options options = lz77_options_for_level(auto_level);
+    options.window = std::max(lz77_window, block_size);
+    return options;
+}
+
+} // namespace
+
 EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
 {
     frequencies_ = {};
@@ -398,6 +412,9 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
             case Coder::tans:
                 tans_encode(input, stream);
                 break;
+            case Coder::lzt:
+                stream = lzt_encode(input, lzt_options(input.size()));
+                break;
             case Coder::lz77_dictionary_codes:
                 stream = deflate_with_codes(input, dictionary, lz77_options_for_level(level_),
                                             *dictionary_->codes);
@@ -481,6 +498,17 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
             {
                 best_pipeline = std::move(order0);
                 best_transform = &transform;
+            }
+        }
+        // LZT, at auto_level only: its whole-block search made level 6 3.7x slower to encode, and
+        // from bwt_level BWT and LZR beat it. Like CM, only twice.
+        if (level_ == auto_level)
+        {
+            const Transform* const transform = best_transform;
+            consider(nullptr, Coder::lzt);
+            if (transform != nullptr)
+            {
+                consider(transform, Coder::lzt);
             }
         }
         // Context mixing is slow, so only twice.
@@ -639,6 +667,10 @@ std::expected<void, Error> Engine::decode_pipeline(const EncodedBlock& block,
     else if (payload[0] == static_cast<uint8_t>(Coder::tans))
     {
         decoded = tans_decode(payload.subspan(1), block.size_, out);
+    }
+    else if (payload[0] == static_cast<uint8_t>(Coder::lzt))
+    {
+        decoded = lzt_decode(payload.subspan(1), out, block.size_);
     }
     else if (payload[0] == static_cast<uint8_t>(Coder::lz77_huffman_dictionary) ||
              payload[0] == static_cast<uint8_t>(Coder::lzr_dictionary) ||

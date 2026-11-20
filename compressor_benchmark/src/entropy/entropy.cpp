@@ -13,8 +13,12 @@
 
 #include <benchmark/benchmark.h>
 
+#include <compressor/deflate/deflate.h>
 #include <compressor/entropy/rans.h>
 #include <compressor/entropy/tans.h>
+#include <compressor/lz77/lz77.h>
+#include <compressor/lzr/lzr.h>
+#include <compressor/lzt/lzt.h>
 #include <compressor/transform/transform.h>
 
 namespace compressor::bench
@@ -115,6 +119,45 @@ void order0(::benchmark::State& state, const fs::path& path, unsigned stride, Co
     state.counters["size"] = static_cast<double>(size);
 }
 
+// Per 1 MiB block: LZT's size and decoding speed against LZ77 + Huffman (Deflate) and LZR.
+void lzt_against_others(::benchmark::State& state, const fs::path& path, unsigned level)
+{
+    const std::vector<uint8_t> data = read_file(path);
+    const Lz77Options options = lz77_options_for_level(level);
+    std::vector<std::vector<uint8_t>> coded;
+    std::size_t size = 0;
+    std::size_t deflate = 0;
+    std::size_t lzr = 0;
+    for (std::size_t at = 0; at < data.size(); at += block)
+    {
+        const std::span<const uint8_t> input(data.data() + at, std::min(data.size() - at, block));
+        coded.push_back(lzt_encode(input, options));
+        size += coded.back().size();
+        deflate += deflate_bytes(input, options).size();
+        lzr += lzr_encode(input, lz77_options_for_level(7)).size();
+        std::vector<uint8_t> decoded;
+        if (!lzt_decode(coded.back(), decoded, input.size()) || !std::ranges::equal(decoded, input))
+        {
+            state.SkipWithError("LZT did not decode to the input");
+            return;
+        }
+    }
+    std::vector<uint8_t> decoded;
+    for (auto _ : state)
+    {
+        for (std::size_t i = 0; i < coded.size(); ++i)
+        {
+            decoded.clear();
+            ::benchmark::DoNotOptimize(
+                lzt_decode(coded[i], decoded, std::min(data.size() - (i * block), block)));
+        }
+    }
+    state.SetBytesProcessed(state.iterations() * static_cast<int64_t>(data.size()));
+    state.counters["lzt"] = static_cast<double>(size);
+    state.counters["deflate"] = static_cast<double>(deflate);
+    state.counters["lzr"] = static_cast<double>(lzr);
+}
+
 } // namespace
 
 void register_entropy_benchmarks()
@@ -125,6 +168,17 @@ void register_entropy_benchmarks()
         unsigned stride;
     };
     const fs::path silesia = fs::path(COMPRESSOR_CORPUS_DIR) / "silesia";
+    for (const char* name : {"dickens", "mozilla", "mr", "nci", "ooffice", "osdb", "reymont",
+                             "samba", "sao", "webster", "x-ray", "xml"})
+    {
+        if (fs::exists(silesia / name))
+        {
+            ::benchmark::RegisterBenchmark(std::string("Lzt/") + name, lzt_against_others,
+                                           silesia / name, 6U)
+                ->Unit(::benchmark::kMillisecond)
+                ->Iterations(3);
+        }
+    }
     for (const Input input :
          {Input{.name = "dickens", .stride = 0}, Input{.name = "x-ray", .stride = 2},
           Input{.name = "mr", .stride = 1}, Input{.name = "sao", .stride = 4},

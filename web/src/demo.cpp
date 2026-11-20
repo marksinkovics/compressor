@@ -46,6 +46,8 @@ std::string coder_name(uint8_t coder)
         return "BWT + CM";
     case compressor::Coder::tans:
         return "tANS";
+    case compressor::Coder::lzt:
+        return "LZT (LZ77 + tANS)";
     case compressor::Coder::lz77_huffman_dictionary:
     case compressor::Coder::lzr_dictionary:
     case compressor::Coder::cm_dictionary:

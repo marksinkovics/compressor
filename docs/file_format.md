@@ -34,7 +34,7 @@ A pipeline block's payload starts with a descriptor naming what was done to the 
 |---:|---|
 | 1 | Transform count `n`, at most 4. Each transform turns bytes into bytes; decoding undoes them last to first |
 | 5 × n | Each transform: id, then a 4-byte parameter (see below) |
-| 1 | Coder: 2 = LZ77 + Huffman, 3 = BWT, 4 = rANS, 5 = LZR, 6 = CM, 7 = BWT + CM, 8 = tANS, 9 = LZ77 + Huffman with a dictionary, 10 = LZR with a dictionary, 11 = CM with a dictionary, 12 = LZ77 with the dictionary's codes. Others are reserved |
+| 1 | Coder: 2 = LZ77 + Huffman, 3 = BWT, 4 = rANS, 5 = LZR, 6 = CM, 7 = BWT + CM, 8 = tANS, 9 = LZ77 + Huffman with a dictionary, 10 = LZR with a dictionary, 11 = CM with a dictionary, 12 = LZ77 with the dictionary's codes, 13 = LZT. Others are reserved |
 | rest | The coder's output |
 
 Transforms (`compressor/include/compressor/transform/transform.h`); positions count from the start of the block:
@@ -74,6 +74,17 @@ BWT + CM (coder 7, `bwt_cm_encode()` in `compressor/src/compressor/cm/cm.cpp`), 
 - One mixer, selected by a run bucket (no prediction, run under 4, under 16, longer) and the partial byte, rate 2; then an APM over the same context, averaged with the mixer's output as `(p + apm + 1) / 2`.
 
 Decoding needs about 5 MiB of tables plus the inverse BWT's five times the block size.
+
+LZT (coder 13, `compressor/src/compressor/lzt/lzt.cpp`), LZ77 coded the way zstd codes sequences. A sequence is a run of literals followed by a match (at least 3 bytes); literals after the last match end the block. The payload:
+
+| Field | Contents |
+|---|---|
+| varint | Sequence count `n` (LEB128, as all varints here) |
+| varint | Literal count |
+| 4 streams | Each a varint byte length, then that many bytes of tANS (see "tANS"; nothing for no symbols): the literals; then per sequence the literal-run code, the match-length code, the offset code |
+| rest | Extra bits, least significant bit first, per sequence those of its literal run, match length and offset in that order; zero bits to a byte, nothing after |
+
+A literal run `r` or a match length minus 3 `v` is coded as itself below 16; above, with `t = floor(log2 v)`, as `16 + 2(t − 4) + (the bit below the top one)`, with the `t − 1` lower bits as extra bits. An offset code is 0 for the last sequence's offset again (an error in the first sequence); otherwise `1 + floor(log2 offset)`, with the bits below the top one as extra bits. Offsets reach anywhere before in the block. The encoder uses level 7's match search over the whole block and tries LZT at level 7 only, raw and with the best pipeline's transform.
 
 rANS (coder 4) is the transformed bytes themselves, rANS-coded over an alphabet of 256. tANS (coder 8) is the same with tANS (below). The encoder only tries them after a transform, where they win on noisy samples such as Silesia's x-ray after a delta, and takes rANS only when it is more than 0.5% smaller than tANS, which decodes about twice as fast.
 

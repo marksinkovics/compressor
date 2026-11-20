@@ -75,6 +75,7 @@ enum class Coder : uint8_t
     // The dictionary's id, then Deflate tokens coded with the dictionary's codes, no block header
     // (deflate_with_codes()).
     lz77_dictionary_codes = 12,
+    lzt = 13, // LZ77 over the block, sequences coded with tANS (lzt_encode())
 };
 inline constexpr std::size_t pipeline_descriptor_bytes = 2; // with no transforms
 inline constexpr std::size_t pipeline_transform_bytes = 5;  // id, then a 4-byte parameter

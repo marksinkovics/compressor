@@ -27,6 +27,7 @@
 #include <compressor/entropy/tans.h>
 #include <compressor/lz77/lz77.h>
 #include <compressor/lzr/lzr.h>
+#include <compressor/lzt/lzt.h>
 #include <compressor/stream/decoder.h>
 #include <compressor/stream/encoder.h>
 
@@ -217,6 +218,13 @@ std::string with_coder(const std::string& input, compressor::Coder coder)
         case compressor::Coder::bwt_cm:
             coded = compressor::bwt_cm_encode(bytes);
             break;
+        case compressor::Coder::lzt:
+        {
+            compressor::Lz77Options options = compressor::lz77_options_for_level(7);
+            options.window = bytes.size();
+            coded = compressor::lzt_encode(bytes, options);
+            break;
+        }
         case compressor::Coder::lzr_dictionary:
         case compressor::Coder::cm_dictionary:
         case compressor::Coder::lz77_dictionary_codes:
@@ -352,6 +360,7 @@ try
     write(dir / "container" / "coder4.ingot", with_coder(text(6000), compressor::Coder::rans));
     write(dir / "container" / "coder7.ingot", with_coder(words(6000), compressor::Coder::bwt_cm));
     write(dir / "container" / "coder8.ingot", with_coder(text(6000), compressor::Coder::tans));
+    write(dir / "container" / "coder13.ingot", with_coder(words(9000), compressor::Coder::lzt));
     {
         // A single-block frame, as files encoded with a dictionary get.
         compressor::BlockEncoder encoder([] {

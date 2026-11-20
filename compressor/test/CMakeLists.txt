@@ -22,6 +22,7 @@ set(SRC_FILES
     "${SRC_DIR}/fmindex/fmindex.cpp"
     "${SRC_DIR}/huffman/huffman.cpp"
     "${SRC_DIR}/lzr/lzr.cpp"
+    "${SRC_DIR}/lzt/lzt.cpp"
     "${SRC_DIR}/tree/binary/node.cpp"
     "${SRC_DIR}/tree/binary/tree.cpp"
     "${SRC_DIR}/tree/binary/nodeiterator.cpp"

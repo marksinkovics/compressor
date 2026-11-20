@@ -550,3 +550,22 @@ Level 9 with a dictionary is now 6% and 13% smaller than zstd's best with its ow
 | `portfile.cmake`, level 9 | 553,260 | 389,448 | 368,429 (−33.4%) | 448,945 |
 
 With these, the codes alone took `vcpkg.json` at level 6 from 232,583 to 212,410 and the frame the rest. Level 9 with a dictionary is 18% below `zstd -19 -D` on both; level 6, which decodes about as fast as zstd, is 11% and 16% above it.
+
+## LZT coder (2026-11-20)
+
+Autonomous run 4, item 3: LZ77 over the whole block with sequences coded by tANS, zstd's way (coder 13). Per 1 MiB block of Silesia (`compressor_benchmark --benchmark_filter=Lzt/`, level 6's match search): 5.1% smaller than LZ77 + Huffman with the same search, 9.0% larger than LZR, and decoding at 130–1100 MiB/s on one thread (LZR about 50 MB/s).
+
+Where it competes, Silesia as one tar, 6 threads, best of 2–3 runs under some background load:
+
+| | size | encode | decode, 1 thread |
+| --- | ---: | ---: | ---: |
+| level 6 without LZT | 66,639,224 | 2.6 s | 1.03 s |
+| level 6 with LZT (whole block) | 63,496,943 (−4.7%) | 10.2 s | 0.53 s |
+| level 6 with LZT (32 KiB window) | 66,256,494 (−0.6%) | 4.9 s | 0.67 s |
+| level 7 before | 66,220,735 | 4.8 s | 1.01 s |
+| level 7 with LZT (tried 4×) | 62,737,988 (−5.3%) | 25.2 s | 0.54 s |
+| level 7 with LZT (tried 2×, kept) | 62,737,997 (−5.3%) | 16.8 s | 0.52 s |
+| level 7 with LZT, level 6's search | 63,345,687 (−4.3%) | 12.2 s | 0.55 s |
+| level 8 with LZT | 54,084,255 (−38 bytes) | 47.8 s (was 29.2) | 3.63 s |
+
+So LZT competes at level 7 only: level 6 stays as fast to encode as before, level 8 and up have BWT, LZR and CM, which beat it. Level 7 is now 5.3% smaller than before and decodes twice as fast, for 3.5× the encode time. It still loses to `zstd -19` on Silesia (52.8 MB at 15 MB/s on 6 threads, decoding at 1.1 GB/s): our match search stops at 258 bytes and our literals are order-0.

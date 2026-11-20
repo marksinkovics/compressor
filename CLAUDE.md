@@ -27,8 +27,8 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 - Zip64 is done: zip archives with files over 4 GiB or more than 65 535 entries; 347/347 pass.
 - Autonomous run 2 (list at the end of `docs/roadmap.md`, same branch, Claude commits): item 1, multithreaded Deflate (`-f gzip`/`-f zip` take `-T` and `-L`), item 2, the CM coder (coder 6 at level 9, 11.4% below level 8 on Silesia), and item 4, the 2-D median image predictor (transform 5), are done; item 3 (`grep` prefilter) was skipped as not worth it; 360/360 pass. Run 2 is finished.
 - Autonomous run 3 (list at the end of `docs/roadmap.md`, same branch, Claude commits): item 1, the rename (the program is `ingot`, in `ingot/`; libraries keep `compressor`), item 2, `tools/compare.py` against gzip, zstd, xz, bzip2, brotli with history in `docs/benchmarks/history/`, item 3, BWT + CM (coder 7, level 9) and tANS (coder 8), item 4, dictionaries (`ingot train`, `-D`, coders 9 and 10), item 5, the `ingot` Python module (`python/`, preset `python`), and item 6, the WebAssembly demo (`web/`, `tools/web.sh`, emsdk in `build/emsdk`), are done; 382/382 pass (383 with `python`). Run 3 is finished.
-- Autonomous run 4 (list at the end of `docs/roadmap.md`, same branch, Claude commits): item 1, dictionary follow-ups (CM primed, coder 11; codes in the dictionary, coder 12; single-block frames for `-D`; `stats -D`), and item 2, Python follow-ups (a wheel per build, `ingot.Compressor`/`Decompressor`, `list`/`read`/`extract`), are done; 388/388 pass (390 with `python`).
-- **Next:** run 4 item 3, coders: zstd-style LZ77 + tANS, then PPM.
+- Autonomous run 4 (list at the end of `docs/roadmap.md`, same branch, Claude commits): item 1, dictionary follow-ups (CM primed, coder 11; codes in the dictionary, coder 12; single-block frames for `-D`; `stats -D`), and item 2, Python follow-ups (a wheel per build, `ingot.Compressor`/`Decompressor`, `list`/`read`/`extract`), are done; item 3's LZT (coder 13, LZ77 + tANS at level 7) is done; 394/394 pass (396 with `python`).
+- **Next:** run 4 item 3, PPM.
 
 ## Commands
 

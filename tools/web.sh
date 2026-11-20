@@ -33,6 +33,7 @@ SOURCES=(
     compressor/src/compressor/huffman/huffman.cpp
     compressor/src/compressor/lz77/lz77.cpp
     compressor/src/compressor/lzr/lzr.cpp
+    compressor/src/compressor/lzt/lzt.cpp
     compressor/src/compressor/thread/pool.cpp
     compressor/src/compressor/transform/transform.cpp
     compressor/src/compressor/tree/binary/node.cpp
