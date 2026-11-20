@@ -400,3 +400,25 @@ Existing examples: macOS compressed memory, Linux zram and zswap, Windows memory
 Not scheduled: the macFUSE mount, the read-only compressed file system image and the compressed-memory experiments.
 
 The benchmark harness and fuzzing can be added alongside any of these steps.
+
+### Autonomous run (agreed 2026-11-19)
+
+Claude works through this list on branch `feat/autonomous-run` without stopping: one or more commits per item (Angular style, no co-author line, never pushed), each after the full `tools/quality.sh check` (clang-tidy included), the full test suite and the `finish-step` docs update. A blocked item gets a note in `docs/handover.md` and the run moves to the next independent item.
+
+Decisions taken for the pipeline (Claude's defaults, accepted): each block records a small pipeline descriptor in its header and the format version becomes 2, with version 1 still readable; blocks stay independent (no matches into earlier blocks); compression levels `-1` (fast) to `-9` (best), the auto mode at the higher levels; decoding a block needs at most about twice the block size. An algorithm that loses its benchmarks stays in the code only if it wins on some data type; otherwise the result is recorded and the code removed. Data-type order: images, audio, then CSV and logs.
+
+- [ ] 0. Branch, commit the clang-tidy hook change and this plan.
+- [ ] 1. `stats` (folder compression step 3): size, ratio, entropy, byte histogram, stored/Huffman split per block; `--graph` writes the Huffman tree as Graphviz.
+- [ ] 2. Fuzzing the decoder: libFuzzer targets (Homebrew llvm) for the container reader, the archive index and extraction, seeded from the samples, with a short run under ctest; every crash fixed with a regression test.
+- [ ] 3. Deduplication: identical files stored once and pointing back at the first copy's data; index rules, docs and extraction updated.
+- [ ] 4. zgrep-style search: `grep PATTERN INPUT [PATH...]` over a plain file or an archive, streaming, matches across block boundaries, `path:line:text`, `-c`, `-l`, `-b`; fixed strings first.
+- [ ] 5. Block index search: with paths, decode only their blocks; search blocks in parallel with an overlap of pattern length - 1 at the edges; benchmarked.
+- [ ] 6. Search without decompressing (experiment): match the Huffman-encoded pattern in the bit stream, resynchronising at code boundaries; checked against item 4, kept as a command only if it is faster.
+- [ ] 7. Known issue: interleave the ARM CRC32 loop into 3 chains, kept only if `tools/bench.sh` shows a gain.
+- [ ] 8. Known issue: file output speed with threads; profile with `bench-cli.sh`, keep only measured wins.
+- [ ] 9. Deflate: hash-chain LZ77 matcher (32 KB window), Deflate encoder with our length-limited canonical Huffman, `encode --gzip` (file) and `encode --zip` (folder); every output checked with zlib, by hand with `gunzip`/`unzip`; benchmarked against `gzip`.
+- [ ] 10. Pluggable pipeline (format version 2, as decided above) with LZ77 + Huffman as the first new pipeline, and compression levels.
+- [ ] 11. Auto mode: try several pipelines per block at the higher levels and keep the smallest.
+- [ ] 12. Transforms for data types: corpus (PPM/BMP, WAV, CSV/logs), delta with strides 1/2/4, PNG row filters, an x86/ARM branch filter; detection from known headers, else trying strides on a sample; benchmarked per type.
+- [ ] 13. Advanced algorithms, each a pipeline: tANS/rANS, adaptive arithmetic coding, BWT + MTF + RLE, Zstd-style LZ77 + tANS, LZMA-style LZ77 + context-modelled range coder, then PPM and context mixing as experiments.
+- [ ] 14. FM-index on the BWT from item 13, stored as its own archive section, with a search command using it.

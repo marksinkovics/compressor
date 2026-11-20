@@ -83,7 +83,7 @@ Tests for known bugs are added with a `DISABLED_` prefix until the fix lands. Ru
 
 ## Code quality
 
-Formatting and linting run through `tools/quality.sh`, with one stage per tool: `clang-format`, `clang-tidy`, `shellcheck` and `shfmt`. A pre-commit hook runs each stage on every commit.
+Formatting and linting run through `tools/quality.sh`, with one stage per tool: `clang-format`, `clang-tidy`, `shellcheck` and `shfmt`. Pre-commit hooks run every stage but clang-tidy on each commit; clang-tidy is slow, so it runs in the full `tools/quality.sh check` at the end of each step.
 
 ### Setup
 
@@ -111,16 +111,16 @@ tools/quality.sh stages                       # list the stage names
 ```
 
 - Files are the tracked and new, not ignored files (`git ls-files`), so `build/` is skipped. C++ means `*.cpp *.h *.hpp`; shell means `*.sh`.
-- With `-- file...`, clang-tidy checks only the sources that include those files, using `ninja -t deps`. A full run takes about 30 s.
+- With `-- file...`, clang-tidy checks only the sources that include those files, using `ninja -t deps`. A full run takes about 2.5 minutes.
 - Settings live in `.clang-format`, `.clang-tidy` (plus a nested one in `compressor_benchmark/`), `.shellcheckrc` and `.editorconfig` (shfmt reads its options from there).
 
 ### pre-commit hooks
 
-`.pre-commit-config.yaml` runs the generic `pre-commit-hooks` checks (whitespace, final newline, line endings, YAML/JSON, merge conflicts, large files, private keys) and one local hook per `quality.sh` stage. Each hook runs only when the commit touches its files; clang-tidy checks the sources the staged files affect, the other stages the whole tree.
+`.pre-commit-config.yaml` runs the generic `pre-commit-hooks` checks (whitespace, final newline, line endings, YAML/JSON, merge conflicts, large files, private keys) and one local hook per `quality.sh` stage. Each hook runs only when the commit touches its files and checks the whole tree. The clang-tidy hook is in the `manual` stage, so commits skip it; run it by hand, where it checks the sources the given files affect.
 
 ```bash
-pre-commit run --all-files    # every hook on the whole tree
-pre-commit run clang-tidy --files compressor/include/compressor/huffman/huffman.h
+pre-commit run --all-files    # every commit hook on the whole tree (clang-tidy skipped)
+pre-commit run --hook-stage manual clang-tidy --files compressor/include/compressor/huffman/huffman.h
 ```
 
 ### Claude Code format hook

@@ -9,6 +9,7 @@ The user clears the conversation between steps. The next session must be able to
 
 ## 1. Check it is really done
 
+- Run the full `bash tools/quality.sh check`, clang-tidy included (the commit hook skips clang-tidy, so this is where it runs).
 - Build and run the tests (`ctest`, or the presets once Phase 3 adds them). If something wasn't run or is failing, say so and don't mark the step done.
 - Anything left out or found along the way goes into `docs/roadmap.md`: a new known issue, or a note in the relevant phase.
 

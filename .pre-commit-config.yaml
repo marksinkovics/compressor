@@ -6,8 +6,9 @@ exclude: ^compressor_example/samples/
 
 # Each quality.sh stage is its own hook, so a commit shows which one runs, fails or takes the
 # time, and skips the ones whose files it does not touch. `verbose` makes pre-commit print each
-# hook's duration. clang-tidy gets the staged files and checks the sources they affect, headers
-# included; the other checks are fast and cover the whole tree.
+# hook's duration. The checks that run on commit are fast and cover the whole tree. clang-tidy
+# takes minutes, so it is manual: it runs at the end of each step (finish-step skill) or with
+# `pre-commit run --hook-stage manual clang-tidy`, and checks the sources the files affect.
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
@@ -40,6 +41,7 @@ repos:
         entry: bash tools/quality.sh check clang-tidy --
         language: system
         require_serial: true
+        stages: [manual]
         files: (\.(cpp|h|hpp)|\.clang-tidy|CMakeLists\.txt|\.cmake)$
         verbose: true
       - id: shellcheck
