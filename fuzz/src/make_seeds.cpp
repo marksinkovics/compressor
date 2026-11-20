@@ -150,7 +150,7 @@ std::string encode(const std::string& input, unsigned level = 6)
     return out.str();
 }
 
-std::string archive(const fs::path& scratch)
+std::string archive(const fs::path& scratch, bool search_index = false)
 {
     fs::remove_all(scratch);
     fs::create_directories(scratch / "docs" / "deep");
@@ -175,7 +175,7 @@ std::string archive(const fs::path& scratch)
     const auto entries = compressor::scan_tree(scratch, {}, warnings);
     auto encoder = make_encoder();
     std::ostringstream out;
-    if (!entries || !compressor::write_archive(encoder, scratch, *entries, out))
+    if (!entries || !compressor::write_archive(encoder, scratch, *entries, out, search_index))
     {
         std::cerr << "archiving failed\n";
         std::exit(1);
@@ -226,6 +226,7 @@ try
     write(dir / "container" / "empty.ingot", empty);
     write(dir / "container" / "archive.ingot", folder);
     write(dir / "archive" / "archive.ingot", folder);
+    write(dir / "archive" / "indexed.ingot", archive(dir / ".scratch", true));
     write(dir / "archive" / "text.ingot", plain);
     write(dir / "stats" / "text.ingot", plain);
     write(dir / "stats" / "archive.ingot", folder);

@@ -435,3 +435,25 @@ TEST_F(CLITests, A_level_outside_1_to_9_fails)
             << level;
     }
 }
+
+TEST_F(CLITests, Search_passes_the_pattern_archive_and_count)
+{
+    EXPECT_CALL(*compressor_, search(fs::path(input_), "needle", true))
+        .WillOnce(Return(compressor::SearchResult::not_matched));
+    EXPECT_EQ(run({"search", "-c", "needle", input_}), 1);
+}
+
+TEST_F(CLITests, Encode_passes_the_search_index_flag)
+{
+    std::optional<bool> search_index;
+    compressor::CLI cli([&](const compressor::CompressorSettings& settings) {
+        search_index = settings.search_index;
+        auto mock = std::make_unique<MockICompressor>();
+        EXPECT_CALL(*mock, encode(::testing::_, ::testing::_)).WillOnce(Return(true));
+        return mock;
+    }, out_, err_);
+    const std::vector<const char*> args{"compressor_app", "encode", "--search-index", "-i",
+                                        input_.c_str(),   "-o",     output_.c_str()};
+    EXPECT_EQ(cli.run(args), EXIT_SUCCESS);
+    EXPECT_EQ(search_index, true);
+}

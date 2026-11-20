@@ -32,10 +32,12 @@ std::expected<std::vector<Entry>, Failure> scan_tree(const std::filesystem::path
                                                      const std::filesystem::path& exclude,
                                                      std::ostream& warnings);
 
-// The container with the archive flag, the files' bytes back to back as its data, and the index.
+// The container with the archive flag, the files' bytes back to back as its data, and the index;
+// with `search_index`, an FM-index section after it (fmindex/fmindex.h), built from the same read.
 std::expected<void, Failure> write_archive(IBlockEncoder& encoder,
                                            const std::filesystem::path& root,
-                                           std::vector<Entry> entries, std::ostream& out);
+                                           std::vector<Entry> entries, std::ostream& out,
+                                           bool search_index = false);
 
 // Reads the header of `in` and puts the stream back at its start.
 bool is_archive(std::istream& in);

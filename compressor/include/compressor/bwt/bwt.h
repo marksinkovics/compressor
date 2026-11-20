@@ -31,6 +31,14 @@ std::vector<uint8_t> bwt_encode(std::span<const uint8_t> bytes);
 std::expected<void, Error> bwt_decode(std::span<const uint8_t> payload, std::vector<uint8_t>& out,
                                       std::size_t size);
 
+// The coder's two halves around the transform, for the FM-index (fmindex/), which stores a BWT it
+// computed itself and searches it without inverting it.
+std::vector<uint8_t> bwt_encode_transformed(std::span<const uint8_t> transformed, uint32_t primary);
+// Fills `transformed` with `size` bytes and returns the primary index.
+std::expected<uint32_t, Error> bwt_decode_transformed(std::span<const uint8_t> payload,
+                                                      std::vector<uint8_t>& transformed,
+                                                      std::size_t size);
+
 } // namespace compressor
 
 #endif /* Bwt_h */

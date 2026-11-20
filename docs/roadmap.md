@@ -358,7 +358,8 @@ Layout decided under "Decisions" (solid blocks plus an index); format in [file_f
 - [x] **Block index search (done, autonomous run item 5):** `grep … PATH...` decodes only the blocks of those files (through `visit_files()`, item 4). `LineSearcher::feed` now looks for the pattern in each decoded piece first and for line boundaries only around a match, so most bytes are only counted for newlines: a search with no match went from 131 to 98 ms on archived Silesia, the speed of `verify` (103 ms). Searching blocks in parallel was therefore not built (`docs/benchmarks.md`, "Search"). New test: `SearchTests.Random_text_matches_a_line_by_line_search_for_any_pieces`.
 - [x] **Search without decompressing (experiment done, autonomous run item 6):** `compressor_benchmark`'s `Search/BitScan` encodes the pattern with each block's code and scans the payload at every bit offset; `Search/DecodeAndFind` decodes and searches. The scan finds candidates about 4× faster per core, with no false candidates from about 8 characters on (`docs/benchmarks.md`, "Search without decompressing"). Not a command: exact `grep` output needs data from the blocks it would skip.
 - [ ] **Compressed-domain prefilter (follow-up):** skip decoding blocks with no BitScan candidates. Needs: each block's newline count stored in the archive (line numbers without decoding), decoding just the start of the next block to catch matches across a block boundary (then the whole block before it if the start begins with a proper suffix of the pattern), and a decode of the blocks between two matches when `-c` must know whether they share a line. `-l` needs only the boundary part. Worth it for rare patterns: about 4× less CPU.
-- [ ] **FM-index:** BWT-based full-text index whose search time doesn't depend on the file size.
+- [ ] **Search index in place (follow-up):** store each chunk's BWT uncompressed with rank blocks (or a wavelet tree) and read it with `mmap`, so a query costs O(pattern length + matches) instead of loading the index; build chunks on the thread pool while archiving (now 13× the encode time).
+- [x] **FM-index** (done, autonomous run item 14): `encode --search-index` adds an FM-index section after a folder archive (frame flag bit 1; `fmindex/fmindex.{h,cpp}`: `FmIndexBuilder` fed from the same read as the archive, 1 MiB chunks overlapping by 4 KiB, each its BWT in the BWT coder's format plus every 64th suffix position; `read_search_index()`, `fm_find()` on the thread pool), and `compressor_app search [-c] PATTERN ARCHIVE` prints `path:offset` (`FmIndexTests` against a plain search, `CompressorArchiveCommandTests.Search_*`, `CLITests.Search_*`; `verify` checks the section; `fuzz_archive` searches indexed archives). Exact, but slower than `grep` (194 against 98 ms on Silesia) because every query loads the whole index, the archive grows 147% and encoding takes 13× (`docs/benchmarks.md`, "Search index"). Kept as an opt-in feature; see the follow-up. Was: **FM-index:** BWT-based full-text index whose search time doesn't depend on the file size.
 - [ ] **macFUSE mount** (skipped for now), so `grep`, `rg` and Finder work on an archive unchanged.
 
 ### Data other than text
@@ -399,9 +400,9 @@ Existing examples: macOS compressed memory, Linux zram and zswap, Windows memory
 4. Folder support: done (steps 1–3 and deduplication).
 5. An LZ77 pipeline next to Huffman (done: format version 2, levels; from "Algorithms": the pluggable pipeline, transforms such as RLE, MTF and BWT, LZ77/LZW, other entropy coders, an auto mode, pre-trained dictionaries).
 6. A Deflate encoder, so the output is valid `.gz` and `.zip` (done).
-7. Search inside compressed data: jumping to the right block through the block index, zgrep-style search, search without decompressing, an FM-index. The macFUSE mount is skipped for now.
+7. Search inside compressed data: jumping to the right block through the block index, zgrep-style search, search without decompressing, an FM-index (all done; see the follow-ups). The macFUSE mount is skipped for now.
 8. Transforms for specific data types ("Data other than text") (done).
-9. Other advanced compression algorithms, with or without Huffman ("Algorithms").
+9. Other advanced compression algorithms, with or without Huffman ("Algorithms") (done: BWT, rANS, LZR).
 
 Not scheduled: the macFUSE mount, the read-only compressed file system image and the compressed-memory experiments.
 
@@ -427,4 +428,4 @@ Decisions taken for the pipeline (Claude's defaults, accepted): each block recor
 - [x] 11. (done with 12) Auto mode: try several pipelines per block at the higher levels and keep the smallest.
 - [x] 12. (done) Transforms for data types: corpus (PPM/BMP, WAV, CSV/logs), delta with strides 1/2/4, PNG row filters, an x86/ARM branch filter; detection from known headers, else trying strides on a sample; benchmarked per type.
 - [x] 13. (done: BWT, rANS, LZR as coders; context mixing as an experiment that wins only on x-ray; Zstd-style tANS and PPM not done, see "Algorithms") Advanced algorithms, each a pipeline: tANS/rANS, adaptive arithmetic coding, BWT + MTF + RLE, Zstd-style LZ77 + tANS, LZMA-style LZ77 + context-modelled range coder, then PPM and context mixing as experiments.
-- [ ] 14. FM-index on the BWT from item 13, stored as its own archive section, with a search command using it.
+- [x] 14. (done; exact but slower than grep, see the roadmap follow-up) FM-index on the BWT from item 13, stored as its own archive section, with a search command using it.

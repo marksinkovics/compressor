@@ -601,3 +601,48 @@ TEST_F(CompressorArchiveCommandTests, Gzip_needs_a_file_and_zip_a_folder)
     EXPECT_FALSE(fs::exists(dir_ / "x.gz"));
     EXPECT_FALSE(fs::exists(dir_ / "x.zip"));
 }
+
+TEST_F(CompressorArchiveCommandTests, Search_finds_offsets_through_the_search_index)
+{
+    using compressor::SearchResult;
+    const fs::path indexed = dir_ / "indexed.ingot";
+    compressor::Compressor writer(std::make_unique<compressor::BlockEncoder>(),
+                                  std::make_unique<compressor::BlockDecoder>(),
+                                  {.in = in_, .out = out_, .err = err_}, true);
+    ASSERT_TRUE(writer.encode(folder_, indexed)) << err_.str();
+
+    EXPECT_EQ(make_compressor().search(indexed, "lph", false), SearchResult::matched) << err_.str();
+    EXPECT_EQ(out_.str(), "a.txt:1\n");
+    out_.str("");
+    EXPECT_EQ(make_compressor().search(indexed, "bbbb", true), SearchResult::matched);
+    EXPECT_EQ(out_.str(), "sub/b.txt:9997\n");
+    out_.str("");
+    EXPECT_EQ(make_compressor().search(indexed, "absent", false), SearchResult::not_matched);
+    EXPECT_EQ(out_.str(), "");
+
+    EXPECT_TRUE(make_compressor().verify(indexed)) << err_.str();
+    ASSERT_TRUE(make_compressor().decode(indexed, extracted_)) << err_.str();
+    EXPECT_EQ(read_file(extracted_ / "a.txt"), "alpha");
+}
+
+TEST_F(CompressorArchiveCommandTests, Search_needs_a_search_index)
+{
+    EXPECT_EQ(make_compressor().search(archive_, "a", false), compressor::SearchResult::failed);
+    EXPECT_THAT(err_.str(), HasSubstr("no search index"));
+}
+
+TEST_F(CompressorArchiveCommandTests, A_damaged_search_index_fails_verify)
+{
+    const fs::path indexed = dir_ / "indexed.ingot";
+    compressor::Compressor writer(std::make_unique<compressor::BlockEncoder>(),
+                                  std::make_unique<compressor::BlockDecoder>(),
+                                  {.in = in_, .out = out_, .err = err_}, true);
+    ASSERT_TRUE(writer.encode(folder_, indexed));
+    std::string bytes = read_file(indexed);
+    bytes[bytes.size() - 30] =
+        static_cast<char>(static_cast<uint8_t>(bytes[bytes.size() - 30]) ^ 1U);
+    write_file(indexed, bytes);
+
+    EXPECT_FALSE(make_compressor().verify(indexed));
+    EXPECT_THAT(err_.str(), HasSubstr("search index"));
+}

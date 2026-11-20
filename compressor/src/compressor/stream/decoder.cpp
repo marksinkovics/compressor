@@ -75,7 +75,8 @@ std::expected<void, Error> BlockDecoder::decode_frame(std::istream& in, std::ost
     {
         return std::unexpected(header.error());
     }
-    if (reader.flags() != flags)
+    // A search index changes nothing about the blocks.
+    if ((reader.flags() & archive_flag) != (flags & archive_flag))
     {
         return std::unexpected((reader.flags() & archive_flag) != 0 ? Error::unexpected_archive
                                                                     : Error::corrupt_header);

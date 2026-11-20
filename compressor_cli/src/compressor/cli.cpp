@@ -25,6 +25,7 @@ struct Settings
     std::string path; // in an archive
     unsigned threads = 0;
     unsigned level = default_level;
+    bool search_index = false;
     bool details = false;
     StatsOptions stats;
     std::string graph;
@@ -115,12 +116,16 @@ int CLI::run(std::span<const char* const> args)
     Settings verify_settings;
     Settings stats_settings;
     Settings grep_settings;
+    Settings search_settings;
     auto* encode = add_command(app, "encode", "Compress a file or a folder", true, encode_settings);
     encode
         ->add_option("-L,--level", encode_settings.level,
                      "1: Huffman only, fastest; 2-9: also LZ77 + Huffman, searching longer "
                      "for matches the higher (default 6)")
         ->check(::CLI::Range(min_level, max_level));
+    encode->add_flag("--search-index", encode_settings.search_index,
+                     "For a folder archive: add an FM-index, so search finds patterns without "
+                     "decoding (slower to encode, larger)");
     encode
         ->add_option("-f,--format", encode_settings.format,
                      "ingot (default), gzip (a file) or zip (a folder)")
@@ -191,6 +196,16 @@ int CLI::run(std::span<const char* const> args)
                    "Print where each matching line starts in its file");
     add_threads(*grep, grep_settings);
 
+    auto* search = app.add_subcommand(
+        "search", "Find a fixed string in a folder archive through its search index, without "
+                  "decoding; prints path:offset. Exit code 0: found, 1: not, 2: an error");
+    search->add_option("pattern", search_settings.search.pattern, "Fixed string, 1 to 4096 bytes")
+        ->required();
+    search->add_option("-i,--input,archive", search_settings.input, "Folder archive file")
+        ->required()
+        ->check(::CLI::ExistingFile);
+    search->add_flag("-c,--count", search_settings.count, "Print each file's number of matches");
+
     try
     {
         app.parse(static_cast<int>(args.size()), args.data());
@@ -214,8 +229,9 @@ int CLI::run(std::span<const char* const> args)
 
     if (encode->parsed())
     {
-        const auto compressor =
-            make_compressor_({.threads = encode_settings.threads, .level = encode_settings.level});
+        const auto compressor = make_compressor_({.threads = encode_settings.threads,
+                                                  .level = encode_settings.level,
+                                                  .search_index = encode_settings.search_index});
         const bool encoded =
             encode_settings.format == "ingot"
                 ? compressor->encode(encode_settings.input, encode_settings.output)
@@ -250,6 +266,22 @@ int CLI::run(std::span<const char* const> args)
             make_compressor_({.threads = settings.threads, .level = settings.level});
         return finish(compressor->extract(settings.input, settings.path, output),
                       "Extracting " + settings.path + " from " + settings.input);
+    }
+    if (search->parsed())
+    {
+        const auto compressor = make_compressor_({.threads = 1, .level = default_level});
+        switch (compressor->search(search_settings.input, search_settings.search.pattern,
+                                   search_settings.count))
+        {
+        case SearchResult::matched:
+            return EXIT_SUCCESS;
+        case SearchResult::not_matched:
+            return 1;
+        case SearchResult::failed:
+            break;
+        }
+        err_ << "Searching " << search_settings.input << " failed\n";
+        return 2;
     }
     if (grep->parsed())
     {

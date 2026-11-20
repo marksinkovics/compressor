@@ -238,11 +238,11 @@ std::expected<void, Error> inverse_bwt(std::span<const uint8_t> transformed, uin
 namespace
 {
 
-// Undoes the zero runs and move-to-front, then the BWT.
-std::expected<void, Error> rebuild(std::span<const uint16_t> symbols, uint32_t primary,
-                                   std::vector<uint8_t>& out, std::size_t size)
+// Undoes the zero runs and move-to-front.
+std::expected<void, Error> undo_move_to_front(std::span<const uint16_t> symbols,
+                                              std::vector<uint8_t>& transformed, std::size_t size)
 {
-    std::vector<uint8_t> transformed;
+    transformed.clear();
     transformed.reserve(size);
     std::array<uint8_t, 256> order{};
     std::ranges::iota(order, uint8_t{0});
@@ -285,22 +285,32 @@ std::expected<void, Error> rebuild(std::span<const uint16_t> symbols, uint32_t p
     {
         return corrupt();
     }
-    return inverse_bwt(transformed, primary, out);
+    return {};
 }
 
-std::vector<uint16_t> front_end(std::span<const uint8_t> bytes, uint32_t& primary)
+std::expected<void, Error> rebuild(std::span<const uint16_t> symbols, uint32_t primary,
+                                   std::vector<uint8_t>& out, std::size_t size)
 {
     std::vector<uint8_t> transformed;
-    primary = forward_bwt(bytes, transformed);
-    return move_to_front(transformed);
+    if (auto undone = undo_move_to_front(symbols, transformed, size); !undone)
+    {
+        return undone;
+    }
+    return inverse_bwt(transformed, primary, out);
 }
 
 } // namespace
 
 std::vector<uint8_t> bwt_encode(std::span<const uint8_t> bytes)
 {
-    uint32_t primary = 0;
-    const std::vector<uint16_t> symbols = front_end(bytes, primary);
+    std::vector<uint8_t> transformed;
+    const uint32_t primary = forward_bwt(bytes, transformed);
+    return bwt_encode_transformed(transformed, primary);
+}
+
+std::vector<uint8_t> bwt_encode_transformed(std::span<const uint8_t> transformed, uint32_t primary)
+{
+    const std::vector<uint16_t> symbols = move_to_front(transformed);
     std::vector<uint8_t> out;
     put_le32(out, primary);
     put_le32(out, static_cast<uint32_t>(symbols.size()));
@@ -327,6 +337,32 @@ std::expected<void, Error> bwt_decode(std::span<const uint8_t> payload, std::vec
         return std::unexpected(symbols.error());
     }
     return rebuild(*symbols, primary, out, size);
+}
+
+std::expected<uint32_t, Error> bwt_decode_transformed(std::span<const uint8_t> payload,
+                                                      std::vector<uint8_t>& transformed,
+                                                      std::size_t size)
+{
+    if (payload.size() < 8)
+    {
+        return corrupt();
+    }
+    const uint32_t primary = get_le32(payload);
+    const uint32_t symbol_count = get_le32(payload.subspan(4));
+    if (symbol_count > size || primary > size || (size > 0 && primary == 0))
+    {
+        return corrupt();
+    }
+    auto symbols = rans_decode(payload.subspan(8), alphabet, symbol_count);
+    if (!symbols)
+    {
+        return std::unexpected(symbols.error());
+    }
+    if (auto undone = undo_move_to_front(*symbols, transformed, size); !undone)
+    {
+        return std::unexpected(undone.error());
+    }
+    return primary;
 }
 
 } // namespace compressor

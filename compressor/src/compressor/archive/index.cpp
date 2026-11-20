@@ -18,6 +18,7 @@
 #include <compressor/checksum/crc32.h>
 #include <compressor/data/data.h>
 #include <compressor/error.h>
+#include <compressor/fmindex/fmindex.h>
 
 namespace compressor
 {
@@ -287,8 +288,37 @@ std::expected<ArchiveInfo, Error> read_archive_index(std::istream& istream)
         return std::unexpected(Error::truncated);
     }
 
+    // With a search index, the archive ends where that section starts.
+    uint64_t archive_end = file_size;
+    std::optional<std::pair<uint64_t, uint64_t>> search_index;
+    if ((reader.flags() & search_index_flag) != 0)
+    {
+        std::array<uint8_t, search_trailer_bytes> search_trailer{};
+        if (file_size < search_trailer_bytes + trailer_bytes)
+        {
+            return std::unexpected(Error::truncated);
+        }
+        if (auto read = read_at(istream, file_size - search_trailer_bytes, search_trailer); !read)
+        {
+            return std::unexpected(read.error());
+        }
+        const uint64_t section = Cursor(search_trailer).get<8>();
+        if (!std::equal(search_index_magic.begin(), search_index_magic.end(),
+                        search_trailer.begin() + 12) ||
+            section > file_size - search_trailer_bytes || section < trailer_bytes)
+        {
+            return std::unexpected(Error::corrupt_index);
+        }
+        archive_end = section;
+        search_index = std::pair{section, file_size - search_trailer_bytes};
+    }
+    if (archive_end < frame_header_bytes + end_block_bytes + trailer_bytes)
+    {
+        return std::unexpected(Error::corrupt_index);
+    }
+
     std::array<uint8_t, trailer_bytes> trailer{};
-    if (auto read = read_at(istream, file_size - trailer_bytes, trailer); !read)
+    if (auto read = read_at(istream, archive_end - trailer_bytes, trailer); !read)
     {
         return std::unexpected(read.error());
     }
@@ -297,7 +327,7 @@ std::expected<ArchiveInfo, Error> read_archive_index(std::istream& istream)
     const auto index_crc = static_cast<uint32_t>(trailer_fields.get<4>());
     if (!std::equal(index_magic.begin(), index_magic.end(), trailer.begin() + 12) ||
         index_offset < frame_header_bytes + end_block_bytes ||
-        index_offset > file_size - trailer_bytes)
+        index_offset > archive_end - trailer_bytes)
     {
         return std::unexpected(Error::corrupt_index);
     }
@@ -314,9 +344,10 @@ std::expected<ArchiveInfo, Error> read_archive_index(std::istream& istream)
     ArchiveInfo info{.block_size_log2 = *block_size_log2,
                      .total_size = Cursor(std::span(end_block).subspan(1)).get<8>(),
                      .index_offset = index_offset,
-                     .index = {}};
+                     .index = {},
+                     .search_index = search_index};
 
-    std::vector<uint8_t> bytes(file_size - trailer_bytes - index_offset);
+    std::vector<uint8_t> bytes(archive_end - trailer_bytes - index_offset);
     if (auto read = read_at(istream, index_offset, bytes); !read)
     {
         return std::unexpected(read.error());

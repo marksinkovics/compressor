@@ -29,6 +29,7 @@
 #include <compressor/deflate/zip.h>
 #include <compressor/engine/engine.h>
 #include <compressor/error.h>
+#include <compressor/fmindex/fmindex.h>
 #include <compressor/search/search.h>
 #include <compressor/stats/stats.h>
 #include <compressor/stream/decoder.h>
@@ -437,17 +438,21 @@ Compressor::Compressor(CompressorSettings settings)
                      [level = settings.level] {
                          return std::make_unique<Engine>(default_block_size_log2, level);
                      }, default_block_size_log2, thread_count(settings.threads)),
-                 std::make_unique<BlockDecoder>([] {
-                     return std::make_unique<Engine>();
-                 }, thread_count(settings.threads)))
+                 std::make_unique<BlockDecoder>(
+                     [] {
+                         return std::make_unique<Engine>();
+                     }, thread_count(settings.threads)),
+                 process_streams(), settings.search_index)
 {
 }
 
 Compressor::Compressor(std::unique_ptr<IBlockEncoder> encoder,
-                       std::unique_ptr<IBlockDecoder> decoder, StandardStreams streams)
+                       std::unique_ptr<IBlockDecoder> decoder, StandardStreams streams,
+                       bool search_index)
     : encoder_(std::move(encoder))
     , decoder_(std::move(decoder))
     , streams_(streams)
+    , search_index_(search_index)
 {
 }
 
@@ -554,7 +559,7 @@ bool Compressor::encode_folder(const fs::path& input, const fs::path& output)
         return false;
     }
     return write_output(streams_, output, [&](std::ostream& out) {
-        return write_archive(*encoder_, input, std::move(*entries), out);
+        return write_archive(*encoder_, input, std::move(*entries), out, search_index_);
     }, report_failure);
 }
 
@@ -663,6 +668,16 @@ bool Compressor::verify(const fs::path& input)
             return false;
         }
         result = verify_archive(*decoder_, archive->file, archive->info);
+        if (result && archive->info.search_index)
+        {
+            const auto [section, end] = *archive->info.search_index;
+            if (auto read =
+                    read_search_index(archive->file, section, end, archive->info.total_size);
+                !read)
+            {
+                result = std::unexpected(Failure{.error = read.error(), .detail = "search index"});
+            }
+        }
     }
     else
     {
@@ -805,6 +820,112 @@ SearchResult Compressor::grep(const fs::path& input, const SearchOptions& option
         return SearchResult::failed;
     }
     return searcher.matched() ? SearchResult::matched : SearchResult::not_matched;
+}
+
+SearchResult Compressor::search(const fs::path& archive, const std::string& pattern, bool count)
+{
+    PROFILE_SESSION("Compressor::Search")
+    std::ostream& err = streams_.err;
+    auto opened = open_archive(err, "search", archive);
+    if (!opened)
+    {
+        return SearchResult::failed;
+    }
+    const ArchiveInfo& info = opened->info;
+    if (!info.search_index)
+    {
+        err << "Cannot search " << archive.string()
+            << ": it has no search index; encode it with --search-index, or use grep\n";
+        return SearchResult::failed;
+    }
+    if (pattern.empty() || pattern.size() > fm_overlap)
+    {
+        err << "Cannot search for a pattern of " << pattern.size() << " bytes: 1 to " << fm_overlap
+            << " are possible\n";
+        return SearchResult::failed;
+    }
+    const auto [section, end] = *info.search_index;
+    const auto index = read_search_index(opened->file, section, end, info.total_size);
+    const auto found = index ? fm_find(*index, pattern) : std::unexpected(index.error());
+    if (!found)
+    {
+        report(err, "search", archive, {.error = found.error(), .detail = "search index"});
+        return SearchResult::failed;
+    }
+
+    // Each stored file's data, with every path that shares it; files are back to back in order.
+    struct Stored
+    {
+        uint64_t offset = 0;
+        uint64_t size = 0;
+        std::vector<std::string> paths;
+        std::size_t matches = 0;
+    };
+    std::vector<Stored> stored;
+    for (const Entry& entry : info.index.entries)
+    {
+        if (entry.type != EntryType::file || entry.size == 0)
+        {
+            continue;
+        }
+        const auto same = std::ranges::find_if(stored, [&entry](const Stored& file) {
+            return file.offset == entry.offset;
+        });
+        if (same != stored.end())
+        {
+            same->paths.push_back(entry.path);
+            continue;
+        }
+        stored.push_back(
+            {.offset = entry.offset, .size = entry.size, .paths = {entry.path}, .matches = 0});
+    }
+    std::ranges::sort(stored, {}, &Stored::offset);
+
+    std::ostream& out = streams_.out;
+    bool matched = false;
+    for (const uint64_t position : *found)
+    {
+        auto file = std::ranges::upper_bound(stored, position, {}, &Stored::offset);
+        if (file == stored.begin())
+        {
+            continue;
+        }
+        --file;
+        // Only matches inside one file count; the data runs files together.
+        if (position + pattern.size() > file->offset + file->size)
+        {
+            continue;
+        }
+        matched = true;
+        ++file->matches;
+        if (!count)
+        {
+            for (const std::string& path : file->paths)
+            {
+                out << path << ':' << (position - file->offset) << '\n';
+            }
+        }
+    }
+    if (count)
+    {
+        for (const Stored& file : stored)
+        {
+            for (const std::string& path : file.paths)
+            {
+                if (file.matches > 0)
+                {
+                    out << path << ':' << file.matches << '\n';
+                }
+            }
+        }
+    }
+    out.flush();
+    if (!out)
+    {
+        err << "Cannot write the matches\n";
+        return SearchResult::failed;
+    }
+    return matched ? SearchResult::matched : SearchResult::not_matched;
 }
 
 } // namespace compressor

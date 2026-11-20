@@ -9,7 +9,7 @@ An ingot file (`.ingot`) is a frame header, a sequence of independently coded bl
 | 0 | 4 | Magic `89 49 4E 47` (`\x89ING`). The high first byte catches transfers that strip the 8th bit, as in PNG |
 | 4 | 1 | Format version: 2. Version 1 files (no pipeline blocks) are still read |
 | 5 | 1 | log2 of the block size, 12–26 (4 KiB–64 MiB). The encoder writes 20 (1 MiB) |
-| 6 | 2 | Flags. Bit 0: folder archive (see "Archive"); the other bits must be 0 |
+| 6 | 2 | Flags. Bit 0: folder archive (see "Archive"). Bit 1: a search index follows the archive (see "Search index"; only with bit 0). The other bits must be 0 |
 
 ## Block
 
@@ -111,6 +111,21 @@ The encoder writes each directory before its contents, siblings in byte order of
 `compressor_app decode` extracts into a new directory: it builds a temporary directory next to the output and renames it into place on success, and refuses an output that already exists or is standard output. It creates the directories, then decodes the data into the files in order (checking each file's CRC32; a duplicate is copied from the first file written with the same data), then creates the symlinks, then sets permissions and times, directories last. Archives can't be decoded from standard input yet, as the index is at the end.
 
 `list`, `extract`, `cat` and `verify` read the index first. `extract` and `cat` decode only the blocks the block table gives for the selected files' byte range, checking that each block ends where the next one starts.
+
+## Search index
+
+With flag bit 1, the archive's trailer is followed by an FM-index section and its own trailer, so a reader finds the archive trailer just before the section (`compressor/src/compressor/fmindex/fmindex.cpp`, written with `encode --search-index`, read by `search`):
+
+| Part | Size | Contents |
+|---|---:|---|
+| Section | varies | Version (1) = 1; chunk size (4) = 1 MiB; overlap (4) = 4096; sample rate (4) = 64; chunk count (4); then each chunk as its byte size (8) and bytes |
+| Trailer | 16 | Section offset (8). Section CRC32 (4). Magic `89 46 4D 49` (`\x89FMI`) |
+
+The archive's decoded data is cut into chunks: while at least chunk size + overlap bytes are left, a chunk of exactly that many, the next starting chunk size later; the rest (at least the overlap) is the last chunk. So `full = total >= 1 MiB + 4096 ? (total − 4096) / 1 MiB : 0` and there are `full + 1` chunks. A match of up to 4096 bytes is in the chunk where it starts before the overlap, or in the last.
+
+Each chunk: its length (4), the length of a BWT payload (4) and the payload, the BWT coder's format (see "Pipeline blocks") of the chunk's own BWT; then one bit per row of the sorted rotations (`length + 1` rows, the end marker's first; bit `r` of byte `r / 8`, least significant first) marking the rows whose suffix starts at a multiple of 64, the count of marked rows (4), and their text positions (4 each) in row order.
+
+Search runs backward search over the last column with rank counts, then walks each found row back to a marked one. Decoding the archive ignores the section.
 
 ## Choosing the method
 

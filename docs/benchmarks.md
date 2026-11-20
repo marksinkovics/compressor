@@ -340,3 +340,20 @@ One block at a time (1 MiB), single thread, per Silesia file: the BWT coder's la
 
 - It wins only on x-ray (10% below BWT), and runs at 3–5 MB/s per core in both directions with 12 MiB of tables per thread, against the agreed limit of about twice the block size for decoding. So it stays an experiment, not a pipeline coder.
 - What it lacks is a match model: xml and samba repeat long strings that BWT and LZR exploit and an order-6 context can't reach. lpaq adds one, plus secondary estimation; that is the next step if it is picked up again. PPM wasn't tried separately: context mixing generalises it, and order-N PPM would land between these numbers.
+
+## Search index (2026-11-20)
+
+All of Silesia archived with and without `--search-index`, then `search -c` (FM-index) against `grep -c` (decode and match), hyperfine medians of 5 runs, 14 threads; load average around 10.
+
+| | Plain archive | With search index |
+| --- | --- | --- |
+| Size | 66 874 374 | 164 962 837 (+147%) |
+| Encode | 1.25 s | 16.70 s |
+
+| Pattern (matches) | `search -c` | `grep -c` |
+| --- | --- | --- |
+| Gutenberg (199) | 194 ms (1825 ms on one thread) | 98 ms |
+| e (millions) | 734 ms | 113 ms |
+
+- Results are exact: per-file counts equal `grep -o | uniq -c` on Silesia, and offsets equal `grep -rbo` on `docs/`, duplicates included.
+- It is slower than grep: every query loads the whole index, decoding each chunk's stored BWT (rANS, move-to-front) and rebuilding its rank tables, which is O(data) like decoding the archive itself, and listing each match walks up to 63 LF steps. The index also stores sampled positions (1/16 of the data) and the overlaps. An FM-index pays off when it stays loaded across many queries, or with a layout searched in place: the BWT uncompressed with rank blocks or a wavelet tree, read with `mmap`, so a query touches O(pattern length) blocks. Encoding builds each chunk's suffix array on the reading thread, hence the 13×.

@@ -24,8 +24,8 @@ public:
     // Writes each block as soon as it and every block before it are verified, so on failure `out`
     // holds exactly the blocks before the first bad one.
     virtual std::expected<void, Error> decode(std::istream& in, std::ostream& out) = 0;
-    // decode() for a container whose header flags are exactly `flags`. An archive's stream is
-    // left just after its end block.
+    // decode() for a container whose archive flag is as in `flags`. An archive's stream is left
+    // just after its end block.
     virtual std::expected<void, Error> decode_frame(std::istream& in, std::ostream& out,
                                                     uint16_t flags) = 0;
     // Decodes the blocks of an archive's block table that start at each of `offsets` but the last,

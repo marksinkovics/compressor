@@ -34,6 +34,7 @@ struct CompressorSettings
 {
     unsigned threads = 0; // 0: default_thread_count()
     unsigned level = default_level;
+    bool search_index = false; // folder archives get an FM-index for search()
 };
 
 // stdin and stdout through StdioInputBuf and StdioOutputBuf, and std::cerr.
@@ -80,6 +81,10 @@ public:
     // `paths` when given), that contain the pattern.
     virtual SearchResult grep(const std::filesystem::path& input, const SearchOptions& options,
                               const std::vector<std::string>& paths) = 0;
+    // Prints `path:offset` for every occurrence of `pattern` in a folder archive's files, or with
+    // `count` each file's number of occurrences, from the archive's search index without decoding.
+    virtual SearchResult search(const std::filesystem::path& archive, const std::string& pattern,
+                                bool count) = 0;
 };
 
 // Writes a regular output through a temporary file next to it and renames that on success, so a
@@ -94,7 +99,7 @@ public:
     Compressor();
     explicit Compressor(CompressorSettings settings);
     Compressor(std::unique_ptr<IBlockEncoder> encoder, std::unique_ptr<IBlockDecoder> decoder,
-               StandardStreams streams = process_streams());
+               StandardStreams streams = process_streams(), bool search_index = false);
     ~Compressor() override = default;
 
     bool encode(const std::filesystem::path& input, const std::filesystem::path& output) override;
@@ -108,6 +113,8 @@ public:
     bool stats(const std::filesystem::path& input, const StatsOptions& options) override;
     SearchResult grep(const std::filesystem::path& input, const SearchOptions& options,
                       const std::vector<std::string>& paths) override;
+    SearchResult search(const std::filesystem::path& archive, const std::string& pattern,
+                        bool count) override;
 
 private:
     bool encode_folder(const std::filesystem::path& input, const std::filesystem::path& output);
@@ -116,6 +123,7 @@ private:
     std::unique_ptr<IBlockEncoder> encoder_;
     std::unique_ptr<IBlockDecoder> decoder_;
     StandardStreams streams_;
+    bool search_index_;
 };
 
 } // namespace compressor

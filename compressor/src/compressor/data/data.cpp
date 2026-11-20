@@ -296,7 +296,8 @@ std::expected<uint8_t, Error> FrameReader::read_header()
     const uint8_t block_size_log2 = header[5];
     const auto flags = static_cast<uint16_t>(get_le<2>(std::span(header).subspan(6)));
     if (block_size_log2 < min_block_size_log2 || block_size_log2 > max_block_size_log2 ||
-        (flags & ~unsigned{archive_flag}) != 0U)
+        (flags & ~unsigned{archive_flag | search_index_flag}) != 0U ||
+        ((flags & search_index_flag) != 0 && (flags & archive_flag) == 0))
     {
         return std::unexpected(Error::corrupt_header);
     }

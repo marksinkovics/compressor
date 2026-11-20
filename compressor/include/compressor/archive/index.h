@@ -6,7 +6,9 @@
 #include <cstdint>
 #include <expected>
 #include <iosfwd>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <compressor/error.h>
@@ -60,6 +62,8 @@ struct ArchiveInfo
     uint64_t total_size = 0;   // decoded bytes, from the end block
     uint64_t index_offset = 0; // just after the end block
     ArchiveIndex index;
+    // Where the search index section starts and ends (its trailer follows), if there is one.
+    std::optional<std::pair<uint64_t, uint64_t>> search_index;
 };
 
 // Seeks around a whole archive file to read its frame header, end block and index, and checks

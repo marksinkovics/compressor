@@ -42,6 +42,8 @@ inline constexpr std::size_t code_lengths_bytes = symbol_count / 2;
 inline constexpr std::size_t end_block_bytes = 9;
 // Frame header flag: a folder archive, whose index follows the end block.
 inline constexpr uint16_t archive_flag = 0x0001;
+// With archive_flag: an FM-index section follows the archive's trailer (fmindex/fmindex.h).
+inline constexpr uint16_t search_index_flag = 0x0002;
 
 // The values are stored in the file; 0xFF marks the end block, the rest are reserved.
 enum class Method : uint8_t

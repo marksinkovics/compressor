@@ -18,22 +18,11 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 - Multithreaded blocks are done: `thread/pool.h`'s `ThreadPool`, one engine per worker, `-T/--threads` (default all cores); 166/166 pass, clean under an ad hoc TSan build.
 - Folder archives step 1 is done: solid blocks plus an index after the end block, flag bit 0 in the frame header; `encode -i <dir>` archives, `decode` extracts into a new directory (`compressor/archive/`, format in `docs/file_format.md`); 202/202 pass.
 - Folder archives step 2 is done: `list [-l]`, `extract ARCHIVE PATH [-o OUT]`, `cat`, `verify`; extraction decodes only the blocks a selection needs (`IBlockDecoder::decode_blocks`); 236/236 pass.
-- `stats` (folder compression step 3) is done; 250/250 pass.
-- Decoder fuzzing is done: `fuzz/` libFuzzer targets, corpus replay in every build, `fuzz` preset; no crashes found; 253/253 pass.
-- Deduplication is done: identical files in an archive are stored once; 258/258 pass.
-- `grep` is done: fixed-string search in ingot files and archives, only the blocks of the given paths; 273/273 pass.
-- Block index search is done: `grep PATH...` decodes only those blocks, and matching runs at decode speed (parallel search not needed, `docs/benchmarks.md`).
-- Search without decompressing was measured: about 4× faster as a filter, but exact `grep` needs per-block newline counts first (roadmap "Compressed-domain prefilter").
-- ARM CRC32 runs three interleaved chains: 8.9 → 23.5 GB/s.
-- File I/O goes through `fwrite`/`fread` (`OutputFile`): folder extraction of Silesia 4.5 s → 82 ms, file output at `/dev/null` speed; 279/279 pass.
-- Deflate is done: `encode -f gzip|zip`, our LZ77 and Huffman, gzip -6's ratio at 1.45× its time; 293/293 pass.
-- The pipeline is done: format version 2, LZ77 + Huffman blocks with our own inflate, `encode -L 1..9` (default 6, ratio 1.57 → 3.10 on Silesia); 307/307 pass.
-- Transforms and auto mode are done: delta, ARM64 and x86 branch filters chosen per block by sampling, kept only when smaller (x-ray −14%, ooffice −9%); 314/314 pass.
-- The BWT coder is done (item 13, part 1): from level 8, bzip2-style blocks, Silesia text 24-41% smaller than level 7; 320/320 pass.
-- rANS is done (item 13, part 2): the BWT coder ends in rANS (0.3-1.1% smaller than Huffman), and coder 4 (order-0 rANS) wins on noisy samples after a delta (x-ray −3%); 324/324 pass.
-- LZR is done (item 13, part 3): LZ77 with LZMA's range-coded model from level 8, mozilla −13%, sao −8%; 328/328 pass. Item 13 has PPM/CM experiments left.
-- Item 13 is done: BWT, rANS and LZR coders; context mixing measured as an experiment (wins only on x-ray).
-- **Next:** the "Autonomous run" list at the end of `docs/roadmap.md`, on branch `feat/autonomous-run`: work through it in order, committing each item (no push, no co-author line).
+- The autonomous run (branch `feat/autonomous-run`, list and results at the end of `docs/roadmap.md`) is done, 337/337 pass:
+  - archives: `stats`, deduplication, `grep` (only the given paths' blocks), `search` through an opt-in FM-index (exact but slower than `grep`), file I/O through stdio (folder extraction 54× faster);
+  - formats: `encode -f gzip|zip` with our own Deflate; ingot format version 2 with pipeline blocks: per-block transforms (delta, ARM64/x86 branch filters) and coders LZ77 + Huffman (inflate is ours), BWT + rANS, order-0 rANS, LZR (LZMA-style); `encode -L 1..9`, default 6;
+  - quality: libFuzzer targets and the `fuzz` preset, ARM CRC32 at 23.5 GB/s, clang 23 clean.
+- **Next:** pick from the roadmap's open items; the run left follow-ups ("Compressed-domain prefilter", "Search index in place", Zip64, our own `.gz` decoding, a CM coder with a match model).
 
 ## Commands
 

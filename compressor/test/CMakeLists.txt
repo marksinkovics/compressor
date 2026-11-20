@@ -17,6 +17,7 @@ set(SRC_FILES
     "${SRC_DIR}/compressor/compressor.cpp"
     "${SRC_DIR}/engine/engine.cpp"
     "${SRC_DIR}/entropy/rans.cpp"
+    "${SRC_DIR}/fmindex/fmindex.cpp"
     "${SRC_DIR}/huffman/huffman.cpp"
     "${SRC_DIR}/lzr/lzr.cpp"
     "${SRC_DIR}/tree/binary/node.cpp"

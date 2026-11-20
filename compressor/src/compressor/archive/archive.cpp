@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <functional>
 #include <ios>
 #include <istream>
 #include <iterator>
@@ -21,6 +22,7 @@
 #include <ostream>
 #include <ranges>
 #include <span>
+#include <sstream>
 #include <streambuf>
 #include <string>
 #include <string_view>
@@ -34,6 +36,7 @@
 #include <compressor/checksum/crc32.h>
 #include <compressor/data/data.h>
 #include <compressor/error.h>
+#include <compressor/fmindex/fmindex.h>
 #include <compressor/stream/decoder.h>
 #include <compressor/stream/encoder.h>
 #include <compressor/stream/stdio.h>
@@ -74,8 +77,12 @@ public:
         uint32_t crc = 0;
     };
 
-    explicit ConcatInputBuf(std::vector<fs::path> paths)
+    using Observer = std::function<void(std::span<const uint8_t>)>;
+
+    // `observer`, when set, sees every byte read, in order.
+    explicit ConcatInputBuf(std::vector<fs::path> paths, Observer observer = {})
         : paths_(std::move(paths))
+        , observer_(std::move(observer))
     {
     }
 
@@ -160,6 +167,10 @@ private:
             {
                 current_.crc = crc32(as_bytes(out, got), current_.crc);
                 current_.size += static_cast<uint64_t>(got);
+                if (observer_)
+                {
+                    observer_(as_bytes(out, got));
+                }
                 return got;
             }
             if (std::ferror(file_) != 0)
@@ -186,6 +197,7 @@ private:
     }
 
     std::vector<fs::path> paths_;
+    Observer observer_;
     std::size_t next_ = 0;
     std::FILE* file_ = nullptr; // fread: libc++'s filebuf reads slowly once reopened
     bool open_ = false;
@@ -721,7 +733,8 @@ std::expected<std::vector<Entry>, Failure> scan_tree(const fs::path& root, const
 }
 
 std::expected<void, Failure> write_archive(IBlockEncoder& encoder, const fs::path& root,
-                                           std::vector<Entry> entries, std::ostream& out)
+                                           std::vector<Entry> entries, std::ostream& out,
+                                           bool search_index)
 {
     const auto duplicates = find_duplicates(root, entries);
     if (!duplicates)
@@ -741,9 +754,16 @@ std::expected<void, Failure> write_archive(IBlockEncoder& encoder, const fs::pat
     }
     const std::size_t stored_count = paths.size();
 
-    ConcatInputBuf concat(std::move(paths));
+    FmIndexBuilder builder;
+    ConcatInputBuf concat(
+        std::move(paths),
+        search_index ? ConcatInputBuf::Observer{[&builder](std::span<const uint8_t> bytes) {
+        builder.add(bytes);
+    }}
+                     : ConcatInputBuf::Observer{});
     std::istream in(&concat);
-    auto layout = encoder.encode_frame(in, out, archive_flag);
+    auto layout = encoder.encode_frame(
+        in, out, search_index ? uint16_t{archive_flag | search_index_flag} : archive_flag);
     if (concat.failure())
     {
         return std::unexpected(*concat.failure());
@@ -787,9 +807,15 @@ std::expected<void, Failure> write_archive(IBlockEncoder& encoder, const fs::pat
             copy.crc = source.crc;
         }
     }
-    write_index(out,
+    std::ostringstream index_bytes;
+    write_index(index_bytes,
                 {.block_offsets = std::move(layout->block_offsets), .entries = std::move(entries)},
                 layout->size);
+    out << index_bytes.str();
+    if (search_index)
+    {
+        builder.write(out, layout->size + index_bytes.str().size());
+    }
     out.flush();
     if (!out)
     {

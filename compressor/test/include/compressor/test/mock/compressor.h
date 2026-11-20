@@ -29,6 +29,8 @@ public:
                 (const std::filesystem::path&, const compressor::SearchOptions&,
                  const std::vector<std::string>&),
                 (override));
+    MOCK_METHOD(compressor::SearchResult, search,
+                (const std::filesystem::path&, const std::string&, bool), (override));
     MOCK_METHOD(bool, stats, (const std::filesystem::path&, const compressor::StatsOptions&),
                 (override));
 };

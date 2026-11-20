@@ -13,6 +13,7 @@
 #include <compressor/archive/archive.h>
 #include <compressor/archive/index.h>
 #include <compressor/engine/engine.h>
+#include <compressor/fmindex/fmindex.h>
 #include <compressor/search/search.h>
 #include <compressor/stream/decoder.h>
 
@@ -112,6 +113,15 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, std::size_t size)
         else if (!compressor::select_subtree(info->index.entries, entry.path))
         {
             std::abort();
+        }
+    }
+    if (info->search_index)
+    {
+        const auto [section, end] = *info->search_index;
+        const auto index = compressor::read_search_index(in, section, end, info->total_size);
+        if (index)
+        {
+            (void)compressor::fm_find(*index, "a", 1).has_value();
         }
     }
     compressor::LineSearcher searcher({.pattern = "a", .output = {}, .byte_offsets = true}, out);
