@@ -520,3 +520,53 @@ TEST_F(CompressorArchiveCommandTests, Stats_reports_a_damaged_file_and_needs_a_f
     EXPECT_THAT(err_.str(), HasSubstr("needs a file"));
     EXPECT_EQ(out_.str(), "");
 }
+
+TEST_F(CompressorArchiveCommandTests, Grep_searches_the_files_of_an_archive)
+{
+    using compressor::SearchResult;
+    const compressor::SearchOptions alpha{.pattern = "lph", .output = {}, .byte_offsets = false};
+    EXPECT_EQ(make_compressor().grep(archive_, alpha, {}), SearchResult::matched) << err_.str();
+    EXPECT_EQ(out_.str(), "a.txt:1:alpha\n");
+
+    out_.str("");
+    const compressor::SearchOptions bees{
+        .pattern = "bbb", .output = compressor::SearchOutput::count, .byte_offsets = false};
+    EXPECT_EQ(make_compressor().grep(archive_, bees, {"sub"}), SearchResult::matched);
+    EXPECT_EQ(out_.str(), "sub/b.txt:1\n");
+
+    EXPECT_EQ(make_compressor().grep(archive_, bees, {"a.txt"}), SearchResult::not_matched);
+    EXPECT_EQ(make_compressor().grep(archive_, bees, {"missing"}), SearchResult::failed);
+    EXPECT_THAT(err_.str(), HasSubstr("missing: it is not in"));
+}
+
+TEST_F(CompressorArchiveCommandTests, Grep_searches_a_plain_file_and_standard_input)
+{
+    using compressor::SearchResult;
+    const fs::path plain = dir_ / "a.ingot";
+    ASSERT_TRUE(make_compressor().encode(folder_ / "a.txt", plain));
+    const compressor::SearchOptions names{
+        .pattern = "alp", .output = compressor::SearchOutput::names, .byte_offsets = false};
+
+    EXPECT_EQ(make_compressor().grep(plain, names, {}), SearchResult::matched) << err_.str();
+    in_.str(read_file(plain));
+    EXPECT_EQ(make_compressor().grep("-", names, {}), SearchResult::matched) << err_.str();
+    EXPECT_EQ(out_.str(), plain.string() + "\n(standard input)\n");
+
+    EXPECT_EQ(make_compressor().grep(plain, names, {"a.txt"}), SearchResult::failed);
+    EXPECT_THAT(err_.str(), HasSubstr("not a folder archive"));
+}
+
+TEST_F(CompressorArchiveCommandTests, Grep_rejects_a_line_break_and_reports_damage)
+{
+    using compressor::SearchResult;
+    const compressor::SearchOptions broken{.pattern = "a\nb", .output = {}, .byte_offsets = false};
+    EXPECT_EQ(make_compressor().grep(archive_, broken, {}), SearchResult::failed);
+    EXPECT_THAT(err_.str(), HasSubstr("line break"));
+
+    std::string bytes = read_file(archive_);
+    bytes.back() = 'Z';
+    write_file(archive_, bytes);
+    const compressor::SearchOptions any{.pattern = "a", .output = {}, .byte_offsets = false};
+    EXPECT_EQ(make_compressor().grep(archive_, any, {}), SearchResult::failed);
+    EXPECT_THAT(err_.str(), HasSubstr("Cannot search"));
+}

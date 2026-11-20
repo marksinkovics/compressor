@@ -345,3 +345,44 @@ TEST_F(CLITests, Stats_needs_an_existing_file)
     EXPECT_NE(run({"stats", "-i", input_}), EXIT_SUCCESS);
     EXPECT_THAT(err_.str(), HasSubstr("Analysing " + input_ + " failed"));
 }
+
+TEST_F(CLITests, Grep_passes_the_pattern_input_paths_and_options)
+{
+    compressor::SearchOptions options;
+    std::vector<std::string> paths;
+    EXPECT_CALL(*compressor_, grep(fs::path(input_), ::testing::_, ::testing::_))
+        .WillOnce([&](const fs::path& /*input*/, const compressor::SearchOptions& given,
+                      const std::vector<std::string>& given_paths) {
+        options = given;
+        paths = given_paths;
+        return compressor::SearchResult::matched;
+    });
+
+    EXPECT_EQ(run({"grep", "-c", "-b", "-n", "-T", "2", "needle", input_, "a", "b/c"}),
+              EXIT_SUCCESS);
+    EXPECT_EQ(options.pattern, "needle");
+    EXPECT_EQ(options.output, compressor::SearchOutput::count);
+    EXPECT_TRUE(options.byte_offsets);
+    EXPECT_EQ(paths, (std::vector<std::string>{"a", "b/c"}));
+    EXPECT_EQ(threads_, 2U);
+}
+
+TEST_F(CLITests, Grep_exits_like_grep)
+{
+    EXPECT_CALL(*compressor_, grep(::testing::_, ::testing::_, ::testing::_))
+        .WillOnce(Return(compressor::SearchResult::not_matched));
+    EXPECT_EQ(run({"grep", "-l", "x", input_}), 1);
+
+    compressor_ = std::make_unique<MockICompressor>();
+    EXPECT_CALL(*compressor_, grep(::testing::_, ::testing::_, ::testing::_))
+        .WillOnce(Return(compressor::SearchResult::failed));
+    EXPECT_EQ(run({"grep", "x", "-"}), 2);
+    EXPECT_THAT(err_.str(), HasSubstr("Searching standard input failed"));
+}
+
+TEST_F(CLITests, Grep_takes_either_count_or_names)
+{
+    EXPECT_CALL(*compressor_, grep(::testing::_, ::testing::_, ::testing::_)).Times(0);
+    EXPECT_NE(run({"grep", "-c", "-l", "x", input_}), EXIT_SUCCESS);
+    EXPECT_NE(run({"grep", "x"}), EXIT_SUCCESS);
+}

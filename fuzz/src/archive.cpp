@@ -1,15 +1,19 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <memory>
 #include <ostream>
+#include <span>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <compressor/archive/archive.h>
 #include <compressor/archive/index.h>
 #include <compressor/engine/engine.h>
+#include <compressor/search/search.h>
 #include <compressor/stream/decoder.h>
 
 #include "discard.h"
@@ -38,6 +42,33 @@ bool stays_inside(std::string_view path)
     }
     return true;
 }
+
+class SearchVisitor : public compressor::FileVisitor
+{
+public:
+    explicit SearchVisitor(compressor::LineSearcher& searcher)
+        : searcher_(searcher)
+    {
+    }
+
+    void begin(std::span<const std::filesystem::path> paths) override
+    {
+        searcher_.begin(std::vector<std::string>(paths.size(), "f"), true);
+    }
+
+    void data(std::string_view bytes) override
+    {
+        searcher_.feed(bytes);
+    }
+
+    void end() override
+    {
+        searcher_.end();
+    }
+
+private:
+    compressor::LineSearcher& searcher_;
+};
 
 } // namespace
 
@@ -82,6 +113,12 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, std::size_t size)
         {
             std::abort();
         }
+    }
+    compressor::LineSearcher searcher({.pattern = "a", .output = {}, .byte_offsets = true}, out);
+    SearchVisitor visitor(searcher);
+    if (verified && !compressor::visit_files(decoder, in, *info, info->index.entries, visitor))
+    {
+        std::abort();
     }
     return 0;
 }

@@ -354,7 +354,7 @@ Layout decided under "Decisions" (solid blocks plus an index); format in [file_f
 
 ### Search inside compressed data
 
-- [ ] **zgrep-style search:** decompress as a stream and match while reading.
+- [x] **zgrep-style search (done, autonomous run item 4):** `compressor_app grep [-c|-l] [-b] [-n] PATTERN INPUT [PATH...]` over a plain ingot file (also standard input) or a folder archive. `search/search.{h,cpp}`'s `LineSearcher` takes each file's bytes in pieces of any size, keeps the current line, so block boundaries don't matter, and prints `[path:]line:[offset:]text` as `grep -n` does (`-c` counts per file, `-l` names, a NUL in a matching line gives `Binary file … matches`). For archives, `visit_files()` hands a `FileVisitor` each file through the same range decoding as `extract` (so `PATH...`, selected with `select_paths()`, decodes only their blocks), with duplicates decoded once and reported under every path; `SplitOutputBuf` gained `Sink::visit`. Fixed strings only; exit code 0/1/2 like grep. Checked against the system `grep -c` per file over `docs/` and `grep -n` on `roadmap.md`. Tests: `SearchTests` (every piece size, offsets, counts, names, binary, empty pattern), `ArchiveTests.Visiting_*`, `CompressorArchiveCommandTests.Grep_*`, `CLITests.Grep_*`; `fuzz_archive` searches what it verifies. 273/273 pass.
 - [ ] **Block index search:** jump to the relevant block, decompress only that, and report matches with file and offset.
 - [ ] **Search without decompressing:** encode the pattern with the file's Huffman table and match it directly in the bit stream. A match is only valid if it starts at a code boundary, which is the hard part.
 - [ ] **FM-index:** BWT-based full-text index whose search time doesn't depend on the file size.
@@ -416,7 +416,7 @@ Decisions taken for the pipeline (Claude's defaults, accepted): each block recor
 - [x] 1. (done) `stats` (folder compression step 3): size, ratio, entropy, byte histogram, stored/Huffman split per block; `--graph` writes the Huffman tree as Graphviz.
 - [x] 2. (done) Fuzzing the decoder: libFuzzer targets (Homebrew llvm) for the container reader, the archive index and extraction, seeded from the samples, with a short run under ctest; every crash fixed with a regression test.
 - [x] 3. (done) Deduplication: identical files stored once and pointing back at the first copy's data; index rules, docs and extraction updated.
-- [ ] 4. zgrep-style search: `grep PATTERN INPUT [PATH...]` over a plain file or an archive, streaming, matches across block boundaries, `path:line:text`, `-c`, `-l`, `-b`; fixed strings first.
+- [x] 4. (done) zgrep-style search: `grep PATTERN INPUT [PATH...]` over a plain file or an archive, streaming, matches across block boundaries, `path:line:text`, `-c`, `-l`, `-b`; fixed strings first.
 - [ ] 5. Block index search: with paths, decode only their blocks; search blocks in parallel with an overlap of pattern length - 1 at the edges; benchmarked.
 - [ ] 6. Search without decompressing (experiment): match the Huffman-encoded pattern in the bit stream, resynchronising at code boundaries; checked against item 4, kept as a command only if it is faster.
 - [ ] 7. Known issue: interleave the ARM CRC32 loop into 3 chains, kept only if `tools/bench.sh` shows a gain.

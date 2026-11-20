@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <CLI/CLI.hpp>
 
@@ -25,6 +26,10 @@ struct Settings
     bool details = false;
     StatsOptions stats;
     std::string graph;
+    SearchOptions search;
+    std::vector<std::string> paths;
+    bool count = false;
+    bool names = false;
 };
 
 std::string display_name(const std::string& path, std::string_view standard_name)
@@ -106,6 +111,7 @@ int CLI::run(std::span<const char* const> args)
     Settings cat_settings;
     Settings verify_settings;
     Settings stats_settings;
+    Settings grep_settings;
     auto* encode = add_command(app, "encode", "Compress a file or a folder", true, encode_settings);
     auto* decode =
         add_command(app, "decode", "Decompress a file or a folder archive", false, decode_settings);
@@ -152,6 +158,26 @@ int CLI::run(std::span<const char* const> args)
     stats->add_option("--graph", stats_settings.graph,
                       "Write the Huffman code tree as Graphviz to this file; -: standard output, "
                       "instead of the report");
+
+    auto* grep = app.add_subcommand(
+        "grep", "Print the lines that contain a fixed string, in an ingot file or a folder "
+                "archive's files. Exit code 0: a line matched, 1: none did, 2: an error");
+    grep->add_option("pattern", grep_settings.search.pattern, "Fixed string to look for")
+        ->required();
+    grep->add_option("input", grep_settings.input, "Input file; -: standard input")
+        ->required()
+        ->check(existing_input(false));
+    grep->add_option("path", grep_settings.paths,
+                     "Search only these files or directories of a folder archive");
+    auto* count = grep->add_flag("-c,--count", grep_settings.count,
+                                 "Print the number of matching lines per file");
+    grep->add_flag("-l,--files-with-matches", grep_settings.names,
+                   "Print the names of the files with a match")
+        ->excludes(count);
+    grep->add_flag("-n,--line-number", "Accepted for grep's sake; line numbers are always shown");
+    grep->add_flag("-b,--byte-offset", grep_settings.search.byte_offsets,
+                   "Print where each matching line starts in its file");
+    add_threads(*grep, grep_settings);
 
     try
     {
@@ -204,6 +230,29 @@ int CLI::run(std::span<const char* const> args)
         const auto compressor = make_compressor_(settings.threads);
         return finish(compressor->extract(settings.input, settings.path, output),
                       "Extracting " + settings.path + " from " + settings.input);
+    }
+    if (grep->parsed())
+    {
+        if (grep_settings.count)
+        {
+            grep_settings.search.output = SearchOutput::count;
+        }
+        if (grep_settings.names)
+        {
+            grep_settings.search.output = SearchOutput::names;
+        }
+        const auto compressor = make_compressor_(grep_settings.threads);
+        switch (compressor->grep(grep_settings.input, grep_settings.search, grep_settings.paths))
+        {
+        case SearchResult::matched:
+            return EXIT_SUCCESS;
+        case SearchResult::not_matched:
+            return 1;
+        case SearchResult::failed:
+            break;
+        }
+        err_ << "Searching " << input_name(grep_settings) << " failed\n";
+        return 2;
     }
     if (stats->parsed())
     {

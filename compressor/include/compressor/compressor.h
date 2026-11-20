@@ -6,7 +6,9 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 
+#include <compressor/search/search.h>
 #include <compressor/stats/stats.h>
 #include <compressor/stream/decoder.h>
 #include <compressor/stream/encoder.h>
@@ -54,6 +56,10 @@ public:
     virtual bool verify(const std::filesystem::path& input) = 0;
     // Prints what the input holds and how well it compresses; any file, an ingot file is decoded.
     virtual bool stats(const std::filesystem::path& input, const StatsOptions& options) = 0;
+    // Prints the lines of an ingot file, or of the files in a folder archive (only those at
+    // `paths` when given), that contain the pattern.
+    virtual SearchResult grep(const std::filesystem::path& input, const SearchOptions& options,
+                              const std::vector<std::string>& paths) = 0;
 };
 
 // Writes a regular output through a temporary file next to it and renames that on success, so a
@@ -79,6 +85,8 @@ public:
                  const std::filesystem::path& output) override;
     bool verify(const std::filesystem::path& input) override;
     bool stats(const std::filesystem::path& input, const StatsOptions& options) override;
+    SearchResult grep(const std::filesystem::path& input, const SearchOptions& options,
+                      const std::vector<std::string>& paths) override;
 
 private:
     bool encode_folder(const std::filesystem::path& input, const std::filesystem::path& output);

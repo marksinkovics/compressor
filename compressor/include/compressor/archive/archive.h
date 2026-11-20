@@ -68,6 +68,29 @@ std::expected<void, Failure> extract_file(IBlockDecoder& decoder, std::istream& 
                                           const ArchiveInfo& info, const Entry& file,
                                           std::ostream& out);
 
+// The entries at `paths` and everything under them, with their full paths, in entry order; all
+// of them when `paths` is empty. Fails with the first path that names no entry.
+std::expected<std::vector<Entry>, std::string> select_paths(std::span<const Entry> entries,
+                                                            std::span<const std::string> paths);
+
+// Receives the contents of one file after another.
+class FileVisitor
+{
+public:
+    virtual ~FileVisitor() = default;
+    // `paths`: the file and any duplicates that share its contents.
+    virtual void begin(std::span<const std::filesystem::path> paths) = 0;
+    virtual void data(std::string_view bytes) = 0;
+    // Only once the contents match the file's CRC.
+    virtual void end() = 0;
+};
+
+// Hands the contents of the files among `entries` to `visitor`, in data order and each shared
+// content once.
+std::expected<void, Failure> visit_files(IBlockDecoder& decoder, std::istream& in,
+                                         const ArchiveInfo& info, std::span<const Entry> entries,
+                                         FileVisitor& visitor);
+
 // Decodes every block and checks every block and file CRC, writing nothing.
 std::expected<void, Failure> verify_archive(IBlockDecoder& decoder, std::istream& in,
                                             const ArchiveInfo& info);

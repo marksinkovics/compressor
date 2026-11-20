@@ -209,6 +209,7 @@ enum class Sink : uint8_t
     files,   // each target into a new file at its path
     stream,  // the targets one after another into one stream
     discard, // only check the CRCs
+    visit,   // to a FileVisitor
 };
 
 // Splits the decoded data from `position` on into the targets, which must be in offset order,
@@ -217,11 +218,12 @@ class SplitOutputBuf : public std::streambuf
 {
 public:
     SplitOutputBuf(std::vector<Target> targets, uint64_t position, Sink sink,
-                   std::streambuf* stream)
+                   std::streambuf* stream, FileVisitor* visitor)
         : targets_(std::move(targets))
         , position_(position)
         , sink_(sink)
         , stream_(stream)
+        , visitor_(visitor)
     {
     }
 
@@ -308,6 +310,12 @@ private:
                 failure_ = file_failure(next.path, {errno, std::generic_category()});
                 break;
             }
+            if (sink_ == Sink::visit)
+            {
+                std::vector<fs::path> paths{next.path};
+                paths.insert(paths.end(), next.copies.begin(), next.copies.end());
+                visitor_->begin(paths);
+            }
             open_ = true;
             written_ = 0;
             crc_ = 0;
@@ -330,6 +338,10 @@ private:
         {
             failure_ = Failure{.error = Error::write_failed, .detail = {}};
             return false;
+        }
+        if (sink_ == Sink::visit)
+        {
+            visitor_->data({data, static_cast<std::size_t>(count)});
         }
         crc_ = crc32(as_bytes(data, count), crc_);
         return true;
@@ -359,6 +371,10 @@ private:
                 return;
             }
         }
+        if (sink_ == Sink::visit)
+        {
+            visitor_->end();
+        }
     }
 
     std::vector<Target> targets_;
@@ -366,6 +382,7 @@ private:
     uint64_t position_ = 0; // in the decoded data
     Sink sink_;
     std::streambuf* stream_;
+    FileVisitor* visitor_;
     std::filebuf file_;
     bool open_ = false;
     uint64_t written_ = 0;
@@ -376,7 +393,8 @@ private:
 // Decodes only the blocks that hold the targets.
 std::expected<void, Failure> decode_targets(IBlockDecoder& decoder, std::istream& in,
                                             const ArchiveInfo& info, std::vector<Target> targets,
-                                            Sink sink, std::streambuf* stream = nullptr)
+                                            Sink sink, std::streambuf* stream = nullptr,
+                                            FileVisitor* visitor = nullptr)
 {
     targets = group_shared(std::move(targets));
     const uint8_t log2 = info.block_size_log2;
@@ -397,7 +415,7 @@ std::expected<void, Failure> decode_targets(IBlockDecoder& decoder, std::istream
         end = std::min(info.total_size, (last + 1) << log2);
     }
 
-    SplitOutputBuf split(std::move(targets), start, sink, stream);
+    SplitOutputBuf split(std::move(targets), start, sink, stream, visitor);
     std::ostream out(&split);
     const auto decoded = decoder.decode_blocks(in, out, log2, offsets);
     if (split.failure())
@@ -916,6 +934,55 @@ void list_archive(const ArchiveInfo& info, bool details, std::ostream& out)
         }
         out << '\n';
     }
+}
+
+std::expected<std::vector<Entry>, std::string> select_paths(std::span<const Entry> entries,
+                                                            std::span<const std::string> paths)
+{
+    std::vector<bool> chosen(entries.size(), paths.empty());
+    for (const std::string& requested : paths)
+    {
+        const std::string path = archive_path(requested);
+        bool found = false;
+        for (std::size_t i = 0; i < entries.size(); ++i)
+        {
+            const std::string& name = entries[i].path;
+            if (name == path ||
+                (name.size() > path.size() && name.starts_with(path) && name[path.size()] == '/'))
+            {
+                chosen[i] = true;
+                found = true;
+            }
+        }
+        if (!found)
+        {
+            return std::unexpected(requested);
+        }
+    }
+    std::vector<Entry> selected;
+    for (std::size_t i = 0; i < entries.size(); ++i)
+    {
+        if (chosen[i])
+        {
+            selected.push_back(entries[i]);
+        }
+    }
+    return selected;
+}
+
+std::expected<void, Failure> visit_files(IBlockDecoder& decoder, std::istream& in,
+                                         const ArchiveInfo& info, std::span<const Entry> entries,
+                                         FileVisitor& visitor)
+{
+    std::vector<Target> targets;
+    for (const Entry& entry : entries)
+    {
+        if (entry.type == EntryType::file)
+        {
+            targets.push_back(target(entry, entry.path));
+        }
+    }
+    return decode_targets(decoder, in, info, std::move(targets), Sink::visit, nullptr, &visitor);
 }
 
 } // namespace compressor

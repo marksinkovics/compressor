@@ -7,8 +7,10 @@
 #include <iterator>
 #include <memory>
 #include <ranges>
+#include <span>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <vector>
 
@@ -590,4 +592,63 @@ TEST_F(ArchiveTests, A_damaged_shared_file_fails_for_every_copy)
     ASSERT_FALSE(extracted);
     EXPECT_EQ(extracted.error().error, Error::checksum_mismatch);
     EXPECT_FALSE(fs::exists(out_ / "two"));
+}
+
+namespace
+{
+
+struct Recorder : compressor::FileVisitor
+{
+    void begin(std::span<const fs::path> paths) override
+    {
+        std::string names;
+        for (const fs::path& path : paths)
+        {
+            names += (names.empty() ? "" : "+") + path.string();
+        }
+        files.push_back(names + "=");
+    }
+
+    void data(std::string_view bytes) override
+    {
+        files.back() += bytes;
+    }
+
+    void end() override
+    {
+        files.back() += '.';
+    }
+
+    std::vector<std::string> files;
+};
+
+} // namespace
+
+TEST_F(ArchiveTests, Visiting_hands_over_each_selected_file_and_shared_contents_once)
+{
+    fs::create_directories(root_ / "d");
+    write_file(root_ / "a", "first");
+    write_file(root_ / "d" / "b", "second");
+    write_file(root_ / "d" / "c", "first");
+    write_file(root_ / "e", "");
+    const auto bytes = archive(root_);
+    ASSERT_TRUE(bytes);
+    const compressor::ArchiveInfo info = info_of(*bytes);
+    compressor::BlockDecoder decoder(engines(), threads);
+
+    Recorder all;
+    std::istringstream in(*bytes);
+    ASSERT_TRUE(compressor::visit_files(decoder, in, info, info.index.entries, all));
+    EXPECT_THAT(all.files, ElementsAre("a+d/c=first.", "d/b=second.", "e=."));
+
+    const std::vector<std::string> wanted{"./d/"};
+    const auto selected = compressor::select_paths(info.index.entries, wanted);
+    ASSERT_TRUE(selected);
+    EXPECT_THAT(paths(*selected), ElementsAre("d", "d/b", "d/c"));
+    Recorder some;
+    ASSERT_TRUE(compressor::visit_files(decoder, in, info, *selected, some));
+    EXPECT_THAT(some.files, ElementsAre("d/c=first.", "d/b=second."));
+
+    const std::vector<std::string> missing{"d", "nope"};
+    EXPECT_EQ(compressor::select_paths(info.index.entries, missing).error(), "nope");
 }

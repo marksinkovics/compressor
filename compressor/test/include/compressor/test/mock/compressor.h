@@ -3,6 +3,7 @@
 
 #include <filesystem>
 #include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 
@@ -20,6 +21,10 @@ public:
                 (const std::filesystem::path&, const std::string&, const std::filesystem::path&),
                 (override));
     MOCK_METHOD(bool, verify, (const std::filesystem::path&), (override));
+    MOCK_METHOD(compressor::SearchResult, grep,
+                (const std::filesystem::path&, const compressor::SearchOptions&,
+                 const std::vector<std::string>&),
+                (override));
     MOCK_METHOD(bool, stats, (const std::filesystem::path&, const compressor::StatsOptions&),
                 (override));
 };

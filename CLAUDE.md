@@ -21,6 +21,7 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 - `stats` (folder compression step 3) is done; 250/250 pass.
 - Decoder fuzzing is done: `fuzz/` libFuzzer targets, corpus replay in every build, `fuzz` preset; no crashes found; 253/253 pass.
 - Deduplication is done: identical files in an archive are stored once; 258/258 pass.
+- `grep` is done: fixed-string search in ingot files and archives, only the blocks of the given paths; 273/273 pass.
 - **Next:** the "Autonomous run" list at the end of `docs/roadmap.md`, on branch `feat/autonomous-run`: work through it in order, committing each item (no push, no co-author line).
 
 ## Commands

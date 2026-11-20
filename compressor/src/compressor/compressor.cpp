@@ -26,6 +26,7 @@
 #include <compressor/data/data.h>
 #include <compressor/engine/engine.h>
 #include <compressor/error.h>
+#include <compressor/search/search.h>
 #include <compressor/stats/stats.h>
 #include <compressor/stream/decoder.h>
 #include <compressor/stream/encoder.h>
@@ -340,6 +341,68 @@ bool extract_to_new_directory(IBlockDecoder& decoder, std::ostream& err, std::st
     return true;
 }
 
+class SearchVisitor : public FileVisitor
+{
+public:
+    explicit SearchVisitor(LineSearcher& searcher)
+        : searcher_(searcher)
+    {
+    }
+
+    void begin(std::span<const fs::path> paths) override
+    {
+        std::vector<std::string> names;
+        names.reserve(paths.size());
+        for (const fs::path& path : paths)
+        {
+            names.push_back(path.generic_string());
+        }
+        searcher_.begin(std::move(names), true);
+    }
+
+    void data(std::string_view bytes) override
+    {
+        searcher_.feed(bytes);
+    }
+
+    void end() override
+    {
+        searcher_.end();
+    }
+
+private:
+    LineSearcher& searcher_;
+};
+
+class SearchBuf : public std::streambuf
+{
+public:
+    explicit SearchBuf(LineSearcher& searcher)
+        : searcher_(searcher)
+    {
+    }
+
+protected:
+    std::streamsize xsputn(const char* data, std::streamsize count) override
+    {
+        searcher_.feed({data, static_cast<std::size_t>(count)});
+        return count;
+    }
+
+    int_type overflow(int_type c) override
+    {
+        if (!traits_type::eq_int_type(c, traits_type::eof()))
+        {
+            const char byte = traits_type::to_char_type(c);
+            searcher_.feed({&byte, 1});
+        }
+        return traits_type::not_eof(c);
+    }
+
+private:
+    LineSearcher& searcher_;
+};
+
 class DiscardBuf : public std::streambuf
 {
 protected:
@@ -605,6 +668,76 @@ bool Compressor::stats(const fs::path& input, const StatsOptions& options)
         return false;
     }
     return true;
+}
+
+SearchResult Compressor::grep(const fs::path& input, const SearchOptions& options,
+                              const std::vector<std::string>& paths)
+{
+    PROFILE_SESSION("Compressor::Grep")
+    std::ostream& err = streams_.err;
+    constexpr std::string_view action = "search";
+    if (options.pattern.contains('\n'))
+    {
+        err << "Cannot search for a pattern with a line break\n";
+        return SearchResult::failed;
+    }
+    LineSearcher searcher(options, streams_.out);
+    std::expected<void, Failure> result;
+    if (is_archive_file(input))
+    {
+        auto archive = open_archive(err, action, input);
+        if (!archive)
+        {
+            return SearchResult::failed;
+        }
+        const auto selected = select_paths(archive->info.index.entries, paths);
+        if (!selected)
+        {
+            err << "Cannot search " << selected.error() << ": it is not in " << input.string()
+                << '\n';
+            return SearchResult::failed;
+        }
+        SearchVisitor visitor(searcher);
+        result = visit_files(*decoder_, archive->file, archive->info, *selected, visitor);
+    }
+    else
+    {
+        if (!paths.empty())
+        {
+            err << "Cannot search paths in " << display_name(input, "standard input")
+                << ": it is not a folder archive\n";
+            return SearchResult::failed;
+        }
+        std::ifstream file;
+        std::istream* in = open_input(streams_, input, file);
+        if (in == nullptr)
+        {
+            return SearchResult::failed;
+        }
+        searcher.begin({display_name(input, "(standard input)")}, false);
+        SearchBuf buffer(searcher);
+        std::ostream out(&buffer);
+        if (auto decoded = decoder_->decode(*in, out); !decoded)
+        {
+            result = std::unexpected(Failure{.error = decoded.error(), .detail = {}});
+        }
+        else
+        {
+            searcher.end();
+        }
+    }
+    streams_.out.flush();
+    if (!result)
+    {
+        report(err, action, input, result.error());
+        return SearchResult::failed;
+    }
+    if (!streams_.out)
+    {
+        err << "Cannot write the matches\n";
+        return SearchResult::failed;
+    }
+    return searcher.matched() ? SearchResult::matched : SearchResult::not_matched;
 }
 
 } // namespace compressor
