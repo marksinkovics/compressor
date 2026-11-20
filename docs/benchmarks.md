@@ -286,18 +286,18 @@ After container step 2 ([roadmap.md](roadmap.md#container-format-and-streaming))
 
 | File | Level 7 | Level 8 | Change | bzip2 -9 |
 | --- | --- | --- | --- | --- |
-| dickens | 3 011 927 | **2 924 661** | 3 485 145 |
+| dickens | 3 873 654 | 2 956 373 | −23.7% | 2 799 520 |
 | mozilla | 19 066 830 | 18 479 116 | −3.1% | 17 914 392 |
 | mr | 3 336 092 | 2 714 413 | −18.6% | 2 441 280 |
 | nci | 3 180 113 | 1 881 509 | −40.8% | 1 812 734 |
-| ooffice | 2 841 039 | 2 953 073 | **2 821 560** |
+| ooffice | 2 807 076 | 2 578 590 | −8.1% | 2 862 526 |
 | osdb | 3 700 355 | 3 046 092 | −17.7% | 2 802 792 |
 | reymont | 1 848 294 | 1 338 333 | −27.6% | 1 246 230 |
-| samba | 6 260 135 | 4 861 905 | **4 749 269** |
-| sao | 4 999 331 | 5 316 723 | **4 893 543** |
+| samba | 5 439 109 | 4 805 293 | −11.7% | 4 549 759 |
+| sao | 5 322 284 | 5 316 021 | −0.1% | 4 940 524 |
 | webster | 12 202 876 | 9 077 216 | −25.6% | 8 644 714 |
-| x-ray | **4 097 154** | 4 564 666 | 5 077 855 |
-| xml | 967 297 | **453 440** | 558 288 |
+| x-ray | 5 094 746 | 4 583 413 | −10.0% | 4 051 112 |
+| xml | 680 542 | 457 310 | −32.8% | 441 186 |
 
 - BWT wins on everything but `sao` (star catalogue records), and beats bzip2 on `ooffice` thanks to the x86 filter. bzip2 stays 2–11% smaller elsewhere: it switches between up to six Huffman tables every 50 symbols, where we use one per block.
 - Encoding at level 8 takes 1.1–6× level 7's time (the suffix sort is O(n log n) prefix doubling, and every candidate transform is tried with both coders); decoding stays at 0.04–0.13 s per file.
@@ -317,9 +317,9 @@ One block at a time (1 MiB), single thread, per Silesia file: the BWT coder's la
 | File | Level 8 before | Level 8 with LZR | Change |
 | --- | --- | --- | --- |
 | mozilla | 18 479 116 | 16 006 226 | −13.4% |
-| sao | 4 999 331 | 5 316 723 | **4 893 543** |
-| samba | 6 260 135 | 4 861 905 | **4 749 269** |
-| ooffice | 2 841 039 | 2 953 073 | **2 821 560** |
+| sao | 5 316 021 | 4 878 849 | −8.2% |
+| samba | 4 805 293 | 4 599 962 | −4.3% |
+| ooffice | 2 578 590 | 2 481 195 | −3.8% |
 | the 8 others | | | −0.3% to −1.3% (rANS after the BWT) |
 
 - Per 1 MiB block on one thread, LZR is 7.6–18% smaller than Deflate on every file and beats the BWT coder on the binaries above, the files where xz beats bzip2.
