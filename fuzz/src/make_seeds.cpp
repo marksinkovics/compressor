@@ -175,6 +175,7 @@ try
     write(dir / "container" / "text.ingot", plain);
     write(dir / "container" / "huffman.ingot", huffman);
     write(dir / "container" / "samples.ingot", encode(samples(3000)));
+    write(dir / "container" / "bwt.ingot", encode(words(6000), 9));
     write(dir / "inflate" / "text.deflate", deflate_seed(words(5000)));
     write(dir / "inflate" / "noise.deflate", deflate_seed(noise(700)));
     write(dir / "container" / "stored.ingot", stored);

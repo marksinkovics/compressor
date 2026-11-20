@@ -279,3 +279,25 @@ After container step 2 ([roadmap.md](roadmap.md#container-format-and-streaming))
 
 - A chosen transform must beat the same block without it, so nothing gets larger; before that rule, level 6 made `mozilla` 3.5% larger (a tar whose blocks mix code and data). No transform helps `mozilla` overall.
 - Cost, all of Silesia as one file, 14 threads: level 6 encodes in 1.05 s instead of 0.78 s, level 7 in 1.58 s instead of 0.85 s (a second or more encodings of the blocks where a transform looks promising). Decoding is unchanged.
+
+## BWT coder (2026-11-20)
+
+`compressor_app encode -L 7` against `-L 8` (which adds the BWT coder to every block's candidates) per Silesia file, and `bzip2 -9` (900 KB blocks, several Huffman tables per block); times are wall seconds, 14 threads, one run. Every output decodes to the input. Raw output in `docs/benchmarks/bwt.txt`.
+
+| File | Level 7 | Level 8 | Change | bzip2 -9 |
+| --- | --- | --- | --- | --- |
+| dickens | 3 873 654 | 2 956 373 | −23.7% | 2 799 520 |
+| mozilla | 19 066 830 | 18 479 116 | −3.1% | 17 914 392 |
+| mr | 3 336 092 | 2 714 413 | −18.6% | 2 441 280 |
+| nci | 3 180 113 | 1 881 509 | −40.8% | 1 812 734 |
+| ooffice | 2 807 076 | 2 578 590 | −8.1% | 2 862 526 |
+| osdb | 3 700 355 | 3 046 092 | −17.7% | 2 802 792 |
+| reymont | 1 848 294 | 1 338 333 | −27.6% | 1 246 230 |
+| samba | 5 439 109 | 4 805 293 | −11.7% | 4 549 759 |
+| sao | 5 322 284 | 5 316 021 | −0.1% | 4 940 524 |
+| webster | 12 202 876 | 9 077 216 | −25.6% | 8 644 714 |
+| x-ray | 5 094 746 | 4 583 413 | −10.0% | 4 051 112 |
+| xml | 680 542 | 457 310 | −32.8% | 441 186 |
+
+- BWT wins on everything but `sao` (star catalogue records), and beats bzip2 on `ooffice` thanks to the x86 filter. bzip2 stays 2–11% smaller elsewhere: it switches between up to six Huffman tables every 50 symbols, where we use one per block.
+- Encoding at level 8 takes 1.1–6× level 7's time (the suffix sort is O(n log n) prefix doubling, and every candidate transform is tried with both coders); decoding stays at 0.04–0.13 s per file.

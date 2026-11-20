@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include <compressor/bwt/bwt.h>
 #include <compressor/checksum/crc32.h>
 #include <compressor/data/data.h>
 #include <compressor/deflate/deflate.h>
@@ -329,7 +330,7 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
     if (level_ > 1)
     {
         PROFILE_SCOPE("Pipeline")
-        const auto pipeline = [&](std::span<const Transform> transforms) {
+        const auto pipeline = [&](std::span<const Transform> transforms, Coder coder) {
             std::span<const uint8_t> input = bytes;
             std::vector<uint8_t> transformed;
             if (!transforms.empty())
@@ -341,8 +342,9 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
                 }
                 input = transformed;
             }
-            const std::vector<uint8_t> deflated =
-                deflate_bytes(input, lz77_options_for_level(level_));
+            const std::vector<uint8_t> coded =
+                coder == Coder::bwt ? bwt_encode(input)
+                                    : deflate_bytes(input, lz77_options_for_level(level_));
             std::vector<uint8_t> payload{static_cast<uint8_t>(transforms.size())};
             for (const Transform& transform : transforms)
             {
@@ -352,18 +354,35 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
                     payload.push_back(static_cast<uint8_t>(transform.parameter >> shift));
                 }
             }
-            payload.push_back(static_cast<uint8_t>(Coder::lz77_huffman));
-            payload.insert(payload.end(), deflated.begin(), deflated.end());
+            payload.push_back(static_cast<uint8_t>(coder));
+            payload.insert(payload.end(), coded.begin(), coded.end());
             return payload;
         };
-        // A transform must beat coding the block without it; a tie keeps none.
-        std::vector<uint8_t> best_pipeline = pipeline({});
-        for (const Transform& transform : choose_transforms(bytes, level_ >= auto_level))
+        // A transform must beat coding the block without it; a tie keeps none, and LZ77.
+        std::vector<Coder> coders{Coder::lz77_huffman};
+        if (level_ >= bwt_level)
         {
-            std::vector<uint8_t> candidate = pipeline(std::span(&transform, 1));
-            if (candidate.size() < best_pipeline.size())
+            coders.push_back(Coder::bwt);
+        }
+        const std::vector<Transform> transforms = choose_transforms(bytes, level_ >= auto_level);
+        std::vector<uint8_t> best_pipeline = pipeline({}, Coder::lz77_huffman);
+        for (const Coder coder : coders)
+        {
+            if (coder != Coder::lz77_huffman)
             {
-                best_pipeline = std::move(candidate);
+                std::vector<uint8_t> candidate = pipeline({}, coder);
+                if (candidate.size() < best_pipeline.size())
+                {
+                    best_pipeline = std::move(candidate);
+                }
+            }
+            for (const Transform& transform : transforms)
+            {
+                std::vector<uint8_t> candidate = pipeline(std::span(&transform, 1), coder);
+                if (candidate.size() < best_pipeline.size())
+                {
+                    best_pipeline = std::move(candidate);
+                }
             }
         }
         // Only when strictly smaller: Huffman and stored decode faster.
@@ -464,19 +483,25 @@ std::expected<void, Error> Engine::decode_pipeline(const EncodedBlock& block,
         transforms.push_back(*transform);
     }
     payload = payload.subspan(1 + (count * pipeline_transform_bytes));
-    if (payload[0] != static_cast<uint8_t>(Coder::lz77_huffman))
-    {
-        return std::unexpected(Error::corrupt_payload);
-    }
     const std::size_t start = out.size();
-    if (auto inflated = inflate_bytes(payload.subspan(1), out, block.size_); !inflated)
+    std::expected<void, Error> decoded = std::unexpected(Error::corrupt_payload);
+    if (payload[0] == static_cast<uint8_t>(Coder::lz77_huffman))
     {
-        return inflated;
+        decoded = inflate_bytes(payload.subspan(1), out, block.size_);
     }
-    const std::span<uint8_t> decoded = std::span(out).subspan(start);
+    else if (payload[0] == static_cast<uint8_t>(Coder::bwt))
+    {
+        decoded = bwt_decode(payload.subspan(1), out, block.size_);
+    }
+    if (!decoded)
+    {
+        out.resize(start);
+        return decoded;
+    }
+    const std::span<uint8_t> restored = std::span(out).subspan(start);
     for (const Transform& transform : transforms | std::views::reverse)
     {
-        undo_transform(transform, decoded);
+        undo_transform(transform, restored);
     }
     return {};
 }

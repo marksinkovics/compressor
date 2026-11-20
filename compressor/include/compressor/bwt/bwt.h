@@ -1,0 +1,35 @@
+#ifndef Bwt_h
+#define Bwt_h
+
+#include <cstdint>
+#include <expected>
+#include <span>
+#include <vector>
+
+#include <compressor/error.h>
+
+namespace compressor
+{
+
+// The suffix array of `bytes`: the start of every suffix, in sorted order. Prefix doubling with
+// radix passes, O(n log n).
+std::vector<uint32_t> suffix_array(std::span<const uint8_t> bytes);
+
+// Burrows-Wheeler transform with an implicit end marker smaller than every byte: `out` gets the
+// byte before each sorted suffix, skipping the suffix that is the whole input; the result is the
+// row where that suffix was, which inverse_bwt() needs.
+uint32_t forward_bwt(std::span<const uint8_t> bytes, std::vector<uint8_t>& out);
+// Appends the original bytes to `out`. Fails with corrupt_payload when `primary` is out of range.
+std::expected<void, Error> inverse_bwt(std::span<const uint8_t> transformed, uint32_t primary,
+                                       std::vector<uint8_t>& out);
+
+// The bzip2 approach as a pipeline coder (docs/file_format.md, "Pipeline blocks"): BWT, then
+// move-to-front, zero runs written in bijective base 2, and one Huffman code over the result.
+std::vector<uint8_t> bwt_encode(std::span<const uint8_t> bytes);
+// Appends exactly `size` bytes; corrupt_payload on anything malformed.
+std::expected<void, Error> bwt_decode(std::span<const uint8_t> payload, std::vector<uint8_t>& out,
+                                      std::size_t size);
+
+} // namespace compressor
+
+#endif /* Bwt_h */

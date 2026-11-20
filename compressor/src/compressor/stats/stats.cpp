@@ -243,7 +243,7 @@ void print_stats(const Stats& stats, const StatsReport& report, std::ostream& ou
                            count(Method::stored));
         if (count(Method::pipeline) > 0)
         {
-            out << std::format(", {} pipeline (LZ77 + Huffman)", count(Method::pipeline));
+            out << std::format(", {} pipeline", count(Method::pipeline));
         }
         out << '\n';
         if (stats.content_bytes > 0 && stats.input_bytes > 0)

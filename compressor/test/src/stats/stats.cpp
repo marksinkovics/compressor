@@ -271,6 +271,6 @@ TEST(StatsTests, Pipeline_blocks_are_counted_and_named)
     stats.frequencies['a'] = 100;
     std::ostringstream out;
     compressor::print_stats(stats, {.blocks = true, .histogram = false}, out);
-    EXPECT_THAT(out.str(), HasSubstr("1 pipeline (LZ77 + Huffman)\n"));
+    EXPECT_THAT(out.str(), HasSubstr(", 1 pipeline\n"));
     EXPECT_THAT(out.str(), HasSubstr("pipeline         100"));
 }

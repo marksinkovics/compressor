@@ -30,7 +30,7 @@ A pipeline block's payload starts with a descriptor naming what was done to the 
 |---:|---|
 | 1 | Transform count `n`, at most 4. Each transform turns bytes into bytes; decoding undoes them last to first |
 | 5 × n | Each transform: id, then a 4-byte parameter (see below) |
-| 1 | Coder: 2 = LZ77 + Huffman. Others are reserved |
+| 1 | Coder: 2 = LZ77 + Huffman, 3 = BWT. Others are reserved |
 | rest | The coder's output |
 
 Transforms (`compressor/include/compressor/transform/transform.h`); positions count from the start of the block:
@@ -41,7 +41,18 @@ Transforms (`compressor/include/compressor/transform/transform.h`); positions co
 | 3 | ARM64 branches | 0 | Every 4-byte-aligned little-endian word whose top 6 bits are `100101` (BL): its 26-bit word offset plus the word's index, mod 2^26 |
 | 4 | x86 branches | 0 | Scanning from the start, every `E8` or `E9` byte with 4 bytes after it: those 4 bytes as a little-endian number plus the position after them, mod 2^32; the scan then continues after them |
 
-Other ids and parameters are rejected. The encoder picks a transform by sampling the block's first 64 KiB (`choose_transforms()`): a delta stride from 1, 2, 3, 4, 6, 8 or 16 that lowers the order-0 entropy by a tenth, or a branch filter when BL words or `E8` bytes are dense enough to be machine code. It codes the block both with and without it and keeps the smaller; from level 7 on (`auto_level`) it tries up to three candidates found with looser thresholds.
+Other ids and parameters are rejected. The encoder picks a transform by sampling the block's first 64 KiB (`choose_transforms()`): a delta stride from 1, 2, 3, 4, 6, 8 or 16 that lowers the order-0 entropy by a tenth, or a branch filter when BL words or `E8` bytes are dense enough to be machine code. It codes the block both with and without it and keeps the smaller; from level 7 on (`auto_level`) it tries up to three candidates found with looser thresholds, and from level 8 (`bwt_level`) every one of them with the BWT coder as well.
+
+BWT (coder 3, `compressor/src/compressor/bwt/bwt.cpp`), the bzip2 approach: the Burrows-Wheeler transform of the block with an end marker smaller than every byte, move-to-front, and one Huffman code over the result.
+
+| Size | Field |
+|---:|---|
+| 4 | Primary index: the row of the sorted rotations of `block + marker` that starts with the block itself (1 to size; 0 for an empty block) |
+| 4 | Symbol count |
+| 129 | Code lengths of the 257 symbols, 4 bits each (symbol `2i` in the low nibble of byte `i`) |
+| rest | The symbols' canonical codes, first bit most significant, the last byte padded with zeros |
+
+Symbols 0 (RUNA) and 1 (RUNB) write a run of zeros from move-to-front in bijective base 2, least significant digit first (RUNA is 1, RUNB 2: `run = Σ digit · 2^i`); symbol `k` from 2 to 256 is move-to-front index `k - 1`. The transformed bytes are the last column of the sorted rotations without the marker's row: row 0 (the marker's rotation) first, then the rest skipping the primary row. Decoding needs about five times the block size.
 
 LZ77 + Huffman is a raw Deflate stream (RFC 1951) of the block: matches reach back at most 32 KiB and only within the block, so blocks still decode independently and in parallel. It decodes to exactly the block's decoded size, with nothing after its final block. Decoding needs the block's own output and the payload, about twice the block size.
 

@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -514,7 +515,7 @@ TEST_F(EngineTests, From_level_2_repetitive_text_becomes_an_lz77_huffman_pipelin
     const compressor::EncodedBlock huffman = fast.encode_block(bytes(text));
     EXPECT_EQ(huffman.method_, compressor::Method::huffman);
 
-    for (const unsigned level : {2U, 6U, 9U})
+    for (const unsigned level : {2U, 6U})
     {
         compressor::Engine engine(compressor::default_block_size_log2, level);
         const compressor::EncodedBlock block = engine.encode_block(bytes(text));
@@ -602,4 +603,27 @@ TEST_F(EngineTests, A_transform_with_an_invalid_parameter_is_corrupt)
     compressor::EncodedBlock too_many = block;
     too_many.payload_[0] = 5;
     EXPECT_EQ(decode_block(engine, too_many), std::unexpected(compressor::Error::corrupt_payload));
+}
+
+TEST_F(EngineTests, From_level_8_text_can_take_the_bwt_coder)
+{
+    std::string text;
+    uint32_t state = 3;
+    while (text.size() < 300'000)
+    {
+        state = (state * 1103515245U) + 12345U;
+        static constexpr std::array<std::string_view, 6> words{"sorted ", "suffix ", "block ",
+                                                               "front ",  "move ",   "rows.\n"};
+        text += words[(state >> 16U) % words.size()];
+    }
+    for (const unsigned level : {compressor::bwt_level, 9U})
+    {
+        compressor::Engine engine(compressor::default_block_size_log2, level);
+        const compressor::EncodedBlock block = engine.encode_block(bytes(text));
+        ASSERT_EQ(block.method_, compressor::Method::pipeline);
+        EXPECT_EQ(block.payload_[block.payload_[0] * 5 + 1],
+                  static_cast<uint8_t>(compressor::Coder::bwt))
+            << level;
+        EXPECT_EQ(decode_block(engine, block), decoded(text)) << level;
+    }
 }

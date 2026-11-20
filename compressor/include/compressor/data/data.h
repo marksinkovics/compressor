@@ -56,6 +56,7 @@ enum class Method : uint8_t
 enum class Coder : uint8_t
 {
     lz77_huffman = 2, // a raw Deflate stream (RFC 1951) of the transformed bytes
+    bwt = 3,          // BWT, move-to-front, zero runs, Huffman (bwt_encode())
 };
 inline constexpr std::size_t pipeline_descriptor_bytes = 2; // with no transforms
 inline constexpr std::size_t pipeline_transform_bytes = 5;  // id, then a 4-byte parameter

@@ -29,6 +29,7 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 - Deflate is done: `encode -f gzip|zip`, our LZ77 and Huffman, gzip -6's ratio at 1.45× its time; 293/293 pass.
 - The pipeline is done: format version 2, LZ77 + Huffman blocks with our own inflate, `encode -L 1..9` (default 6, ratio 1.57 → 3.10 on Silesia); 307/307 pass.
 - Transforms and auto mode are done: delta, ARM64 and x86 branch filters chosen per block by sampling, kept only when smaller (x-ray −14%, ooffice −9%); 314/314 pass.
+- The BWT coder is done (item 13, part 1): from level 8, bzip2-style blocks, Silesia text 24-41% smaller than level 7; 320/320 pass.
 - **Next:** the "Autonomous run" list at the end of `docs/roadmap.md`, on branch `feat/autonomous-run`: work through it in order, committing each item (no push, no co-author line).
 
 ## Commands
