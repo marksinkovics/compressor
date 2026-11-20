@@ -9,8 +9,8 @@
 #include <span>
 #include <vector>
 
+#include <compressor/entropy/rans.h>
 #include <compressor/error.h>
-#include <compressor/huffman/huffman.h>
 
 namespace compressor
 {
@@ -23,7 +23,6 @@ namespace
 constexpr uint16_t run_a = 0;
 constexpr uint16_t run_b = 1;
 constexpr std::size_t alphabet = 257;
-constexpr unsigned table_bits = max_code_length;
 
 std::unexpected<Error> corrupt()
 {
@@ -87,112 +86,6 @@ std::vector<uint16_t> move_to_front(std::span<const uint8_t> bytes)
     write_run(symbols, zeros);
     return symbols;
 }
-
-class BitWriter
-{
-public:
-    explicit BitWriter(std::vector<uint8_t>& out)
-        : out_(out)
-    {
-    }
-
-    void put(uint32_t bits, unsigned count)
-    {
-        buffer_ = (buffer_ << count) | bits;
-        filled_ += count;
-        while (filled_ >= 8)
-        {
-            filled_ -= 8;
-            out_.push_back(static_cast<uint8_t>(buffer_ >> filled_));
-        }
-    }
-
-    void flush()
-    {
-        if (filled_ > 0)
-        {
-            put(0, 8 - filled_);
-        }
-    }
-
-private:
-    std::vector<uint8_t>& out_;
-    uint64_t buffer_ = 0;
-    unsigned filled_ = 0;
-};
-
-// MSB-first codes, decoded through a table indexed by the next table_bits bits.
-class Decoder
-{
-public:
-    bool build(std::span<const uint8_t> lengths)
-    {
-        std::vector<uint8_t> copy(lengths.begin(), lengths.end());
-        uint64_t kraft = 0;
-        std::size_t used = 0;
-        for (const uint8_t length : copy)
-        {
-            if (length > table_bits)
-            {
-                return false;
-            }
-            if (length > 0)
-            {
-                kraft += uint64_t{1} << (table_bits - length);
-                ++used;
-            }
-        }
-        const bool single = used == 1 && kraft == uint64_t{1} << (table_bits - 1);
-        if (used == 0 || (!single && kraft != uint64_t{1} << table_bits))
-        {
-            return false;
-        }
-        entries_.assign(std::size_t{1} << table_bits, {});
-        const std::vector<Code> codes = canonical_codes(copy);
-        for (std::size_t symbol = 0; symbol < codes.size(); ++symbol)
-        {
-            const Code& code = codes[symbol];
-            if (code.length == 0)
-            {
-                continue;
-            }
-            const std::size_t first = std::size_t{code.bits} << (table_bits - code.length);
-            std::fill_n(entries_.begin() + static_cast<std::ptrdiff_t>(first),
-                        std::size_t{1} << (table_bits - code.length),
-                        Entry{.symbol = static_cast<uint16_t>(symbol), .length = code.length});
-        }
-        return true;
-    }
-
-    // False at the end of the payload or on bits that start no code.
-    bool next(std::span<const uint8_t> payload, uint64_t& bit, uint16_t& symbol) const
-    {
-        uint32_t window = 0;
-        for (unsigned i = 0; i < table_bits; ++i)
-        {
-            const uint64_t at = bit + i;
-            const unsigned value =
-                at / 8 < payload.size() ? (unsigned{payload[at / 8]} >> (7U - (at % 8))) & 1U : 0;
-            window = (window << 1U) | value;
-        }
-        const Entry entry = entries_[window];
-        if (entry.length == 0 || bit + entry.length > payload.size() * 8)
-        {
-            return false;
-        }
-        bit += entry.length;
-        symbol = entry.symbol;
-        return true;
-    }
-
-private:
-    struct Entry
-    {
-        uint16_t symbol = 0;
-        uint8_t length = 0;
-    };
-    std::vector<Entry> entries_;
-};
 
 } // namespace
 
@@ -342,42 +235,83 @@ std::expected<void, Error> inverse_bwt(std::span<const uint8_t> transformed, uin
     return {};
 }
 
-std::vector<uint8_t> bwt_encode(std::span<const uint8_t> bytes)
+namespace
+{
+
+// Undoes the zero runs and move-to-front, then the BWT.
+std::expected<void, Error> rebuild(std::span<const uint16_t> symbols, uint32_t primary,
+                                   std::vector<uint8_t>& out, std::size_t size)
 {
     std::vector<uint8_t> transformed;
-    const uint32_t primary = forward_bwt(bytes, transformed);
-    const std::vector<uint16_t> symbols = move_to_front(transformed);
-
-    std::vector<uint64_t> frequencies(alphabet);
+    transformed.reserve(size);
+    std::array<uint8_t, 256> order{};
+    std::ranges::iota(order, uint8_t{0});
+    std::size_t run = 0;
+    std::size_t weight = 1;
+    const auto flush_run = [&]() {
+        if (run > size - transformed.size())
+        {
+            return false;
+        }
+        transformed.insert(transformed.end(), run, order[0]);
+        run = 0;
+        weight = 1;
+        return true;
+    };
     for (const uint16_t symbol : symbols)
     {
-        ++frequencies[symbol];
+        if (symbol == run_a || symbol == run_b)
+        {
+            run += weight * (symbol == run_a ? 1 : 2);
+            weight *= 2;
+            if (run > size)
+            {
+                return corrupt();
+            }
+            continue;
+        }
+        if (symbol >= alphabet || !flush_run() || transformed.size() >= size)
+        {
+            return corrupt();
+        }
+        const std::size_t at = symbol - 1U;
+        const uint8_t byte = order[at];
+        std::copy_backward(order.begin(), order.begin() + static_cast<std::ptrdiff_t>(at),
+                           order.begin() + static_cast<std::ptrdiff_t>(at) + 1);
+        order[0] = byte;
+        transformed.push_back(byte);
     }
-    const std::vector<uint8_t> lengths = code_lengths(frequencies, max_code_length);
-    const std::vector<Code> codes = canonical_codes(lengths);
+    if (!flush_run() || transformed.size() != size)
+    {
+        return corrupt();
+    }
+    return inverse_bwt(transformed, primary, out);
+}
 
+std::vector<uint16_t> front_end(std::span<const uint8_t> bytes, uint32_t& primary)
+{
+    std::vector<uint8_t> transformed;
+    primary = forward_bwt(bytes, transformed);
+    return move_to_front(transformed);
+}
+
+} // namespace
+
+std::vector<uint8_t> bwt_encode(std::span<const uint8_t> bytes)
+{
+    uint32_t primary = 0;
+    const std::vector<uint16_t> symbols = front_end(bytes, primary);
     std::vector<uint8_t> out;
     put_le32(out, primary);
     put_le32(out, static_cast<uint32_t>(symbols.size()));
-    for (std::size_t symbol = 0; symbol < alphabet; symbol += 2)
-    {
-        const uint8_t high = symbol + 1 < alphabet ? lengths[symbol + 1] : 0;
-        out.push_back(static_cast<uint8_t>(unsigned{lengths[symbol]} | (unsigned{high} << 4U)));
-    }
-    BitWriter bits(out);
-    for (const uint16_t symbol : symbols)
-    {
-        bits.put(codes[symbol].bits, codes[symbol].length);
-    }
-    bits.flush();
+    rans_encode(symbols, alphabet, out);
     return out;
 }
 
 std::expected<void, Error> bwt_decode(std::span<const uint8_t> payload, std::vector<uint8_t>& out,
                                       std::size_t size)
 {
-    constexpr std::size_t length_bytes = (alphabet + 1) / 2;
-    if (payload.size() < 8 + length_bytes)
+    if (payload.size() < 8)
     {
         return corrupt();
     }
@@ -387,83 +321,12 @@ std::expected<void, Error> bwt_decode(std::span<const uint8_t> payload, std::vec
     {
         return corrupt();
     }
-    std::vector<uint8_t> lengths(alphabet);
-    for (std::size_t i = 0; i < length_bytes; ++i)
+    auto symbols = rans_decode(payload.subspan(8), alphabet, symbol_count);
+    if (!symbols)
     {
-        lengths[2 * i] = payload[8 + i] & 0x0FU;
-        if ((2 * i) + 1 < alphabet)
-        {
-            lengths[(2 * i) + 1] = payload[8 + i] >> 4U;
-        }
+        return std::unexpected(symbols.error());
     }
-    const std::span<const uint8_t> bits_bytes = payload.subspan(8 + length_bytes);
-
-    std::vector<uint8_t> transformed;
-    transformed.reserve(size);
-    if (symbol_count > 0)
-    {
-        Decoder decoder;
-        if (!decoder.build(lengths))
-        {
-            return corrupt();
-        }
-        std::array<uint8_t, 256> order{};
-        std::ranges::iota(order, uint8_t{0});
-        uint64_t bit = 0;
-        std::size_t run = 0;
-        std::size_t weight = 1;
-        const auto flush_run = [&]() {
-            if (run > size - transformed.size())
-            {
-                return false;
-            }
-            transformed.insert(transformed.end(), run, order[0]);
-            run = 0;
-            weight = 1;
-            return true;
-        };
-        for (uint32_t i = 0; i < symbol_count; ++i)
-        {
-            uint16_t symbol = 0;
-            if (!decoder.next(bits_bytes, bit, symbol))
-            {
-                return corrupt();
-            }
-            if (symbol == run_a || symbol == run_b)
-            {
-                run += weight * (symbol == run_a ? 1 : 2);
-                weight *= 2;
-                if (run > size)
-                {
-                    return corrupt();
-                }
-                continue;
-            }
-            if (!flush_run() || transformed.size() >= size)
-            {
-                return corrupt();
-            }
-            const std::size_t at = symbol - 1U;
-            const uint8_t byte = order[at];
-            std::copy_backward(order.begin(), order.begin() + static_cast<std::ptrdiff_t>(at),
-                               order.begin() + static_cast<std::ptrdiff_t>(at) + 1);
-            order[0] = byte;
-            transformed.push_back(byte);
-        }
-        if (!flush_run() || (bit + 7) / 8 != bits_bytes.size())
-        {
-            return corrupt();
-        }
-    }
-    else if (!bits_bytes.empty())
-    {
-        return corrupt();
-    }
-    if (transformed.size() != size)
-    {
-        return corrupt();
-    }
-    return inverse_bwt(transformed, primary, out);
+    return rebuild(*symbols, primary, out, size);
 }
 
 } // namespace compressor

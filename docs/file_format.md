@@ -30,7 +30,7 @@ A pipeline block's payload starts with a descriptor naming what was done to the 
 |---:|---|
 | 1 | Transform count `n`, at most 4. Each transform turns bytes into bytes; decoding undoes them last to first |
 | 5 × n | Each transform: id, then a 4-byte parameter (see below) |
-| 1 | Coder: 2 = LZ77 + Huffman, 3 = BWT. Others are reserved |
+| 1 | Coder: 2 = LZ77 + Huffman, 3 = BWT, 4 = rANS. Others are reserved |
 | rest | The coder's output |
 
 Transforms (`compressor/include/compressor/transform/transform.h`); positions count from the start of the block:
@@ -43,16 +43,19 @@ Transforms (`compressor/include/compressor/transform/transform.h`); positions co
 
 Other ids and parameters are rejected. The encoder picks a transform by sampling the block's first 64 KiB (`choose_transforms()`): a delta stride from 1, 2, 3, 4, 6, 8 or 16 that lowers the order-0 entropy by a tenth, or a branch filter when BL words or `E8` bytes are dense enough to be machine code. It codes the block both with and without it and keeps the smaller; from level 7 on (`auto_level`) it tries up to three candidates found with looser thresholds, and from level 8 (`bwt_level`) every one of them with the BWT coder as well.
 
-BWT (coder 3, `compressor/src/compressor/bwt/bwt.cpp`), the bzip2 approach: the Burrows-Wheeler transform of the block with an end marker smaller than every byte, move-to-front, and one Huffman code over the result.
+BWT (coder 3, `compressor/src/compressor/bwt/bwt.cpp`), the bzip2 approach: the Burrows-Wheeler transform of the block with an end marker smaller than every byte, move-to-front, and rANS over the result.
 
 | Size | Field |
 |---:|---|
 | 4 | Primary index: the row of the sorted rotations of `block + marker` that starts with the block itself (1 to size; 0 for an empty block) |
 | 4 | Symbol count |
-| 129 | Code lengths of the 257 symbols, 4 bits each (symbol `2i` in the low nibble of byte `i`) |
-| rest | The symbols' canonical codes, first bit most significant, the last byte padded with zeros |
+| rest | The symbols, rANS-coded over an alphabet of 257 (see "rANS") |
 
 Symbols 0 (RUNA) and 1 (RUNB) write a run of zeros from move-to-front in bijective base 2, least significant digit first (RUNA is 1, RUNB 2: `run = Σ digit · 2^i`); symbol `k` from 2 to 256 is move-to-front index `k - 1`. The transformed bytes are the last column of the sorted rotations without the marker's row: row 0 (the marker's rotation) first, then the rest skipping the primary row. Decoding needs about five times the block size.
+
+rANS (coder 4) is the transformed bytes themselves, rANS-coded over an alphabet of 256. The encoder only tries it after a transform; on its own it wins only on noisy samples such as Silesia's x-ray after a delta.
+
+rANS (`compressor/src/compressor/entropy/rans.cpp`), static and order-0: the frequency of every symbol of the alphabet as a LEB128 varint (7 bits per byte, low first, at most 3 bytes), together exactly 2^15 unless there are no symbols; then, unless there are no symbols, the coder's 32-bit state written most significant byte first, then its renormalisation bytes. Decoding keeps a state `x` in [2^23, 2^31): `slot = x mod 2^15` picks the symbol `s` whose cumulative range holds it, `x = freq(s) · (x >> 15) + slot − start(s)`, then while `x < 2^23`, `x = (x << 8) | next byte`. After the last symbol, `x` must be exactly 2^23 and no bytes may be left.
 
 LZ77 + Huffman is a raw Deflate stream (RFC 1951) of the block: matches reach back at most 32 KiB and only within the block, so blocks still decode independently and in parallel. It decodes to exactly the block's decoded size, with nothing after its final block. Decoding needs the block's own output and the payload, about twice the block size.
 

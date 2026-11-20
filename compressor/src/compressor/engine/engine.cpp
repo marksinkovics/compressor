@@ -19,6 +19,7 @@
 #include <compressor/deflate/deflate.h>
 #include <compressor/deflate/inflate.h>
 #include <compressor/engine/engine.h>
+#include <compressor/entropy/rans.h>
 #include <compressor/error.h>
 #include <compressor/huffman/huffman.h>
 #include <compressor/lz77/lz77.h>
@@ -342,9 +343,19 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
                 }
                 input = transformed;
             }
-            const std::vector<uint8_t> coded =
-                coder == Coder::bwt ? bwt_encode(input)
-                                    : deflate_bytes(input, lz77_options_for_level(level_));
+            std::vector<uint8_t> coded;
+            switch (coder)
+            {
+            case Coder::lz77_huffman:
+                coded = deflate_bytes(input, lz77_options_for_level(level_));
+                break;
+            case Coder::bwt:
+                coded = bwt_encode(input);
+                break;
+            case Coder::rans:
+                rans_encode(std::vector<uint16_t>(input.begin(), input.end()), 256, coded);
+                break;
+            }
             std::vector<uint8_t> payload{static_cast<uint8_t>(transforms.size())};
             for (const Transform& transform : transforms)
             {
@@ -383,6 +394,16 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
                 {
                     best_pipeline = std::move(candidate);
                 }
+            }
+        }
+        // Order-0 rANS only wins on transformed noisy samples (delta'd images), so it is only
+        // tried after a transform.
+        for (const Transform& transform : transforms)
+        {
+            std::vector<uint8_t> candidate = pipeline(std::span(&transform, 1), Coder::rans);
+            if (candidate.size() < best_pipeline.size())
+            {
+                best_pipeline = std::move(candidate);
             }
         }
         // Only when strictly smaller: Huffman and stored decode faster.
@@ -492,6 +513,15 @@ std::expected<void, Error> Engine::decode_pipeline(const EncodedBlock& block,
     else if (payload[0] == static_cast<uint8_t>(Coder::bwt))
     {
         decoded = bwt_decode(payload.subspan(1), out, block.size_);
+    }
+    else if (payload[0] == static_cast<uint8_t>(Coder::rans))
+    {
+        auto symbols = rans_decode(payload.subspan(1), 256, block.size_);
+        if (symbols)
+        {
+            out.insert(out.end(), symbols->begin(), symbols->end());
+            decoded = {};
+        }
     }
     if (!decoded)
     {

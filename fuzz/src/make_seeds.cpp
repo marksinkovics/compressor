@@ -77,6 +77,22 @@ std::string samples(std::size_t count)
     return bytes;
 }
 
+// 16-bit samples taking wide random steps, which get a delta and the rANS coder.
+std::string random_walk(std::size_t count)
+{
+    std::string bytes;
+    uint32_t state = 5;
+    int32_t value = 30'000;
+    for (std::size_t i = 0; i < count; ++i)
+    {
+        state = (state * 1103515245U) + 12345U;
+        value += static_cast<int32_t>((state >> 16U) % 1023) - 511;
+        bytes.push_back(static_cast<char>(static_cast<uint16_t>(value)));
+        bytes.push_back(static_cast<char>(static_cast<uint16_t>(value) >> 8U));
+    }
+    return bytes;
+}
+
 std::string noise(std::size_t size)
 {
     std::string bytes(size, '\0');
@@ -176,6 +192,7 @@ try
     write(dir / "container" / "huffman.ingot", huffman);
     write(dir / "container" / "samples.ingot", encode(samples(3000)));
     write(dir / "container" / "bwt.ingot", encode(words(6000), 9));
+    write(dir / "container" / "walk.ingot", encode(random_walk(3000)));
     write(dir / "inflate" / "text.deflate", deflate_seed(words(5000)));
     write(dir / "inflate" / "noise.deflate", deflate_seed(noise(700)));
     write(dir / "container" / "stored.ingot", stored);

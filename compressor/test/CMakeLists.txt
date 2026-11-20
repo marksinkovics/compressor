@@ -16,6 +16,7 @@ set(SRC_FILES
     "${SRC_DIR}/checksum/crc32.cpp"
     "${SRC_DIR}/compressor/compressor.cpp"
     "${SRC_DIR}/engine/engine.cpp"
+    "${SRC_DIR}/entropy/rans.cpp"
     "${SRC_DIR}/huffman/huffman.cpp"
     "${SRC_DIR}/tree/binary/node.cpp"
     "${SRC_DIR}/tree/binary/tree.cpp"

@@ -301,3 +301,11 @@ After container step 2 ([roadmap.md](roadmap.md#container-format-and-streaming))
 
 - BWT wins on everything but `sao` (star catalogue records), and beats bzip2 on `ooffice` thanks to the x86 filter. bzip2 stays 2–11% smaller elsewhere: it switches between up to six Huffman tables every 50 symbols, where we use one per block.
 - Encoding at level 8 takes 1.1–6× level 7's time (the suffix sort is O(n log n) prefix doubling, and every candidate transform is tried with both coders); decoding stays at 0.04–0.13 s per file.
+
+## rANS (2026-11-20)
+
+One block at a time (1 MiB), single thread, per Silesia file: the BWT coder's last stage as one Huffman code against static order-0 rANS (scratch harness over `bwt_encode`), and order-0 rANS on the bytes after `choose_transforms()` against LZ77 at level 6.
+
+- **BWT + rANS against BWT + Huffman**: smaller on all 12 files, by 0.3% (osdb) to 1.1% (webster, dickens), and 10-20% faster to decode. The Huffman stage was dropped and coder 3 is BWT + rANS.
+- **rANS alone against LZ77**: larger on 11 files (dickens +48%, text up to 5×), smaller on every block of x-ray (−3.0%: noisy 12-bit samples after a delta, where LZ77 finds nothing to match and Huffman can't spend fractions of a bit). Kept as coder 4, tried only after a transform: level 6 on x-ray is now 4 962 127 bytes instead of 5 114 232.
+- The gains are small because both coders are order-0. Context modelling (item 13's LZMA-style coder, or adaptive models after the BWT as in bsc) is where the next larger gain is.

@@ -627,3 +627,24 @@ TEST_F(EngineTests, From_level_8_text_can_take_the_bwt_coder)
         EXPECT_EQ(decode_block(engine, block), decoded(text)) << level;
     }
 }
+
+TEST_F(EngineTests, Noisy_samples_take_a_delta_and_the_rans_coder)
+{
+    // A random walk with wide steps: after a delta, noise that LZ77 can't match.
+    std::string samples;
+    uint32_t state = 5;
+    int32_t value = 30'000;
+    for (int i = 0; i < 200'000; ++i)
+    {
+        state = (state * 1103515245U) + 12345U;
+        value += static_cast<int32_t>((state >> 16U) % 1023) - 511;
+        samples.push_back(static_cast<char>(static_cast<uint16_t>(value)));
+        samples.push_back(static_cast<char>(static_cast<uint16_t>(value) >> 8U));
+    }
+    compressor::Engine engine(compressor::default_block_size_log2, 6);
+    const compressor::EncodedBlock block = engine.encode_block(bytes(samples));
+    ASSERT_EQ(block.method_, compressor::Method::pipeline);
+    ASSERT_EQ(block.payload_[0], 1);
+    EXPECT_EQ(block.payload_[6], static_cast<uint8_t>(compressor::Coder::rans));
+    EXPECT_EQ(decode_block(engine, block), decoded(samples));
+}
