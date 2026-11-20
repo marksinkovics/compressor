@@ -8,6 +8,8 @@ set(SRC_FILES
     "${SRC_DIR}/main.cpp"
     "${SRC_DIR}/codec/codec.cpp"
     "${SRC_DIR}/codec/codec.h"
+    "${SRC_DIR}/search/search.cpp"
+    "${SRC_DIR}/search/search.h"
 )
 
 add_executable(${PROJECT_NAME}

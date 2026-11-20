@@ -1,6 +1,7 @@
 #include <benchmark/benchmark.h>
 
 #include "codec/codec.h"
+#include "search/search.h"
 
 int main(int argc, char** argv)
 {
@@ -10,6 +11,7 @@ int main(int argc, char** argv)
         return 1;
     }
     compressor::bench::register_codec_benchmarks();
+    compressor::bench::register_search_benchmarks();
     benchmark::RunSpecifiedBenchmarks();
     benchmark::Shutdown();
     return 0;

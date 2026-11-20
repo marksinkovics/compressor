@@ -194,3 +194,17 @@ After container step 2 ([roadmap.md](roadmap.md#container-format-and-streaming))
 
 - A search with few matches now runs at decoding speed, so searching blocks in parallel (planned as autonomous run item 5) can't make it faster; it would only help when most lines match, and it needs line counts and lines joined across block and file boundaries. Not done.
 - Output matches the system grep: per-file `grep -c e` counts over Silesia, and `grep -n the webster`. macOS's BSD `grep -b` prints the match's offset, GNU grep and ours the line's.
+
+## Search without decompressing (2026-11-20)
+
+`compressor_benchmark --benchmark_filter=Search/`, one thread, 5 repetitions, medians; same loaded machine. `DecodeAndFind` decodes each block with `Engine::decode_block` and counts the pattern with `std::string_view::find`. `BitScan` encodes the pattern with each Huffman block's canonical code (cut to 56 bits) and counts where those bits occur in the payload at any bit offset; stored blocks are searched as they are. Results in `docs/benchmarks/search-bitscan.json`.
+
+| File, pattern | DecodeAndFind | BitScan | Matches | Candidates |
+| --- | --- | --- | --- | --- |
+| dickens, `the` | 47.9 ms | 9.0 ms | 116 387 | 128 449 |
+| dickens, `Copperfield` | 38.1 ms | 9.0 ms | 532 | 532 |
+| webster, `Gutenberg` | 160 ms | 39.8 ms | 199 | 199 |
+| xml, `<leqgeq>` | 23.0 ms | 5.4 ms | 280 | 280 |
+
+- Scanning the compressed bits finds candidates about 4× faster than decoding finds matches (about 1 GB/s of original data against 0.25 GB/s per core). From about 8 characters on there were no false candidates; for `the`, 10% start inside a code.
+- BitScan is only a filter: a candidate is a match only if it starts on a code boundary, which takes decoding to know. Its use would be skipping the blocks that have no candidates. Exact `grep` output can't skip them yet: line numbers need each skipped block's newline count (in the compressed bits those are candidates too), a match across a block boundary spans two code tables, and `-c` must know whether matches in different blocks share a line. See the roadmap item "Compressed-domain prefilter".
