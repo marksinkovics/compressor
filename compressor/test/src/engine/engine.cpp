@@ -605,7 +605,10 @@ TEST_F(EngineTests, A_transform_with_an_invalid_parameter_is_corrupt)
     EXPECT_EQ(decode_block(engine, too_many), std::unexpected(compressor::Error::corrupt_payload));
 }
 
-TEST_F(EngineTests, From_level_8_text_can_take_the_bwt_coder)
+namespace
+{
+
+std::string bwt_words()
 {
     std::string text;
     uint32_t state = 3;
@@ -616,16 +619,35 @@ TEST_F(EngineTests, From_level_8_text_can_take_the_bwt_coder)
                                                                "front ",  "move ",   "rows.\n"};
         text += words[(state >> 16U) % words.size()];
     }
-    for (const unsigned level : {compressor::bwt_level, 9U})
-    {
-        compressor::Engine engine(compressor::default_block_size_log2, level);
-        const compressor::EncodedBlock block = engine.encode_block(bytes(text));
-        ASSERT_EQ(block.method_, compressor::Method::pipeline);
-        EXPECT_EQ(block.payload_[block.payload_[0] * 5 + 1],
-                  static_cast<uint8_t>(compressor::Coder::bwt))
-            << level;
-        EXPECT_EQ(decode_block(engine, block), decoded(text)) << level;
-    }
+    return text;
+}
+
+} // namespace
+
+TEST_F(EngineTests, At_level_8_text_can_take_the_bwt_coder)
+{
+    const std::string text = bwt_words();
+    compressor::Engine engine(compressor::default_block_size_log2, compressor::bwt_level);
+    const compressor::EncodedBlock block = engine.encode_block(bytes(text));
+    ASSERT_EQ(block.method_, compressor::Method::pipeline);
+    EXPECT_EQ(block.payload_[(block.payload_[0] * 5) + 1],
+              static_cast<uint8_t>(compressor::Coder::bwt));
+    EXPECT_EQ(decode_block(engine, block), decoded(text));
+}
+
+TEST_F(EngineTests, At_level_9_text_takes_the_context_mixing_coder)
+{
+    const std::string text = bwt_words();
+    compressor::Engine engine(compressor::default_block_size_log2, compressor::cm_level);
+    const compressor::EncodedBlock block = engine.encode_block(bytes(text));
+    ASSERT_EQ(block.method_, compressor::Method::pipeline);
+    EXPECT_EQ(block.payload_[(block.payload_[0] * 5) + 1],
+              static_cast<uint8_t>(compressor::Coder::cm));
+    EXPECT_EQ(decode_block(engine, block), decoded(text));
+
+    compressor::EncodedBlock damaged = block;
+    damaged.payload_.pop_back();
+    EXPECT_EQ(decode_block(engine, damaged), std::unexpected(compressor::Error::corrupt_payload));
 }
 
 TEST_F(EngineTests, Noisy_samples_take_a_delta_and_the_rans_coder)
@@ -647,4 +669,13 @@ TEST_F(EngineTests, Noisy_samples_take_a_delta_and_the_rans_coder)
     ASSERT_EQ(block.payload_[0], 1);
     EXPECT_EQ(block.payload_[6], static_cast<uint8_t>(compressor::Coder::rans));
     EXPECT_EQ(decode_block(engine, block), decoded(samples));
+
+    // Level 9 tries context mixing after the same transform, and wins with it.
+    compressor::Engine best(compressor::default_block_size_log2, compressor::cm_level);
+    const compressor::EncodedBlock mixed = best.encode_block(bytes(samples));
+    ASSERT_EQ(mixed.method_, compressor::Method::pipeline);
+    ASSERT_EQ(mixed.payload_[0], 1);
+    EXPECT_EQ(mixed.payload_[6], static_cast<uint8_t>(compressor::Coder::cm));
+    EXPECT_LT(mixed.payload_.size(), block.payload_.size());
+    EXPECT_EQ(decode_block(best, mixed), decoded(samples));
 }

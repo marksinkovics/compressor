@@ -327,6 +327,8 @@ One block at a time (1 MiB), single thread, per Silesia file: the BWT coder's la
 
 ## Context mixing experiment (2026-11-20)
 
+Superseded by the CM coder below; `ContextMixing/` now benchmarks that coder.
+
 `compressor_benchmark --benchmark_filter=ContextMixing/`: per 1 MiB block, one thread, an lpaq-style coder in `compressor_benchmark/src/cm/` (hashed order-1 to order-6 bit predictors with adaptive rates, a logistic mixer selected by the partial byte, a binary arithmetic coder), checked by decoding every block. Compared with the BWT coder and LZR (level 7's search) on the same blocks.
 
 | File | Context mixing | BWT | LZR |
@@ -390,3 +392,37 @@ The search index rewritten to be searched without loading it (section version 2:
 
 - Streams are deflated in 256 KiB pieces, each primed with the 32 KiB before it and ending in an empty stored block (zlib's sync flush), so the output is the same for every thread count and 5 bytes per piece larger: 68 152 076 bytes for joined Silesia against `gzip -6`'s 68 227 961 (5.40 s, single-threaded). `gzip -dc` gives back the input.
 - Small files gain less: each file's match finder clears 512 KiB of hash tables, which costs more than deflating 6000 bytes. Sizing the tables by the input would help many small files.
+
+## Context mixing coder (2026-11-20)
+
+Coder 6 (`cm/cm.cpp`), run 2 item 2. Tuning: a scratch harness coding each Silesia file in 1 MiB blocks with `cm_encode()` alone, against level 8 (the smallest of LZ77, BWT and LZR per block with transforms, `docs/benchmarks/lzr.txt`):
+
+| Step | Silesia total | Against level 8 |
+| --- | --- | --- |
+| Orders 0–4 and 6, word, match model, one mixer, two APMs | 51 095 973 | −5.0% |
+| A second mixer, selected by the previous byte | 48 920 672 | −9.0% |
+| Mixer rate 2 instead of 6 | 48 216 346 | −10.4% |
+| Hashed counters limited to 20 updates (was 1023) | 47 964 248 | −10.8% |
+| (not kept) order 5 as well | +0.1% | |
+| (not kept) 4 MiB table / 64 MiB table | −8.1% / −11.3% | |
+
+Then `compressor_app encode -L 9 -T 6` per file, `decode -T 6`, every output compared with the input; load average 50–60 from another project's tests, so times are high:
+
+| File | Level 8 | Level 9 | Change |
+| --- | --- | --- | --- |
+| dickens | 2 924 828 | 2 521 003 | −13.8% |
+| mozilla | 16 006 226 | 15 079 037 | −5.8% |
+| mr | 2 700 713 | 2 309 706 | −14.5% |
+| nci | 1 872 822 | 1 711 889 | −8.6% |
+| ooffice | 2 481 195 | 2 153 975 | −13.2% |
+| osdb | 3 037 108 | 2 654 429 | −12.6% |
+| reymont | 1 320 537 | 1 142 877 | −13.5% |
+| samba | 4 599 962 | 3 688 916 | −19.8% |
+| sao | 4 878 849 | 4 510 861 | −7.5% |
+| webster | 8 978 870 | 7 625 564 | −15.1% |
+| x-ray | 4 530 042 | 3 875 376 | −14.5% |
+| xml | 453 547 | 384 029 | −15.3% |
+| **Total** | 53 784 699 | **47 657 662** | −11.4% |
+
+- Against other tools on the same files: `xz -9` 48 795 480 (level 9 is 2.3% smaller), `bzip2 -9` 54 506 769 (12.6%).
+- Encoding all 12 files took 300 s and decoding 44 s (about 5 MB/s with 6 threads); CM codes about 1–2 MB/s per thread in both directions, so level 9 is for archiving, not for data decoded often.

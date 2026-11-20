@@ -14,6 +14,7 @@ set(SRC_FILES
     "${SRC_DIR}/archive/index.cpp"
     "${SRC_DIR}/bwt/bwt.cpp"
     "${SRC_DIR}/checksum/crc32.cpp"
+    "${SRC_DIR}/cm/cm.cpp"
     "${SRC_DIR}/compressor/compressor.cpp"
     "${SRC_DIR}/engine/engine.cpp"
     "${SRC_DIR}/entropy/rans.cpp"

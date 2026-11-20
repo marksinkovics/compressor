@@ -223,9 +223,10 @@ try
         write(dir / "container" / "seed.gz", gzip.str());
     }
     write(dir / "container" / "samples.ingot", encode(samples(3000)));
-    write(dir / "container" / "bwt.ingot", encode(words(6000), 9));
+    write(dir / "container" / "bwt.ingot", encode(words(6000), 8));
+    write(dir / "container" / "cm.ingot", encode(words(2000), 9));
     write(dir / "container" / "walk.ingot", encode(random_walk(3000)));
-    write(dir / "container" / "records.ingot", encode(records(400), 9));
+    write(dir / "container" / "records.ingot", encode(records(400), 8));
     write(dir / "inflate" / "text.deflate", deflate_seed(words(5000)));
     write(dir / "inflate" / "noise.deflate", deflate_seed(noise(700)));
     write(dir / "container" / "stored.ingot", stored);

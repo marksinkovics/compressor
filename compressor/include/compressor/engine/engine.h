@@ -41,6 +41,9 @@ void write_code_graph(std::ostream& out, const Codes& codes, const Frequencies& 
 inline constexpr unsigned auto_level = 7;
 // The level from which the BWT and LZR coders compete with LZ77 + Huffman.
 inline constexpr unsigned bwt_level = 8;
+// The level at which the context-mixing coder competes too, without a transform and with the best
+// pipeline's.
+inline constexpr unsigned cm_level = 9;
 
 // Makes one engine per worker thread.
 using EngineFactory = std::function<std::unique_ptr<IEngine>()>;

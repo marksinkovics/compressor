@@ -15,6 +15,7 @@
 
 #include <compressor/bwt/bwt.h>
 #include <compressor/checksum/crc32.h>
+#include <compressor/cm/cm.h>
 #include <compressor/data/data.h>
 #include <compressor/deflate/deflate.h>
 #include <compressor/deflate/inflate.h>
@@ -361,6 +362,9 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
                 coded = lzr_encode(
                     input, lz77_options_for_level(level_ >= max_level ? level_ : auto_level));
                 break;
+            case Coder::cm:
+                coded = cm_encode(input);
+                break;
             }
             std::vector<uint8_t> payload{static_cast<uint8_t>(transforms.size())};
             for (const Transform& transform : transforms)
@@ -384,33 +388,42 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
         }
         const std::vector<Transform> transforms = choose_transforms(bytes, level_ >= auto_level);
         std::vector<uint8_t> best_pipeline = pipeline({}, Coder::lz77_huffman);
+        const Transform* best_transform = nullptr;
+        const auto consider = [&](const Transform* transform, Coder coder) {
+            std::vector<uint8_t> candidate = transform != nullptr
+                                                 ? pipeline(std::span(transform, 1), coder)
+                                                 : pipeline({}, coder);
+            if (candidate.size() < best_pipeline.size())
+            {
+                best_pipeline = std::move(candidate);
+                best_transform = transform;
+            }
+        };
         for (const Coder coder : coders)
         {
             if (coder != Coder::lz77_huffman)
             {
-                std::vector<uint8_t> candidate = pipeline({}, coder);
-                if (candidate.size() < best_pipeline.size())
-                {
-                    best_pipeline = std::move(candidate);
-                }
+                consider(nullptr, coder);
             }
             for (const Transform& transform : transforms)
             {
-                std::vector<uint8_t> candidate = pipeline(std::span(&transform, 1), coder);
-                if (candidate.size() < best_pipeline.size())
-                {
-                    best_pipeline = std::move(candidate);
-                }
+                consider(&transform, coder);
             }
         }
         // Order-0 rANS only wins on transformed noisy samples (delta'd images), so it is only
         // tried after a transform.
         for (const Transform& transform : transforms)
         {
-            std::vector<uint8_t> candidate = pipeline(std::span(&transform, 1), Coder::rans);
-            if (candidate.size() < best_pipeline.size())
+            consider(&transform, Coder::rans);
+        }
+        // Context mixing is slow, so only twice.
+        if (level_ >= cm_level)
+        {
+            const Transform* const transform = best_transform;
+            consider(nullptr, Coder::cm);
+            if (transform != nullptr)
             {
-                best_pipeline = std::move(candidate);
+                consider(transform, Coder::cm);
             }
         }
         // Only when strictly smaller: Huffman and stored decode faster.
@@ -524,6 +537,10 @@ std::expected<void, Error> Engine::decode_pipeline(const EncodedBlock& block,
     else if (payload[0] == static_cast<uint8_t>(Coder::lzr))
     {
         decoded = lzr_decode(payload.subspan(1), out, block.size_);
+    }
+    else if (payload[0] == static_cast<uint8_t>(Coder::cm))
+    {
+        decoded = cm_decode(payload.subspan(1), out, block.size_);
     }
     else if (payload[0] == static_cast<uint8_t>(Coder::rans))
     {
