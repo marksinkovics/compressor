@@ -1,0 +1,410 @@
+{
+ "schema_version": 2,
+ "metadata": {
+  "hyperfine_version": "2.0.0",
+  "start_time": "2026-11-20T06:16:05Z",
+  "platform": {
+   "os": "Darwin",
+   "architecture": "arm64"
+  }
+ },
+ "primary_metric": "time_wall_clock",
+ "results": [
+  {
+   "command": "before_app decode -i silesia.ingot -o xout",
+   "summary": {
+    "cpu_cycles": {
+     "count": 8,
+     "mean": 19340857679.125,
+     "stddev": 25679147.5902468,
+     "median": 19340250827.5,
+     "min": 19288342239.0,
+     "max": 19374889151.0
+    },
+    "instructions": {
+     "count": 8,
+     "mean": 108345041839.375,
+     "stddev": 32124401.01308522,
+     "median": 108340031951.5,
+     "min": 108309107497.0,
+     "max": 108417241954.0
+    },
+    "memory_peak_resident": {
+     "unit": "byte",
+     "count": 8,
+     "mean": 74850304.0,
+     "stddev": 1451361.9021988574,
+     "median": 74784768.0,
+     "min": 72876032.0,
+     "max": 77627392.0
+    },
+    "time_cpu": {
+     "unit": "second",
+     "count": 8,
+     "mean": 5.214679625,
+     "stddev": 0.019307756198240898,
+     "median": 5.210257,
+     "min": 5.191766,
+     "max": 5.243325
+    },
+    "time_system": {
+     "unit": "second",
+     "count": 8,
+     "mean": 0.25197525,
+     "stddev": 0.012329553876183612,
+     "median": 0.25440050000000003,
+     "min": 0.22577699999999998,
+     "max": 0.26633799999999996
+    },
+    "time_user": {
+     "unit": "second",
+     "count": 8,
+     "mean": 4.9627043749999995,
+     "stddev": 0.016909572132269436,
+     "median": 4.957038000000001,
+     "min": 4.94346,
+     "max": 4.991929
+    },
+    "time_wall_clock": {
+     "unit": "second",
+     "count": 8,
+     "mean": 4.4764087813749995,
+     "stddev": 0.027764483037892876,
+     "median": 4.4614328335,
+     "min": 4.451947208,
+     "max": 4.526515625
+    }
+   }
+  },
+  {
+   "command": "compressor_app decode -i silesia.ingot -o xout",
+   "summary": {
+    "cpu_cycles": {
+     "count": 8,
+     "mean": 3044942536.0,
+     "stddev": 18731865.756709784,
+     "median": 3038500478.0,
+     "min": 3030081770.0,
+     "max": 3083587009.0
+    },
+    "instructions": {
+     "count": 8,
+     "mean": 7847107755.25,
+     "stddev": 39275524.9497355,
+     "median": 7833576274.0,
+     "min": 7818771750.0,
+     "max": 7928544113.0
+    },
+    "memory_peak_resident": {
+     "unit": "byte",
+     "count": 8,
+     "mean": 78897152.0,
+     "stddev": 1164762.9778731808,
+     "median": 79093760.0,
+     "min": 76595200.0,
+     "max": 80576512.0
+    },
+    "time_cpu": {
+     "unit": "second",
+     "count": 8,
+     "mean": 0.908296875,
+     "stddev": 0.005649470504582082,
+     "median": 0.9090019999999999,
+     "min": 0.8961819999999999,
+     "max": 0.913527
+    },
+    "time_system": {
+     "unit": "second",
+     "count": 8,
+     "mean": 0.061895750000000006,
+     "stddev": 0.004707488585829422,
+     "median": 0.060404,
+     "min": 0.057891,
+     "max": 0.071689
+    },
+    "time_user": {
+     "unit": "second",
+     "count": 8,
+     "mean": 0.846401125,
+     "stddev": 0.006244859884908781,
+     "median": 0.8476385,
+     "min": 0.8346049999999999,
+     "max": 0.8547359999999999
+    },
+    "time_wall_clock": {
+     "unit": "second",
+     "count": 8,
+     "mean": 0.08693676550000001,
+     "stddev": 0.01052426043531793,
+     "median": 0.0819838125,
+     "min": 0.079504541,
+     "max": 0.11018575000000001
+    }
+   }
+  },
+  {
+   "command": "before_app encode -i corpus/silesia -o a.ingot",
+   "summary": {
+    "cpu_cycles": {
+     "count": 8,
+     "mean": 7232482437.375,
+     "stddev": 19645443.75814505,
+     "median": 7238155384.5,
+     "min": 7195237183.0,
+     "max": 7260617831.0
+    },
+    "instructions": {
+     "count": 8,
+     "mean": 32772919126.5,
+     "stddev": 9982424.988011464,
+     "median": 32770106027.0,
+     "min": 32760668518.0,
+     "max": 32788332188.0
+    },
+    "memory_peak_resident": {
+     "unit": "byte",
+     "count": 8,
+     "mean": 71340032.0,
+     "stddev": 1777100.3398673276,
+     "median": 71770112.0,
+     "min": 68976640.0,
+     "max": 73662464.0
+    },
+    "time_cpu": {
+     "unit": "second",
+     "count": 8,
+     "mean": 1.9599392499999997,
+     "stddev": 0.013625904811372042,
+     "median": 1.958146,
+     "min": 1.945165,
+     "max": 1.987854
+    },
+    "time_system": {
+     "unit": "second",
+     "count": 8,
+     "mean": 0.061826125,
+     "stddev": 0.00601358406176027,
+     "median": 0.063419,
+     "min": 0.052142999999999995,
+     "max": 0.06784899999999999
+    },
+    "time_user": {
+     "unit": "second",
+     "count": 8,
+     "mean": 1.8981131249999998,
+     "stddev": 0.010200901716970197,
+     "median": 1.8943195,
+     "min": 1.890475,
+     "max": 1.921895
+    },
+    "time_wall_clock": {
+     "unit": "second",
+     "count": 8,
+     "mean": 1.573273151,
+     "stddev": 0.010960831394745173,
+     "median": 1.572852958,
+     "min": 1.560731,
+     "max": 1.595820583
+    }
+   }
+  },
+  {
+   "command": "compressor_app encode -i corpus/silesia -o a.ingot",
+   "summary": {
+    "cpu_cycles": {
+     "count": 8,
+     "mean": 1661654458.75,
+     "stddev": 3476994.9477250674,
+     "median": 1661960638.0,
+     "min": 1656371961.0,
+     "max": 1666957770.0
+    },
+    "instructions": {
+     "count": 8,
+     "mean": 4192539572.875,
+     "stddev": 7701489.708659514,
+     "median": 4193077784.0,
+     "min": 4181656236.0,
+     "max": 4202058410.0
+    },
+    "memory_peak_resident": {
+     "unit": "byte",
+     "count": 8,
+     "mean": 70021120.0,
+     "stddev": 1456314.1886188472,
+     "median": 69869568.0,
+     "min": 68239360.0,
+     "max": 72351744.0
+    },
+    "time_cpu": {
+     "unit": "second",
+     "count": 8,
+     "mean": 0.47173124999999994,
+     "stddev": 0.0012712649212496968,
+     "median": 0.471812,
+     "min": 0.469705,
+     "max": 0.47313799999999995
+    },
+    "time_system": {
+     "unit": "second",
+     "count": 8,
+     "mean": 0.050115375,
+     "stddev": 0.001031462337446904,
+     "median": 0.0502855,
+     "min": 0.048652999999999995,
+     "max": 0.051587
+    },
+    "time_user": {
+     "unit": "second",
+     "count": 8,
+     "mean": 0.421615875,
+     "stddev": 0.0017450927472282328,
+     "median": 0.42140599999999995,
+     "min": 0.419242,
+     "max": 0.424185
+    },
+    "time_wall_clock": {
+     "unit": "second",
+     "count": 8,
+     "mean": 0.06351829149999999,
+     "stddev": 0.0019352707656093732,
+     "median": 0.063453333,
+     "min": 0.060548291000000004,
+     "max": 0.06721925000000001
+    }
+   }
+  },
+  {
+   "command": "compressor_app decode -i silesia.tar.ingot -o out.bin",
+   "summary": {
+    "cpu_cycles": {
+     "count": 8,
+     "mean": 3001581388.5,
+     "stddev": 9230213.114080055,
+     "median": 3000467063.0,
+     "min": 2989124980.0,
+     "max": 3016211042.0
+    },
+    "instructions": {
+     "count": 8,
+     "mean": 7716616887.625,
+     "stddev": 24096666.739543024,
+     "median": 7706026038.0,
+     "min": 7689473285.0,
+     "max": 7747241345.0
+    },
+    "memory_peak_resident": {
+     "unit": "byte",
+     "count": 8,
+     "mean": 75927552.0,
+     "stddev": 2394431.454673829,
+     "median": 74407936.0,
+     "min": 73678848.0,
+     "max": 79560704.0
+    },
+    "time_cpu": {
+     "unit": "second",
+     "count": 8,
+     "mean": 0.9030116250000001,
+     "stddev": 0.004381052578596701,
+     "median": 0.9048094999999999,
+     "min": 0.8946869999999999,
+     "max": 0.907931
+    },
+    "time_system": {
+     "unit": "second",
+     "count": 8,
+     "mean": 0.058729,
+     "stddev": 0.002767623529311745,
+     "median": 0.058905,
+     "min": 0.054854,
+     "max": 0.063621
+    },
+    "time_user": {
+     "unit": "second",
+     "count": 8,
+     "mean": 0.844282625,
+     "stddev": 0.004873445010242469,
+     "median": 0.844923,
+     "min": 0.8342539999999999,
+     "max": 0.850197
+    },
+    "time_wall_clock": {
+     "unit": "second",
+     "count": 8,
+     "mean": 0.07943972925,
+     "stddev": 0.0019753532732468557,
+     "median": 0.0792235835,
+     "min": 0.0766165,
+     "max": 0.082567584
+    }
+   }
+  },
+  {
+   "command": "compressor_app encode -i silesia.tar -o out.bin",
+   "summary": {
+    "cpu_cycles": {
+     "count": 8,
+     "mean": 1671639815.75,
+     "stddev": 4795114.311984938,
+     "median": 1670458207.0,
+     "min": 1666662104.0,
+     "max": 1679730522.0
+    },
+    "instructions": {
+     "count": 8,
+     "mean": 4434876213.375,
+     "stddev": 7593645.647513112,
+     "median": 4434915686.5,
+     "min": 4423949671.0,
+     "max": 4444985095.0
+    },
+    "memory_peak_resident": {
+     "unit": "byte",
+     "count": 8,
+     "mean": 68626432.0,
+     "stddev": 1560206.5944490447,
+     "median": 68100096.0,
+     "min": 66764800.0,
+     "max": 71303168.0
+    },
+    "time_cpu": {
+     "unit": "second",
+     "count": 8,
+     "mean": 0.47046625,
+     "stddev": 0.0020750219792295527,
+     "median": 0.46989099999999995,
+     "min": 0.46803999999999996,
+     "max": 0.473923
+    },
+    "time_system": {
+     "unit": "second",
+     "count": 8,
+     "mean": 0.051946875,
+     "stddev": 0.0010748491505455867,
+     "median": 0.051699499999999995,
+     "min": 0.050918,
+     "max": 0.053897999999999995
+    },
+    "time_user": {
+     "unit": "second",
+     "count": 8,
+     "mean": 0.418519375,
+     "stddev": 0.0014930585997015929,
+     "median": 0.41804549999999996,
+     "min": 0.41656299999999996,
+     "max": 0.420813
+    },
+    "time_wall_clock": {
+     "unit": "second",
+     "count": 8,
+     "mean": 0.06931083850000001,
+     "stddev": 0.004561260008406576,
+     "median": 0.06757860400000001,
+     "min": 0.066082416,
+     "max": 0.07966645900000001
+    }
+   }
+  }
+ ]
+}

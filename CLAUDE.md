@@ -25,6 +25,7 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 - Block index search is done: `grep PATH...` decodes only those blocks, and matching runs at decode speed (parallel search not needed, `docs/benchmarks.md`).
 - Search without decompressing was measured: about 4× faster as a filter, but exact `grep` needs per-block newline counts first (roadmap "Compressed-domain prefilter").
 - ARM CRC32 runs three interleaved chains: 8.9 → 23.5 GB/s.
+- File I/O goes through `fwrite`/`fread` (`OutputFile`): folder extraction of Silesia 4.5 s → 82 ms, file output at `/dev/null` speed; 279/279 pass.
 - **Next:** the "Autonomous run" list at the end of `docs/roadmap.md`, on branch `feat/autonomous-run`: work through it in order, committing each item (no push, no co-author line).
 
 ## Commands

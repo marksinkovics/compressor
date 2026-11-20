@@ -160,3 +160,48 @@ TEST_F(StdioBufTests, A_write_error_fails_the_stream)
     out.flush();
     EXPECT_TRUE(out.fail());
 }
+
+TEST_F(StdioBufTests, An_output_file_writes_through_its_stream_and_buffer)
+{
+    const std::string big = pattern(compressor::file_buffer_bytes + 17);
+    auto file = compressor::OutputFile::create(path_);
+    ASSERT_TRUE(file);
+    file->stream() << "head ";
+    file->buffer().sputn(big.data(), static_cast<std::streamsize>(big.size()));
+    file->stream() << " tail";
+    EXPECT_TRUE(file->close());
+    EXPECT_FALSE(file->close());
+    file.reset();
+
+    EXPECT_EQ(read_through_buf(4096), "head " + big + " tail");
+}
+
+TEST_F(StdioBufTests, An_output_file_is_never_created_over_an_existing_one)
+{
+    {
+        const File existing = open("wb");
+        std::fputs("keep", existing.get());
+    }
+    EXPECT_FALSE(compressor::OutputFile::create(path_));
+    EXPECT_EQ(read_through_buf(16), "keep");
+}
+
+TEST_F(StdioBufTests, An_output_file_flushes_when_destroyed)
+{
+    {
+        auto file = compressor::OutputFile::create(path_);
+        ASSERT_TRUE(file);
+        file->stream() << "unflushed";
+    }
+    EXPECT_EQ(read_through_buf(16), "unflushed");
+}
+
+TEST_F(StdioBufTests, A_missing_file_cannot_be_opened_for_reading)
+{
+    EXPECT_EQ(compressor::open_for_reading(path_), nullptr);
+    {
+        const File created = open("wb");
+    }
+    const File file(compressor::open_for_reading(path_));
+    EXPECT_NE(file, nullptr);
+}

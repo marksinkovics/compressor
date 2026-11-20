@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <expected>
 #include <filesystem>
@@ -15,6 +16,7 @@
 #include <istream>
 #include <iterator>
 #include <map>
+#include <memory>
 #include <optional>
 #include <ostream>
 #include <ranges>
@@ -34,6 +36,7 @@
 #include <compressor/error.h>
 #include <compressor/stream/decoder.h>
 #include <compressor/stream/encoder.h>
+#include <compressor/stream/stdio.h>
 
 namespace compressor
 {
@@ -75,6 +78,16 @@ public:
         : paths_(std::move(paths))
     {
     }
+
+    ~ConcatInputBuf() override
+    {
+        close_file();
+    }
+
+    ConcatInputBuf(const ConcatInputBuf&) = delete;
+    ConcatInputBuf& operator=(const ConcatInputBuf&) = delete;
+    ConcatInputBuf(ConcatInputBuf&&) = delete;
+    ConcatInputBuf& operator=(ConcatInputBuf&&) = delete;
 
     // One per file read to its end.
     const std::vector<Read>& reads() const
@@ -132,7 +145,8 @@ private:
                 {
                     return 0;
                 }
-                if (file_.open(paths_[next_], std::ios::in | std::ios::binary) == nullptr)
+                file_ = open_for_reading(paths_[next_]);
+                if (file_ == nullptr)
                 {
                     failure_ = file_failure(paths_[next_], {errno, std::generic_category()});
                     return 0;
@@ -140,24 +154,40 @@ private:
                 open_ = true;
                 current_ = {};
             }
-            const std::streamsize got = file_.sgetn(out, count);
+            const auto got = static_cast<std::streamsize>(
+                std::fread(out, 1, static_cast<std::size_t>(count), file_));
             if (got > 0)
             {
                 current_.crc = crc32(as_bytes(out, got), current_.crc);
                 current_.size += static_cast<uint64_t>(got);
                 return got;
             }
-            file_.close();
-            open_ = false;
+            if (std::ferror(file_) != 0)
+            {
+                failure_ = file_failure(paths_[next_], {errno, std::generic_category()});
+                close_file();
+                return 0;
+            }
+            close_file();
             reads_.push_back(current_);
             ++next_;
         }
         return 0;
     }
 
+    void close_file()
+    {
+        if (file_ != nullptr)
+        {
+            std::fclose(file_);
+            file_ = nullptr;
+        }
+        open_ = false;
+    }
+
     std::vector<fs::path> paths_;
     std::size_t next_ = 0;
-    std::filebuf file_;
+    std::FILE* file_ = nullptr; // fread: libc++'s filebuf reads slowly once reopened
     bool open_ = false;
     Read current_;
     std::vector<Read> reads_;
@@ -304,8 +334,11 @@ private:
                 failure_ = Failure{.error = Error::corrupt_index, .detail = {}};
                 break;
             }
-            if (sink_ == Sink::files && file_.open(next.path, std::ios::out | std::ios::binary |
-                                                                  std::ios::noreplace) == nullptr)
+            if (sink_ == Sink::files)
+            {
+                file_ = OutputFile::create(next.path);
+            }
+            if (sink_ == Sink::files && !file_)
             {
                 failure_ = file_failure(next.path, {errno, std::generic_category()});
                 break;
@@ -329,7 +362,7 @@ private:
 
     bool write(const char* data, std::streamsize count)
     {
-        if (sink_ == Sink::files && file_.sputn(data, count) != count)
+        if (sink_ == Sink::files && file_->buffer().sputn(data, count) != count)
         {
             failure_ = file_failure(targets_[next_].path, {errno, std::generic_category()});
             return false;
@@ -352,7 +385,7 @@ private:
         const Target& target = targets_[next_];
         open_ = false;
         ++next_;
-        if (sink_ == Sink::files && file_.close() == nullptr)
+        if (sink_ == Sink::files && !file_->close())
         {
             failure_ = file_failure(target.path, {errno, std::generic_category()});
             return;
@@ -383,7 +416,7 @@ private:
     Sink sink_;
     std::streambuf* stream_;
     FileVisitor* visitor_;
-    std::filebuf file_;
+    std::unique_ptr<OutputFile> file_;
     bool open_ = false;
     uint64_t written_ = 0;
     uint32_t crc_ = 0;

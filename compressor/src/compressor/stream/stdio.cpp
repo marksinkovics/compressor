@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdio>
+#include <filesystem>
 #include <ios>
+#include <memory>
 #include <streambuf>
 #include <utility>
 
@@ -74,7 +76,8 @@ StdioOutputBuf::~StdioOutputBuf()
 bool StdioOutputBuf::flush_buffer()
 {
     const auto pending = static_cast<std::size_t>(pptr() - pbase());
-    const bool written = std::fwrite(pbase(), 1, pending, file_) == pending;
+    // Nothing to write must not touch the file, which may be closed by then (OutputFile).
+    const bool written = pending == 0 || std::fwrite(pbase(), 1, pending, file_) == pending;
     setp(buffer_.data(), buffer_.data() + buffer_.size());
     return written;
 }
@@ -118,6 +121,64 @@ std::streamsize StdioOutputBuf::xsputn(const char_type* bytes, std::streamsize c
 int StdioOutputBuf::sync()
 {
     return flush_buffer() && std::fflush(file_) == 0 ? 0 : -1;
+}
+
+std::FILE* open_for_reading(const std::filesystem::path& path)
+{
+#if defined(_WIN32)
+    return _wfopen(path.c_str(), L"rb");
+#else
+    return std::fopen(path.c_str(), "rb");
+#endif
+}
+
+std::unique_ptr<OutputFile> OutputFile::create(const std::filesystem::path& path)
+{
+    // "x": fail if the file exists (C11).
+#if defined(_WIN32)
+    std::FILE* file = _wfopen(path.c_str(), L"wbx");
+#else
+    std::FILE* file = std::fopen(path.c_str(), "wbx");
+#endif
+    if (file == nullptr)
+    {
+        return nullptr;
+    }
+    return std::unique_ptr<OutputFile>(new OutputFile(file));
+}
+
+OutputFile::OutputFile(std::FILE* file)
+    : file_(file)
+    , buffer_(file, file_buffer_bytes)
+    , stream_(&buffer_)
+{
+}
+
+OutputFile::~OutputFile()
+{
+    close();
+}
+
+std::ostream& OutputFile::stream()
+{
+    return stream_;
+}
+
+std::streambuf& OutputFile::buffer()
+{
+    return buffer_;
+}
+
+bool OutputFile::close()
+{
+    if (file_ == nullptr)
+    {
+        return false;
+    }
+    const bool flushed = buffer_.pubsync() == 0;
+    const bool closed = std::fclose(file_) == 0;
+    file_ = nullptr;
+    return flushed && closed && !stream_.bad();
 }
 
 } // namespace compressor

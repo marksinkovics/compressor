@@ -56,9 +56,10 @@ unsigned thread_count(unsigned requested)
 struct TempFile
 {
     fs::path path;
-    std::ofstream stream;
+    std::unique_ptr<OutputFile> file;
 };
 
+// Retries only when the random name is taken, not when the directory can't be written.
 // Retries only when the random name is taken, not when the directory can't be written.
 std::optional<TempFile> create_temp_next_to(const fs::path& output)
 {
@@ -67,9 +68,9 @@ std::optional<TempFile> create_temp_next_to(const fs::path& output)
     {
         std::ostringstream name;
         name << '.' << output.filename().string() << '.' << std::hex << random() << ".tmp";
-        TempFile temp{.path = output.parent_path() / name.str(), .stream = {}};
-        temp.stream.open(temp.path, std::ios::out | std::ios::binary | std::ios::noreplace);
-        if (temp.stream)
+        TempFile temp{.path = output.parent_path() / name.str(), .file = nullptr};
+        temp.file = OutputFile::create(temp.path);
+        if (temp.file)
         {
             return temp;
         }
@@ -163,9 +164,9 @@ bool write_output(const StandardStreams& streams, const fs::path& output, Write 
         err << "Cannot open output file: " << output.string() << '\n';
         return false;
     }
-    Result result = write(temp->stream);
-    temp->stream.close();
-    if (result && temp->stream.fail())
+    Result result = write(temp->file->stream());
+    const bool closed = temp->file->close() && !temp->file->stream().fail();
+    if (result && !closed)
     {
         result = std::unexpected(Failure{.error = Error::write_failed, .detail = {}});
     }

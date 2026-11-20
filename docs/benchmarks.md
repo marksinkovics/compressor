@@ -219,3 +219,17 @@ After container step 2 ([roadmap.md](roadmap.md#container-format-and-streaming))
 | 100 003 bytes | 8.9 GB/s | 23.2 GB/s | 2.1 GB/s |
 
 - The hardware path now runs three independent chains over consecutive 4 KiB stretches and joins them by multiplying by x^(8·4096) mod P (zlib's `multmodp`, a constant computed at compile time), about 64 cycles per 12 KiB, so no PMULL is needed. 2.6×, as `crc32x`'s 3-cycle latency predicts. The x86 PCLMUL path is unchanged.
+
+## File output (2026-11-20)
+
+`compressor_app` on Silesia, 14 threads, hyperfine, 8 runs, medians; load average 90–150 (QEMU VMs). `before_app` is the build before this change. Results in `docs/benchmarks/file-io-cli.json`.
+
+| Command | Before | After |
+| --- | --- | --- |
+| `decode` of the folder archive into a new directory (12 files) | 4461 ms | 82 ms |
+| `encode -i corpus/silesia` (folder) | 1573 ms | 64 ms |
+| `decode` of all of Silesia as one file (212 MB) to a new file | 316 ms | 79 ms |
+| `encode` of that file to a new file | 241 ms | 68 ms |
+
+- Two libc++ problems, measured with a small program writing 200 MiB in 1 MiB pieces: `std::ofstream` writes 4 KiB per system call (332 ms; 173 ms with a 1 MiB `pubsetbuf`), and a `std::filebuf` reopened after `close()` loses its buffer and goes through `overflow` and `fwrite` almost byte by byte (about 3.5 s). `fwrite` of whole buffers takes 35 ms. The folder paths reused one `filebuf` for every file, so every file after the first was slow both ways.
+- Now new files are written through `OutputFile` (`fopen` with `"wbx"`, `StdioOutputBuf` with 1 MiB, `fwrite`) and archived files are read with `fread`. Writing to a new file costs about what writing to `/dev/null` does (85 ms decode).
