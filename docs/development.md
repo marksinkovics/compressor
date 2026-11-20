@@ -63,6 +63,13 @@ The round-trip tests (`RoundTripTests`) encode and decode every file in `compres
 
 `PipeRoundTrip.*` (in `compressor_app/CMakeLists.txt`) run the built `compressor_app` through `compressor_app/test/pipe_roundtrip.cmake`: stdin-to-stdout encoding must match file encoding, and `encode | decode` must give the input back. They cover an empty input, `lorem_50p.txt` and `flower.png`.
 
+Linux code paths (GCC, `getauxval`) can be checked on a Mac with Apple's `container` (`brew install container`, then `container system start`); add `--arch amd64` for x86-64 under Rosetta. The full build also needs CMake, Ninja and vcpkg in the image, so a quick check compiles single files:
+
+```bash
+container run --rm -v "$PWD":/src -w /src docker.io/library/gcc:14 \
+  g++ -std=c++23 -Icompressor/include -c compressor/src/compressor/checksum/crc32.cpp
+```
+
 Tests for known bugs are added with a `DISABLED_` prefix until the fix lands. Run one with `--gtest_also_run_disabled_tests --gtest_filter=<Suite>.DISABLED_<name>`; some of them crash or hang before their fix, so run them one at a time.
 
 ## Code quality
