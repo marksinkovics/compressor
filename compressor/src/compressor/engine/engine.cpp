@@ -354,10 +354,12 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
                 dictionary_ != nullptr ? std::span<const uint8_t>(dictionary_->bytes)
                                        : std::span<const uint8_t>{};
             Coder written = coder;
-            if (dictionary_ != nullptr && (coder == Coder::lz77_huffman || coder == Coder::lzr))
+            if (dictionary_ != nullptr &&
+                (coder == Coder::lz77_huffman || coder == Coder::lzr || coder == Coder::cm))
             {
                 written = coder == Coder::lz77_huffman ? Coder::lz77_huffman_dictionary
-                                                       : Coder::lzr_dictionary;
+                          : coder == Coder::lzr        ? Coder::lzr_dictionary
+                                                       : Coder::cm_dictionary;
                 for (unsigned shift = 0; shift < 32; shift += 8)
                 {
                     coded.push_back(static_cast<uint8_t>(dictionary_->id >> shift));
@@ -381,7 +383,7 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
                 stream = lzr_encode(input, lz77_options_for_level(auto_level), dictionary);
                 break;
             case Coder::cm:
-                stream = cm_encode(input);
+                stream = cm_encode(input, cm_default_table_log2, dictionary);
                 break;
             case Coder::bwt_cm:
                 stream = bwt_cm_encode(input);
@@ -391,7 +393,8 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
                 break;
             case Coder::lz77_huffman_dictionary:
             case Coder::lzr_dictionary:
-                break; // chosen above from lz77_huffman and lzr
+            case Coder::cm_dictionary:
+                break; // chosen above from lz77_huffman, lzr and cm
             }
             coded.insert(coded.end(), stream.begin(), stream.end());
             std::vector<uint8_t> payload{static_cast<uint8_t>(transforms.size())};
@@ -619,16 +622,27 @@ std::expected<void, Error> Engine::decode_pipeline(const EncodedBlock& block,
         decoded = tans_decode(payload.subspan(1), block.size_, out);
     }
     else if (payload[0] == static_cast<uint8_t>(Coder::lz77_huffman_dictionary) ||
-             payload[0] == static_cast<uint8_t>(Coder::lzr_dictionary))
+             payload[0] == static_cast<uint8_t>(Coder::lzr_dictionary) ||
+             payload[0] == static_cast<uint8_t>(Coder::cm_dictionary))
     {
         const auto dictionary = dictionary_for(payload.subspan(1));
         if (!dictionary)
         {
             return std::unexpected(dictionary.error());
         }
-        decoded = payload[0] == static_cast<uint8_t>(Coder::lzr_dictionary)
-                      ? lzr_decode(payload.subspan(5), out, block.size_, *dictionary)
-                      : inflate_bytes(payload.subspan(5), out, block.size_, *dictionary);
+        const std::span<const uint8_t> stream = payload.subspan(5);
+        switch (static_cast<Coder>(payload[0]))
+        {
+        case Coder::lzr_dictionary:
+            decoded = lzr_decode(stream, out, block.size_, *dictionary);
+            break;
+        case Coder::cm_dictionary:
+            decoded = cm_decode(stream, out, block.size_, *dictionary);
+            break;
+        default:
+            decoded = inflate_bytes(stream, out, block.size_, *dictionary);
+            break;
+        }
     }
     else if (payload[0] == static_cast<uint8_t>(Coder::rans))
     {

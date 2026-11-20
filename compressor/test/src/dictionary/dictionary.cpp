@@ -12,6 +12,7 @@
 #include <zlib.h>
 
 #include <compressor/checksum/crc32.h>
+#include <compressor/cm/cm.h>
 #include <compressor/compressor.h>
 #include <compressor/data/data.h>
 #include <compressor/deflate/deflate.h>
@@ -171,19 +172,42 @@ TEST(DictionaryTests, Lzr_matches_into_the_dictionary)
     EXPECT_EQ(back, input);
 }
 
+TEST(DictionaryTests, Cm_learns_from_the_dictionary_first)
+{
+    const compressor::Dictionary dictionary = trained();
+    const Bytes input = bytes(record(6000));
+    const Bytes plain = compressor::cm_encode(input);
+    const Bytes primed =
+        compressor::cm_encode(input, compressor::cm_default_table_log2, dictionary.bytes);
+    EXPECT_LT(primed.size() * 2, plain.size());
+    Bytes out{9};
+    ASSERT_TRUE(compressor::cm_decode(primed, out, input.size(), dictionary.bytes));
+    EXPECT_EQ(Bytes(out.begin() + 1, out.end()), input);
+    Bytes without;
+    EXPECT_FALSE(compressor::cm_decode(primed, without, input.size()));
+    Bytes other;
+    EXPECT_FALSE(compressor::cm_decode(
+        primed, other, input.size(), Bytes(dictionary.bytes.begin() + 1, dictionary.bytes.end())));
+}
+
 TEST(DictionaryTests, The_engine_names_the_dictionary_and_needs_the_same_one)
 {
     auto dictionary = std::make_shared<const compressor::Dictionary>(trained());
     const Bytes input = bytes(record(7000));
-    for (const unsigned level : {6U, compressor::bwt_level})
+    for (const unsigned level : {6U, compressor::bwt_level, compressor::cm_level})
     {
         compressor::Engine encoder(compressor::default_block_size_log2, level, dictionary);
         const compressor::EncodedBlock block = encoder.encode_block(input);
         ASSERT_EQ(block.method_, compressor::Method::pipeline) << level;
         const uint8_t coder = block.payload_[(block.payload_[0] * 5) + 1];
         EXPECT_TRUE(coder == static_cast<uint8_t>(compressor::Coder::lz77_huffman_dictionary) ||
-                    coder == static_cast<uint8_t>(compressor::Coder::lzr_dictionary))
+                    coder == static_cast<uint8_t>(compressor::Coder::lzr_dictionary) ||
+                    coder == static_cast<uint8_t>(compressor::Coder::cm_dictionary))
             << level;
+        if (level == compressor::cm_level)
+        {
+            EXPECT_EQ(coder, static_cast<uint8_t>(compressor::Coder::cm_dictionary));
+        }
         compressor::Engine plain(compressor::default_block_size_log2, level);
         EXPECT_LT(block.payload_.size() * 2, plain.encode_block(input).payload_.size()) << level;
 

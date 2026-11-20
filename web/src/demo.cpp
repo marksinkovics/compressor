@@ -48,6 +48,7 @@ std::string coder_name(uint8_t coder)
         return "tANS";
     case compressor::Coder::lz77_huffman_dictionary:
     case compressor::Coder::lzr_dictionary:
+    case compressor::Coder::cm_dictionary:
         break;
     }
     return "coder " + std::to_string(coder);

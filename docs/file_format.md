@@ -30,7 +30,7 @@ A pipeline block's payload starts with a descriptor naming what was done to the 
 |---:|---|
 | 1 | Transform count `n`, at most 4. Each transform turns bytes into bytes; decoding undoes them last to first |
 | 5 × n | Each transform: id, then a 4-byte parameter (see below) |
-| 1 | Coder: 2 = LZ77 + Huffman, 3 = BWT, 4 = rANS, 5 = LZR, 6 = CM, 7 = BWT + CM, 8 = tANS, 9 = LZ77 + Huffman with a dictionary, 10 = LZR with a dictionary. Others are reserved |
+| 1 | Coder: 2 = LZ77 + Huffman, 3 = BWT, 4 = rANS, 5 = LZR, 6 = CM, 7 = BWT + CM, 8 = tANS, 9 = LZ77 + Huffman with a dictionary, 10 = LZR with a dictionary, 11 = CM with a dictionary. Others are reserved |
 | rest | The coder's output |
 
 Transforms (`compressor/include/compressor/transform/transform.h`); positions count from the start of the block:
@@ -158,7 +158,7 @@ A query runs backward search with ranks from the wavelet matrix (eight bit ranks
 
 ### Dictionaries
 
-Coders 9 and 10 are coders 2 and 5 primed with a dictionary (`compressor/include/compressor/dictionary/dictionary.h`): any bytes, at most 1 MiB, given to the encoder and decoder (`encode -D`, `decode -D`, and `extract`, `cat`, `verify`, `grep`). The payload starts with the dictionary's id, the CRC32 of its bytes (4 bytes, little-endian), then the coder's stream as if the dictionary came just before the block: for coder 9 a raw Deflate stream whose matches may reach into the dictionary's last 32 KiB (what zlib's `inflateSetDictionary` gives a raw stream), for coder 10 LZR whose matches may reach anywhere in the dictionary and whose literal model's previous and match bytes may come from it (positions for `pos_state` still count from the block). A reader without a dictionary fails with `dictionary_missing`, with another one with `dictionary_mismatch`. With a dictionary the encoder writes 9 and 10 in place of 2 and 5; nothing else in the container changes, so the frame doesn't say whether a dictionary was used, and each block says it for itself.
+Coders 9, 10 and 11 are coders 2, 5 and 6 primed with a dictionary (`compressor/include/compressor/dictionary/dictionary.h`): any bytes, at most 1 MiB, given to the encoder and decoder (`encode -D`, `decode -D`, and `extract`, `cat`, `verify`, `grep`). The payload starts with the dictionary's id, the CRC32 of its bytes (4 bytes, little-endian), then the coder's stream as if the dictionary came just before the block: for coder 9 a raw Deflate stream whose matches may reach into the dictionary's last 32 KiB (what zlib's `inflateSetDictionary` gives a raw stream), for coder 10 LZR whose matches may reach anywhere in the dictionary and whose literal model's previous and match bytes may come from it (positions for `pos_state` still count from the block), for coder 11 CM's stream after its model has run over every bit of the dictionary without coding it (predicting, then updating with the dictionary's bit), with the dictionary as the start of the match model's history. A reader without a dictionary fails with `dictionary_missing`, with another one with `dictionary_mismatch`. With a dictionary the encoder writes 9, 10 and 11 in place of 2, 5 and 6; nothing else in the container changes, so the frame doesn't say whether a dictionary was used, and each block says it for itself.
 
 `ingot train` builds a dictionary from sample files, as described in `dictionary.h`: 8-byte strings scored by the number of samples containing them, the best 1 KiB segment of each epoch (one epoch per KiB of dictionary) kept when its score is at least half its length, best segments last.
 

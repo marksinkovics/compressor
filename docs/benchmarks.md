@@ -526,3 +526,14 @@ Autonomous run 3, item 4. Many small similar files, each compressed on its own: 
 - The dictionary halves ingot's output on these files, and our trainer's dictionary is as good as zstd's for ingot (within 0.6% and 2.1%).
 - zstd with its dictionary is still 20–25% smaller. Part of it is per-file overhead: an ingot file has at least 36 bytes of container (frame header, block header, pipeline descriptor, dictionary id, end block) against zstd's ~12, which is 34 KB of the 60 KB gap on `vcpkg.json` (average 690 bytes per file). The rest is that a zstd dictionary also holds entropy tables and repeat offsets, while every Deflate block here pays for its own Huffman code.
 - Not done: entropy tables in the dictionary, and priming the CM coder with it (level 9's CM runs at about 1–2 MB/s, so reading a 110 KB dictionary would cost ~0.1 s per block).
+
+### CM primed with the dictionary (autonomous run 4, item 1)
+
+Level 9 now runs the CM coder's model over the dictionary before coding (coder 11), on the same test halves:
+
+| Test half | ingot -L 9 -D before | ingot -L 9 -D now | zstd -19 -D |
+| --- | ---: | ---: | ---: |
+| `vcpkg.json` | 214,478 | 162,218 (−24.4%) | 172,630 |
+| `portfile.cmake` | 553,260 | 389,448 (−29.6%) | 448,945 |
+
+Level 9 with a dictionary is now 6% and 13% smaller than zstd's best with its own dictionary. Priming costs about 58 ms per file on both sides (110 KB at the CM coder's speed): 1400 files took 81 s to encode one by one.

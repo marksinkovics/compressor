@@ -217,14 +217,19 @@ std::string with_coder(const std::string& input, compressor::Coder coder)
             coded = compressor::bwt_cm_encode(bytes);
             break;
         case compressor::Coder::lzr_dictionary:
+        case compressor::Coder::cm_dictionary:
         {
             const auto dictionary = fuzz::dictionary();
             for (unsigned shift = 0; shift < 32; shift += 8)
             {
                 coded.push_back(static_cast<uint8_t>(dictionary->id >> shift));
             }
-            const std::vector<uint8_t> stream = compressor::lzr_encode(
-                bytes, compressor::lz77_options_for_level(7), dictionary->bytes);
+            const std::vector<uint8_t> stream =
+                coder == compressor::Coder::lzr_dictionary
+                    ? compressor::lzr_encode(bytes, compressor::lz77_options_for_level(7),
+                                             dictionary->bytes)
+                    : compressor::cm_encode(bytes, compressor::cm_min_table_log2,
+                                            dictionary->bytes);
             coded.insert(coded.end(), stream.begin(), stream.end());
             break;
         }
@@ -322,6 +327,8 @@ try
     write(dir / "container" / "coder9.ingot", encode(words(3000), 6, fuzz::dictionary()));
     write(dir / "container" / "coder10.ingot",
           with_coder(words(3000), compressor::Coder::lzr_dictionary));
+    write(dir / "container" / "coder11.ingot",
+          with_coder(words(1000), compressor::Coder::cm_dictionary));
     write(dir / "container" / "image.ingot", encode(image(40)));
     write(dir / "container" / "records.ingot", encode(records(400), 8));
     write(dir / "inflate" / "text.deflate", deflate_seed(words(5000)));

@@ -568,6 +568,19 @@ void encode_bits(Model& model, std::span<const uint8_t> bytes, std::vector<uint8
     }
 }
 
+// Runs the model over bytes both sides already know, without coding them.
+template <class Model> void prime_bits(Model& model, std::span<const uint8_t> bytes)
+{
+    for (const uint8_t byte : bytes)
+    {
+        for (unsigned i = 8; i-- > 0;)
+        {
+            (void)model.p();
+            model.update((unsigned{byte} >> i) & 1U);
+        }
+    }
+}
+
 // Fills `decoded`; false when the stream ends early or leaves bytes over.
 template <class Model>
 bool decode_bits(Model& model, std::span<const uint8_t> coded, std::span<uint8_t> decoded)
@@ -625,31 +638,55 @@ bool decode_bits(Model& model, std::span<const uint8_t> coded, std::span<uint8_t
 
 } // namespace
 
-std::vector<uint8_t> cm_encode(std::span<const uint8_t> bytes, unsigned table_log2)
+std::vector<uint8_t> cm_encode(std::span<const uint8_t> bytes, unsigned table_log2,
+                               std::span<const uint8_t> dictionary)
 {
     table_log2 = std::clamp(table_log2, cm_min_table_log2, cm_max_table_log2);
     std::vector<uint8_t> out{static_cast<uint8_t>(table_log2)};
-    Model model(bytes, table_log2);
+    if (dictionary.empty())
+    {
+        Model model(bytes, table_log2);
+        encode_bits(model, bytes, out);
+        return out;
+    }
+    std::vector<uint8_t> history(dictionary.begin(), dictionary.end());
+    history.insert(history.end(), bytes.begin(), bytes.end());
+    Model model(history, table_log2);
+    prime_bits(model, dictionary);
     encode_bits(model, bytes, out);
     return out;
 }
 
 std::expected<void, Error> cm_decode(std::span<const uint8_t> payload, std::vector<uint8_t>& out,
-                                     std::size_t size)
+                                     std::size_t size, std::span<const uint8_t> dictionary)
 {
     if (payload.empty() || payload[0] < cm_min_table_log2 || payload[0] > cm_max_table_log2)
     {
         return std::unexpected(Error::corrupt_payload);
     }
-    const std::size_t base = out.size();
-    out.resize(base + size);
-    const std::span<uint8_t> decoded(out.data() + base, size);
-    Model model(decoded, payload[0]);
+    if (dictionary.empty())
+    {
+        const std::size_t base = out.size();
+        out.resize(base + size);
+        const std::span<uint8_t> decoded(out.data() + base, size);
+        Model model(decoded, payload[0]);
+        if (!decode_bits(model, payload.subspan(1), decoded))
+        {
+            out.resize(base);
+            return std::unexpected(Error::corrupt_payload);
+        }
+        return {};
+    }
+    std::vector<uint8_t> history(dictionary.begin(), dictionary.end());
+    history.resize(dictionary.size() + size);
+    Model model(history, payload[0]);
+    prime_bits(model, dictionary);
+    const std::span<uint8_t> decoded = std::span(history).subspan(dictionary.size());
     if (!decode_bits(model, payload.subspan(1), decoded))
     {
-        out.resize(base);
         return std::unexpected(Error::corrupt_payload);
     }
+    out.insert(out.end(), decoded.begin(), decoded.end());
     return {};
 }
 
