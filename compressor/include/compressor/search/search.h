@@ -49,13 +49,15 @@ public:
 
 private:
     void finish_line();
+    // `line` contains the pattern; line_number_ and line_start_ are its own.
+    void report_line(std::string_view line);
     void print_prefix(const std::string& name);
 
     SearchOptions options_;
     std::ostream& out_;
     std::vector<std::string> names_;
     bool prefix_ = false;
-    std::string line_;
+    std::string line_; // the start of the current line, carried over from earlier pieces
     uint64_t line_number_ = 1;
     uint64_t line_start_ = 0; // byte offset in the file
     uint64_t position_ = 0;

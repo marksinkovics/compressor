@@ -181,3 +181,16 @@ After container step 2 ([roadmap.md](roadmap.md#container-format-and-streaming))
 
 - **Output, not the coders, is the limit:** at 14 threads, writing to `/dev/null` takes 57 ms to encode (3.7 GB/s, 8.5×) and 81 ms to decode (2.6 GB/s, 10×). To a new file, the extra 150–200 ms is almost all system time; `dd bs=1m` writing the same 212 MB to a new file takes 48–304 ms here (14 ms to `/dev/null`). Known issue "File output limits the CLI's speed with threads".
 - **Memory:** peak RSS grows by about 4–5 MiB per thread (2 blocks in flight per thread, input and output): 14 MiB at 1 thread, 73 MiB at 14 for encode; 10 and 72 MiB for decode.
+
+## Search (2026-11-20)
+
+`compressor_app grep` on all of Silesia archived as a folder (`encode -i corpus/silesia`, 135 MB for 212 MB), hyperfine, 20 runs, medians, 14 threads; the same machine with a QEMU VM busy, load average about 13. `old_app` builds each line before matching it, `new_app` searches the decoded piece first and looks for line boundaries only around a match. Results in `docs/benchmarks/grep-cli.json`.
+
+| Command | Before | After |
+| --- | --- | --- |
+| `verify` (decode and check everything) | | 103 ms |
+| `grep -c zzzqqq` (no match) | 131 ms | 98 ms |
+| `grep -c the` (many matching lines) | 179 ms | 158 ms |
+
+- A search with few matches now runs at decoding speed, so searching blocks in parallel (planned as autonomous run item 5) can't make it faster; it would only help when most lines match, and it needs line counts and lines joined across block and file boundaries. Not done.
+- Output matches the system grep: per-file `grep -c e` counts over Silesia, and `grep -n the webster`. macOS's BSD `grep -b` prints the match's offset, GNU grep and ours the line's.

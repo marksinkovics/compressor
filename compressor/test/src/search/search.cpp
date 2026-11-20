@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -106,4 +107,63 @@ TEST(SearchTests, A_match_in_any_file_counts)
     searcher.end();
     EXPECT_TRUE(searcher.matched());
     EXPECT_EQ(out.str(), "a:1:x\n");
+}
+
+namespace
+{
+
+// grep -n -b, one line at a time.
+std::string reference(std::string_view pattern, std::string_view text)
+{
+    std::string out;
+    std::size_t number = 1;
+    std::size_t start = 0;
+    while (start < text.size())
+    {
+        std::size_t end = text.find('\n', start);
+        end = end == std::string_view::npos ? text.size() : end;
+        const std::string_view line = text.substr(start, end - start);
+        if (line.find(pattern) != std::string_view::npos)
+        {
+            out += std::to_string(number) + ':' + std::to_string(start) + ':';
+            out += line;
+            out += '\n';
+        }
+        ++number;
+        start = end + 1;
+    }
+    return out;
+}
+
+} // namespace
+
+TEST(SearchTests, Random_text_matches_a_line_by_line_search_for_any_pieces)
+{
+    uint32_t state = 11;
+    const auto next = [&state](uint32_t bound) {
+        state = (state * 1103515245U) + 12345U;
+        return (state >> 16U) % bound;
+    };
+    for (int round = 0; round < 200; ++round)
+    {
+        std::string text(next(300), '\0');
+        for (char& c : text)
+        {
+            c = "ab\n"[next(3)];
+        }
+        std::string pattern(next(4), '\0');
+        for (char& c : pattern)
+        {
+            c = "ab"[next(2)];
+        }
+        SearchOptions options = find(pattern);
+        options.byte_offsets = true;
+        const std::string want = reference(pattern, text);
+        for (const std::size_t piece :
+             {std::size_t{0}, std::size_t{1}, std::size_t{2}, std::size_t{7}, std::size_t{64}})
+        {
+            ASSERT_EQ(search(options, text, piece), want)
+                << "text '" << text << "' pattern '" << pattern << "' piece " << piece;
+        }
+    }
 }
