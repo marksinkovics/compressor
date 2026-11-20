@@ -569,3 +569,19 @@ Where it competes, Silesia as one tar, 6 threads, best of 2–3 runs under some 
 | level 8 with LZT | 54,084,255 (−38 bytes) | 47.8 s (was 29.2) | 3.63 s |
 
 So LZT competes at level 7 only: level 6 stays as fast to encode as before, level 8 and up have BWT, LZR and CM, which beat it. Level 7 is now 5.3% smaller than before and decodes twice as fast, for 3.5× the encode time. It still loses to `zstd -19` on Silesia (52.8 MB at 15 MB/s on 6 threads, decoding at 1.1 GB/s): our match search stops at 258 bytes and our literals are order-0.
+
+## PPM experiment (2026-11-20, removed)
+
+Autonomous run 4, item 3: PPMC with contexts of 5 bytes down to none (escape counted as the context's distinct bytes, full and update exclusion, a uniform order −1), hashed into 2^18 contexts per order, coded with a carry-less range coder; the code is in commit 66401b8 and removed after it. Per 1 MiB block (`Ppm/` benchmarks, under background load, so the speeds are rough):
+
+| File | PPM | vs BWT | vs BWT + CM | vs CM | PPM decoding |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| dickens | 2,705,990 | −7.5% | +2.5% | +7.3% | 8.7 MiB/s |
+| ooffice | 2,829,610 | −4.2% | +5.5% | +16.2% | 3.5 MiB/s |
+| reymont | 1,304,000 | −1.8% | +12.5% | +14.1% | 12.3 MiB/s |
+| samba | 4,914,720 | +1.1% | +12.0% | +33.2% | 7.8 MiB/s |
+| x-ray | 4,694,170 | +2.8% | +25.8% | +20.8% | 1.9 MiB/s |
+| xml | 591,069 | +30.4% | +41.7% | +53.9% | 20.4 MiB/s |
+| total | 17,039,559 | −0.3% | +13.5% | +21.2% | |
+
+It ties the BWT coder overall but decodes 5–30× slower than it (the same trade that kept BWT + CM out of level 8), and at level 9 BWT + CM and CM beat it everywhere at about its decoding speed. Order 5 also misses long repeats (xml). A PPMd-style coder (information inheritance, SEE, unbounded orders) would do better, but would still have to beat CM, so PPM was not kept.
