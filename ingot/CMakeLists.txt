@@ -52,3 +52,8 @@ if(Python3_Interpreter_FOUND)
             --app "$<TARGET_FILE:${PROJECT_NAME}>"
     )
 endif()
+
+# The WebAssembly demo, when emsdk is in build/emsdk (docs/development.md, "WebAssembly demo").
+if(EXISTS "${CMAKE_SOURCE_DIR}/build/emsdk/emsdk_env.sh")
+    add_test(NAME Web.Demo COMMAND bash "${CMAKE_SOURCE_DIR}/tools/web.sh" test)
+endif()

@@ -74,6 +74,19 @@ dictionary = ingot.train_dictionary([sample1, sample2, ...], size=112640)
 
 The module is built against vcpkg's CPython (3.12), so it imports only into a Python 3.12, such as vcpkg's own interpreter above. The GIL is released while coding. ctest's `Python.Module` runs `python/test/test_ingot.py` (plain asserts, no pytest). clang-tidy in `tools/quality.sh` reads the debug build's compile commands, which don't have the module; check it with `$(brew --prefix llvm)/bin/clang-tidy -p build/python python/src/ingot.cpp`.
 
+### WebAssembly demo
+
+`web/` is a static page that shows ingot's Huffman code for typed text (counts, the code tree, the bit stream, the codes) and the container size at every level, from the engine compiled to WebAssembly (`web/src/demo.cpp`, embind: `analyze(text)` returns JSON, `decode(bytes)` decodes an ingot file). Emscripten comes from emsdk inside the git-ignored `build/` folder, so nothing is installed system-wide:
+
+```bash
+git clone --depth 1 https://github.com/emscripten-core/emsdk.git build/emsdk
+build/emsdk/emsdk install 7.0.0 && build/emsdk/emsdk activate 7.0.0
+bash tools/web.sh serve    # builds build/web/ and serves it on http://localhost:8000
+bash tools/web.sh test     # web/test/test_demo.mjs under emsdk's node
+```
+
+`tools/web.sh` compiles the engine's sources with `em++` straight from their list in the script (no CMake, no threads, no file I/O), and only when a source is newer than `build/web/ingot_demo.wasm`. ctest runs it as `Web.Demo` when `build/emsdk` exists. Besides the page's own checks, the test decodes every fuzz seed a native build wrote (`fuzz/corpus/container/`), so a 32-bit build must run the same models as a 64-bit one; building for wasm found one place where it didn't (a `size_t` shifted by 56 in the CM coder's contexts) and code only the ARM CRC32 path uses.
+
 ## Run tests
 
 Tools

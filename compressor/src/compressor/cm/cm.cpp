@@ -334,7 +334,7 @@ private:
             last_bytes_ & 0xFFFFFFFFFFFFU, word_ ^ (last_bytes_ & 0xFFU)};
         for (std::size_t i = 0; i < hashed_contexts; ++i)
         {
-            context_[i] = mix64(contexts[i] + ((i + 1) << 56U));
+            context_[i] = mix64(contexts[i] + ((uint64_t{i} + 1) << 56U));
         }
         find_lines();
     }

@@ -71,6 +71,9 @@ constexpr Tables make_tables()
 
 constexpr Tables tables = make_tables();
 
+// Only the ARM path combines interleaved chains; without it these would be unused.
+#if defined(COMPRESSOR_CRC32_ARM)
+
 constexpr uint32_t reflected_polynomial = 0xEDB88320U;
 
 // a * b mod P, polynomials in the reflected order the CRC uses (zlib's multmodp).
@@ -103,6 +106,8 @@ constexpr uint32_t shift_by_bytes(uint64_t bytes)
     }
     return result;
 }
+
+#endif
 
 uint32_t load_le32(std::span<const uint8_t, 4> bytes)
 {

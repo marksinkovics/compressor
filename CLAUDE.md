@@ -26,8 +26,8 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 - The search index is searched in place (wavelet matrix through `mmap`): rare patterns 12–15× faster than `grep`, common ones as fast; 345/345 pass.
 - Zip64 is done: zip archives with files over 4 GiB or more than 65 535 entries; 347/347 pass.
 - Autonomous run 2 (list at the end of `docs/roadmap.md`, same branch, Claude commits): item 1, multithreaded Deflate (`-f gzip`/`-f zip` take `-T` and `-L`), item 2, the CM coder (coder 6 at level 9, 11.4% below level 8 on Silesia), and item 4, the 2-D median image predictor (transform 5), are done; item 3 (`grep` prefilter) was skipped as not worth it; 360/360 pass. Run 2 is finished.
-- Autonomous run 3 (list at the end of `docs/roadmap.md`, same branch, Claude commits): item 1, the rename (the program is `ingot`, in `ingot/`; libraries keep `compressor`), item 2, `tools/compare.py` against gzip, zstd, xz, bzip2, brotli with history in `docs/benchmarks/history/`, item 3, BWT + CM (coder 7, level 9) and tANS (coder 8), item 4, dictionaries (`ingot train`, `-D`, coders 9 and 10), and item 5, the `ingot` Python module (`python/`, preset `python`), are done; 381/381 pass (382 with `python`).
-- **Next:** run 3 item 6, the WebAssembly demo (needs Emscripten; ask before installing it with Homebrew).
+- Autonomous run 3 (list at the end of `docs/roadmap.md`, same branch, Claude commits): item 1, the rename (the program is `ingot`, in `ingot/`; libraries keep `compressor`), item 2, `tools/compare.py` against gzip, zstd, xz, bzip2, brotli with history in `docs/benchmarks/history/`, item 3, BWT + CM (coder 7, level 9) and tANS (coder 8), item 4, dictionaries (`ingot train`, `-D`, coders 9 and 10), item 5, the `ingot` Python module (`python/`, preset `python`), and item 6, the WebAssembly demo (`web/`, `tools/web.sh`, emsdk in `build/emsdk`), are done; 382/382 pass (383 with `python`). Run 3 is finished.
+- **Next:** pick from the roadmap's open items, for example CI (now also for the Python module and the wasm build) or the freestanding core.
 
 ## Commands
 
@@ -42,6 +42,7 @@ bash tools/quality.sh check       # clang-format, clang-tidy, shellcheck, shfmt 
 bash tools/bench.sh               # release benchmarks -> JSON; corpora via tools/fetch-corpus.sh (docs/benchmarks.md)
 bash tools/bench-cli.sh           # ingot end to end with hyperfine (python3 fallback)
 python3 tools/compare.py          # against gzip/zstd/xz/bzip2/brotli; history in docs/benchmarks/history/
+bash tools/web.sh serve           # WebAssembly demo on localhost:8000 (needs build/emsdk; docs/development.md)
 ```
 
 - Needs `VCPKG_ROOT` set to a vcpkg checkout; the root `CMakeLists.txt` takes vcpkg's toolchain from there, and configure installs `vcpkg.json` (gtest, benchmark, cli11, zlib). Third-party code comes only through vcpkg. Every port, transitive and host ones included, needs an exact `overrides` pin in `vcpkg.json`; configure fails otherwise.

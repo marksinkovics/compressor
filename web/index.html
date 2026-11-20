@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ingot Huffman demo</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>ingot <span>Huffman coding, live</span></h1>
+      <p>
+        Type below. ingot's own coder, compiled to WebAssembly, counts the bytes, builds a
+        length-limited canonical Huffman code (at most 15 bits per byte, as in Deflate), and codes
+        the text. Below that, the whole engine compresses the same bytes at every level.
+      </p>
+    </header>
+
+    <main>
+      <section class="input">
+        <label for="text">Text</label>
+        <textarea id="text" spellcheck="false" rows="6"></textarea>
+        <p id="note" class="note"></p>
+      </section>
+
+      <section class="stats" id="stats" aria-live="polite"></section>
+
+      <section>
+        <h2>Code tree</h2>
+        <p class="hint">Left is 0, right is 1. A leaf is a byte, with how often it occurs.</p>
+        <div class="tree-scroll"><svg id="tree" role="img" aria-label="Huffman code tree"></svg></div>
+      </section>
+
+      <section>
+        <h2>Bit stream</h2>
+        <p class="hint">Each byte's code in turn; hover a code to see its byte.</p>
+        <div id="bits" class="bits"></div>
+      </section>
+
+      <section class="split">
+        <div>
+          <h2>Codes</h2>
+          <table id="codes">
+            <thead>
+              <tr><th>Byte</th><th>Count</th><th>Code</th><th>Bits</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div>
+          <h2>ingot levels</h2>
+          <p class="hint">Container size per level (with its 30 bytes of headers), and what the first block used.</p>
+          <div id="levels" class="levels"></div>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
