@@ -53,8 +53,9 @@ packed = ingot.compress(data, level=9)
 assert ingot.decompress(packed) == data
 ```
 
-Built with `cmake --workflow --preset python`; see [docs/development.md](docs/development.md),
-"Python module".
+Also streaming (`ingot.Compressor`, `ingot.Decompressor`) and folder archives (`ingot.list`,
+`ingot.read`, `ingot.extract`). Built with `cmake --workflow --preset python`, which also writes a
+wheel for `pip install`; see [docs/development.md](docs/development.md), "Python module".
 
 ## Building
 

@@ -68,11 +68,22 @@ packed = ingot.compress(data, level=9, threads=0, dictionary=None)   # bytes -> 
 data = ingot.decompress(packed, threads=0, dictionary=None)          # not folder archives
 ingot.compress_file("photos", "photos.ingot", level=6)               # files and folders, as the CLI
 ingot.decompress_file("photos.ingot", "photos-copy")
-dictionary = ingot.train_dictionary([sample1, sample2, ...], size=112640)
+dictionary = ingot.train_dictionary([sample1, sample2, ...], size=112640)  # a dictionary file's bytes
+
+c = ingot.Compressor(level=6, dictionary=None)     # like zlib.compressobj(): whole blocks as they fill
+stream = c.compress(part1) + c.compress(part2) + c.flush()
+d = ingot.Decompressor(dictionary=None)            # like zlib.decompressobj(): d.eof, d.unused_data
+data = d.decompress(stream[:1000]) + d.decompress(stream[1000:]) + d.flush()
+
+ingot.list("photos.ingot")                         # [{"path", "type", "size", "mode", "mtime_ns", ...}]
+ingot.read("photos.ingot", "2024/beach.bmp")       # one file's bytes, decoding only its blocks
+ingot.extract("photos.ingot", "2024", "out-2024")  # a file, directory or symlink
 # failures raise ingot.Error
 ```
 
-The module is built against vcpkg's CPython (3.12), so it imports only into a Python 3.12, such as vcpkg's own interpreter above. The GIL is released while coding. ctest's `Python.Module` runs `python/test/test_ingot.py` (plain asserts, no pytest). clang-tidy in `tools/quality.sh` reads the debug build's compile commands, which don't have the module; check it with `$(brew --prefix llvm)/bin/clang-tidy -p build/python python/src/ingot.cpp`.
+Every build also writes a wheel, `build/python/python/dist/ingot-<version>-cp312-cp312-<platform>.whl` (`tools/python_wheel.py`, standard library only; on macOS the platform tag is the module's minimum OS, `macosx_26_0_arm64` here), which `pip install` puts into any CPython 3.12 of that platform, pyenv's and Homebrew's included. ctest's `Python.Wheel` installs it into a fresh venv and imports it. The streaming objects work on one thread and give the same bytes as `compress()` without a dictionary; a single-block frame (`compress()` with a dictionary) comes out of a `Decompressor` only at `flush()`, since its payload runs to the end.
+
+The module is built against vcpkg's CPython (3.12), so it imports only into a Python 3.12, such as vcpkg's own interpreter above. The GIL is released while coding. ctest's `Python.Module` runs `python/test/test_ingot.py` (plain asserts, no pytest), `Python.Wheel` `python/test/install_wheel.py`. clang-tidy in `tools/quality.sh` reads the debug build's compile commands, which don't have the module; check it with `$(brew --prefix llvm)/bin/clang-tidy -p build/python python/src/ingot.cpp`.
 
 ### WebAssembly demo
 

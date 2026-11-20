@@ -17,3 +17,17 @@ add_test(NAME Python.Module
     COMMAND "${Python3_EXECUTABLE}" -I "${CMAKE_CURRENT_SOURCE_DIR}/test/test_ingot.py"
         "${CMAKE_CURRENT_BINARY_DIR}/package"
 )
+
+# A wheel of the module after every build (tools/python_wheel.py, standard library only).
+add_custom_command(TARGET ingot_module POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E rm -rf "${CMAKE_CURRENT_BINARY_DIR}/dist"
+    COMMAND "${Python3_EXECUTABLE}" -I "${CMAKE_SOURCE_DIR}/tools/python_wheel.py"
+        --module "$<TARGET_FILE:ingot_module>" --python "${Python3_EXECUTABLE}"
+        --version "${CMAKE_PROJECT_VERSION}" --out "${CMAKE_CURRENT_BINARY_DIR}/dist"
+    VERBATIM
+)
+
+add_test(NAME Python.Wheel
+    COMMAND "${Python3_EXECUTABLE}" -I "${CMAKE_CURRENT_SOURCE_DIR}/test/install_wheel.py"
+        "${CMAKE_CURRENT_BINARY_DIR}/dist" "${CMAKE_CURRENT_BINARY_DIR}/wheel-venv"
+)
