@@ -296,7 +296,7 @@ TEST_F(CompressorDataTests, Invalid_frame_headers_are_rejected)
     EXPECT_EQ(parse(with(4, '\x00')), std::unexpected(Error::unsupported_version));
     EXPECT_EQ(parse(with(5, '\x0B')), std::unexpected(Error::corrupt_header));
     EXPECT_EQ(parse(with(5, '\x1B')), std::unexpected(Error::corrupt_header));
-    EXPECT_EQ(parse(with(6, '\x01')), std::unexpected(Error::corrupt_header));
+    EXPECT_EQ(parse(with(6, '\x02')), std::unexpected(Error::corrupt_header));
     EXPECT_EQ(parse(with(7, '\x80')), std::unexpected(Error::corrupt_header));
 }
 
@@ -435,4 +435,37 @@ TEST_F(CompressorDataTests, Frame_reader_rejects_a_block_after_a_short_one)
     compressor::EncodedBlock block;
     ASSERT_EQ(reader.read_block(block), true);
     EXPECT_EQ(reader.read_block(block), std::unexpected(compressor::Error::corrupt_header));
+}
+
+TEST_F(CompressorDataTests, The_archive_flag_is_read_and_the_end_block_may_be_followed)
+{
+    std::stringstream bytes;
+    compressor::write_frame_header(bytes, 12, compressor::archive_flag);
+    compressor::write_block(bytes, stored_block("abc"));
+    compressor::write_end_block(bytes, 3);
+    bytes << "index";
+    stream.str(bytes.str());
+
+    compressor::FrameReader reader(stream);
+    ASSERT_EQ(reader.read_header(), 12);
+    EXPECT_EQ(reader.flags(), compressor::archive_flag);
+    compressor::EncodedBlock block;
+    ASSERT_EQ(reader.read_block(block), true);
+    ASSERT_EQ(reader.read_block(block), false);
+    EXPECT_EQ(reader.total_size(), 3U);
+    EXPECT_EQ(stream.tellg(), 8 + 13 + 3 + 9);
+}
+
+TEST_F(CompressorDataTests, An_archive_is_not_read_as_encoded_data)
+{
+    std::string bytes = serialized(stored_abc());
+    bytes[6] = '\x01';
+
+    EXPECT_EQ(parse(bytes), std::unexpected(compressor::Error::unexpected_archive));
+}
+
+TEST_F(CompressorDataTests, Written_size_counts_the_header_and_the_code_lengths)
+{
+    EXPECT_EQ(compressor::written_size(stored_block("abc")), 13U + 3U);
+    EXPECT_EQ(compressor::written_size(huffman_aab()), 13U + 128U + 1U);
 }

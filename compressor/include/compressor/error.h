@@ -17,6 +17,9 @@ enum class Error : std::uint8_t
     corrupt_header,
     corrupt_payload,
     checksum_mismatch,
+    unexpected_archive,
+    corrupt_index,
+    file_failed,
 };
 
 std::string_view describe(Error error);

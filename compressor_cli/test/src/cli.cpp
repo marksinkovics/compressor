@@ -245,3 +245,13 @@ TEST_F(CLITests, Invalid_thread_counts_fail)
     }
     EXPECT_FALSE(threads_);
 }
+
+TEST_F(CLITests, Encode_accepts_a_folder_and_decode_does_not)
+{
+    EXPECT_CALL(*compressor_, encode(::testing::_, ::testing::_)).WillOnce(Return(true));
+    EXPECT_EQ(run({"encode", "-i", dir_.string(), "-o", output_}), EXIT_SUCCESS);
+
+    compressor_ = std::make_unique<MockICompressor>();
+    EXPECT_CALL(*compressor_, decode(::testing::_, ::testing::_)).Times(0);
+    EXPECT_NE(run({"decode", "-i", dir_.string(), "-o", output_}), EXIT_SUCCESS);
+}

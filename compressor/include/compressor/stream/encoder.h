@@ -15,12 +15,23 @@
 namespace compressor
 {
 
+// Where a container's pieces landed, counted from its first byte.
+struct FrameLayout
+{
+    std::vector<uint64_t> block_offsets;
+    uint64_t total_size = 0; // decoded bytes
+    uint64_t size = 0;       // bytes written, up to and including the end block
+};
+
 class IBlockEncoder
 {
 public:
     virtual ~IBlockEncoder() = default;
     // Writes the whole container for everything left in `in`.
     virtual std::expected<void, Error> encode(std::istream& in, std::ostream& out) = 0;
+    // encode() with `flags` in the frame header.
+    virtual std::expected<FrameLayout, Error> encode_frame(std::istream& in, std::ostream& out,
+                                                           uint16_t flags) = 0;
 };
 
 // Encodes up to 2 blocks per thread at once and writes them in input order, so the output doesn't
@@ -41,6 +52,8 @@ public:
     BlockEncoder& operator=(BlockEncoder&&) = delete;
 
     std::expected<void, Error> encode(std::istream& in, std::ostream& out) override;
+    std::expected<FrameLayout, Error> encode_frame(std::istream& in, std::ostream& out,
+                                                   uint16_t flags) override;
 
 private:
     std::vector<std::unique_ptr<IEngine>> engines_; // one per worker

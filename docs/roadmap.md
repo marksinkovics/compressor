@@ -9,6 +9,7 @@ The phased plan for getting the basics right, the known issues it addresses, and
 - **Argument parsing:** CLI11 replaces our own `argparser/`.
 - **Platforms:** macOS first, then Linux and Windows.
 - **File format:** breaking compatibility with existing compressed files is fine.
+- **Folder archives (2026-11-19):** solid blocks plus an index, not per-entry or tar-like. All files' bytes run back to back through the normal block stream, and an index (block table and entries) follows the end block, so extracting one file decodes only its blocks. An archive is the same `.ingot` container with frame header flag bit 0 set, so single-file `.ingot` files are unchanged.
 
 ## Phased plan
 
@@ -311,14 +312,20 @@ Decisions: the checksum is CRC32 (IEEE), our own table-driven implementation in 
 
 ### Folder compression
 
-- [ ] **Archive of a whole folder**, storing paths, permissions, modification times and symlinks.
-- [ ] **Choose the layout:**
-  - per-entry like `.zip`: each file compressed separately, plus an index. Allows listing, extracting one file and searching.
-  - solid like `.tar.gz`: everything joined into one stream. Compresses better, but the whole stream has to be decompressed to read any file.
+Layout decided under "Decisions" (solid blocks plus an index); format in [file_format.md](file_format.md), "Archive".
 
-  Per-entry, or blocks plus an index, fits better with search.
-- [ ] **Commands:** `list`, `extract <path>`, `cat`, `verify`, and `stats` (entropy, byte histogram, Huffman tree as Graphviz).
-- [ ] **Deduplication:** store identical files only once.
+- [x] **Step 1, archive a folder and extract it all (done).** `compressor_app encode -i <dir>` writes an archive; `decode` of an archive file creates a new directory.
+  - Container: frame header flag `archive_flag` (bit 0) in `data.h`; `FrameReader::flags()`/`total_size()`, and for an archive the reader stops after the end block instead of requiring EOF. `written_size(block)`. `read_encoded()` and plain `decode()` reject an archive with the new `Error::unexpected_archive`.
+  - Coders: `IBlockEncoder::encode_frame(in, out, flags)` returns a `FrameLayout` (block offsets, total, bytes written); `IBlockDecoder::decode_frame(in, out, flags)`. `encode`/`decode` call them with 0. Mocks updated.
+  - `archive/index.{h,cpp}`: `Entry`, `EntryType`, `ArchiveIndex`, `write_index()`, `read_archive_index()` (seeks to the trailer, end block and index; checks the CRC), `validate_index()` (path rules, unique paths, parent directory earlier, files back to back, block table). New errors `corrupt_index` and `file_failed`.
+  - `archive/metadata.{h,cpp}`: `read_metadata()` (`lstat`/`stat`), `set_mode()`, `set_mtime()` (`utimensat` with `AT_SYMLINK_NOFOLLOW`). POSIX only.
+  - `archive/archive.{h,cpp}`: `scan_tree()` (iterative pre-order walk, names in byte order, skips the existing output by device and inode and skips special files with a warning), `write_archive()` (a `ConcatInputBuf` streams the files into `encode_frame` and records each file's real size and CRC, so a file that changes during the walk is stored as read), `is_archive()`, `extract_archive()` (directories, then the data split into files by a `SplitOutputBuf` that checks each file's CRC, then symlinks, then modes and times in reverse order). Errors come back as `Failure{Error, detail}` with the path.
+  - `Compressor`: a directory input goes to `encode_folder`; an archive input file goes to `decode_folder`, which extracts into `.<name>.<random>.tmp` next to the output and renames it, and refuses an existing output or `-`. `transcode` was split into `write_output` so the folder encoder reuses the temp-file handling. CLI: `encode -i` accepts a directory (`ExistingPath`).
+  - Tests: `ArchiveIndexTests` (round trip, empty archive, path rules, duplicates, parents, file ranges, block table, field ranges, unknown type, damaged index bytes, plain container), `ArchiveTests` (scan order and metadata, round trip of a tree with nested and empty directories, empty and multi-block files, symlinks, modes and pre-1970 times with nanoseconds; skipped FIFO and excluded output; damaged data and index; unreadable file; file changing size), `CompressorFolderTests` (round trip, archive inside the folder, folder to stdout, existing output, `-` output, archive on stdin, failure leaves nothing), new `CompressorDataTests`/`BlockStreamTests` for the flag and `encode_frame`, one `CLITests`. 202/202 pass. Also checked by hand: `compressor/` and `docs/` plus a symlink round trip through `compressor_app` with identical contents, modes and mtimes.
+  - Not done: decoding an archive from stdin (the index is at the end; would need spooling to a temp file); owners, hard links and extended attributes; root directory metadata; the index isn't compressed; Windows (`metadata.cpp` has an `#error`, and paths with `\` aren't rejected yet).
+- [ ] **Step 2, commands:** `list`, `extract <archive> <path>` (decode only the blocks from the block table that cover the file), `cat <archive> <path>` to stdout, and `verify` (decode everything, check block and file CRCs, write nothing). Probably CLI subcommands over new `ICompressor` methods.
+- [ ] **Step 3, `stats`:** entropy, byte histogram, Huffman tree as Graphviz (the engine's `print_graph`).
+- [ ] **Deduplication:** store identical files only once. The index already stores each file's offset; dedup would let a file point back at earlier data, which relaxes the "back to back" rule and makes extraction copy from an earlier file.
 
 ### Well-known output formats
 
@@ -376,7 +383,7 @@ Existing examples: macOS compressed memory, Linux zram and zswap, Windows memory
 1. Container format with streaming and blocks (steps 1–3, done).
 2. Hardware CRC32 (known issue "CRC32 caps stored blocks", done).
 3. Multithreaded blocks (container format, done).
-4. Folder support and the extra commands.
+4. Folder support and the extra commands (step 1 done; steps 2–3 next).
 5. An LZ77 pipeline next to Huffman.
 6. Deflate output for zip/gzip compatibility.
 7. Searching through the block index.

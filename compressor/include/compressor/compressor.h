@@ -38,7 +38,8 @@ public:
 // Writes a regular output through a temporary file next to it and renames that on success, so a
 // failure leaves an existing output untouched and encoding a file onto itself works. Devices and
 // pipes such as /dev/null are written in place, and so is the standard output, where a failed
-// decode may leave the blocks before the failure.
+// decode may leave the blocks before the failure. A directory input is encoded as a folder
+// archive, and an archive file decodes into a new directory, built next to it and renamed.
 class Compressor : public ICompressor
 {
 public:
@@ -54,6 +55,9 @@ public:
     bool decode(const std::filesystem::path& input, const std::filesystem::path& output) override;
 
 private:
+    bool encode_folder(const std::filesystem::path& input, const std::filesystem::path& output);
+    bool decode_folder(const std::filesystem::path& input, const std::filesystem::path& output);
+
     std::unique_ptr<IBlockEncoder> encoder_;
     std::unique_ptr<IBlockDecoder> decoder_;
     StandardStreams streams_;

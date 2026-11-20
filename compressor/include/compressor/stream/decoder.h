@@ -1,6 +1,7 @@
 #ifndef BlockDecoder_h
 #define BlockDecoder_h
 
+#include <cstdint>
 #include <expected>
 #include <iosfwd>
 #include <memory>
@@ -20,6 +21,10 @@ public:
     // Writes each block as soon as it and every block before it are verified, so on failure `out`
     // holds exactly the blocks before the first bad one.
     virtual std::expected<void, Error> decode(std::istream& in, std::ostream& out) = 0;
+    // decode() for a container whose header flags are exactly `flags`. An archive's stream is
+    // left just after its end block.
+    virtual std::expected<void, Error> decode_frame(std::istream& in, std::ostream& out,
+                                                    uint16_t flags) = 0;
 };
 
 // Decodes up to 2 blocks per thread at once and writes them in order.
@@ -38,6 +43,8 @@ public:
     BlockDecoder& operator=(BlockDecoder&&) = delete;
 
     std::expected<void, Error> decode(std::istream& in, std::ostream& out) override;
+    std::expected<void, Error> decode_frame(std::istream& in, std::ostream& out,
+                                            uint16_t flags) override;
 
 private:
     std::vector<std::unique_ptr<IEngine>> engines_; // one per worker

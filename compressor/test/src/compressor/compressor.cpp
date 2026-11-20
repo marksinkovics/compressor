@@ -17,6 +17,8 @@
 
 #include <compressor/compressor.h>
 #include <compressor/error.h>
+#include <compressor/stream/decoder.h>
+#include <compressor/stream/encoder.h>
 #include <compressor/test/mock/stream/decoder.h>
 #include <compressor/test/mock/stream/encoder.h>
 
@@ -252,4 +254,124 @@ TEST_F(CompressorTests, A_failing_standard_output_is_a_write_error)
 
     EXPECT_FALSE(make_compressor().encode(input_, "-"));
     EXPECT_THAT(err_.str(), HasSubstr("could not be written"));
+}
+
+class CompressorFolderTests : public ::testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
+        dir_ = fs::temp_directory_path() / (std::string("compressor_folder_") + info->name());
+        fs::remove_all(dir_);
+        folder_ = dir_ / "folder";
+        archive_ = dir_ / "folder.ingot";
+        extracted_ = dir_ / "extracted";
+        fs::create_directories(folder_ / "sub");
+        write_file(folder_ / "a.txt", "alpha");
+        write_file(folder_ / "sub" / "b.txt", std::string(10'000, 'b'));
+    }
+
+    void TearDown() override
+    {
+        std::error_code error;
+        fs::remove_all(dir_, error);
+    }
+
+    compressor::Compressor make_compressor()
+    {
+        return {std::make_unique<compressor::BlockEncoder>(),
+                std::make_unique<compressor::BlockDecoder>(),
+                {.in = in_, .out = out_, .err = err_}};
+    }
+
+    std::vector<std::string> names(const fs::path& directory) const
+    {
+        std::vector<std::string> found;
+        for (const auto& entry : fs::directory_iterator(directory))
+        {
+            found.push_back(entry.path().filename().string());
+        }
+        std::ranges::sort(found);
+        return found;
+    }
+
+    fs::path dir_;
+    fs::path folder_;
+    fs::path archive_;
+    fs::path extracted_;
+    std::istringstream in_;
+    std::ostringstream out_;
+    std::ostringstream err_;
+};
+
+TEST_F(CompressorFolderTests, A_folder_round_trips_through_encode_and_decode)
+{
+    ASSERT_TRUE(make_compressor().encode(folder_, archive_)) << err_.str();
+    ASSERT_TRUE(make_compressor().decode(archive_, extracted_)) << err_.str();
+
+    EXPECT_EQ(read_file(extracted_ / "a.txt"), "alpha");
+    EXPECT_EQ(read_file(extracted_ / "sub" / "b.txt"), std::string(10'000, 'b'));
+    EXPECT_EQ(names(dir_), (std::vector<std::string>{"extracted", "folder", "folder.ingot"}));
+    EXPECT_EQ(err_.str(), "");
+}
+
+TEST_F(CompressorFolderTests, An_archive_written_inside_the_folder_leaves_itself_out)
+{
+    const fs::path inside = folder_ / "self.ingot";
+    write_file(inside, "previous archive");
+
+    ASSERT_TRUE(make_compressor().encode(folder_, inside)) << err_.str();
+    ASSERT_TRUE(make_compressor().decode(inside, extracted_)) << err_.str();
+    EXPECT_EQ(names(extracted_), (std::vector<std::string>{"a.txt", "sub"}));
+}
+
+TEST_F(CompressorFolderTests, A_folder_can_be_encoded_to_standard_output)
+{
+    ASSERT_TRUE(make_compressor().encode(folder_, "-")) << err_.str();
+    write_file(archive_, out_.str());
+
+    ASSERT_TRUE(make_compressor().decode(archive_, extracted_)) << err_.str();
+    EXPECT_EQ(read_file(extracted_ / "a.txt"), "alpha");
+}
+
+TEST_F(CompressorFolderTests, An_archive_is_not_decoded_into_an_existing_path)
+{
+    ASSERT_TRUE(make_compressor().encode(folder_, archive_));
+    fs::create_directory(extracted_);
+
+    EXPECT_FALSE(make_compressor().decode(archive_, extracted_));
+    EXPECT_THAT(err_.str(), HasSubstr("already exists"));
+    EXPECT_TRUE(fs::is_empty(extracted_));
+}
+
+TEST_F(CompressorFolderTests, An_archive_is_not_decoded_to_standard_output)
+{
+    ASSERT_TRUE(make_compressor().encode(folder_, archive_));
+
+    EXPECT_FALSE(make_compressor().decode(archive_, "-"));
+    EXPECT_THAT(err_.str(), HasSubstr("-o"));
+    EXPECT_EQ(out_.str(), "");
+}
+
+TEST_F(CompressorFolderTests, An_archive_on_standard_input_is_rejected)
+{
+    ASSERT_TRUE(make_compressor().encode(folder_, archive_));
+    in_.str(read_file(archive_));
+
+    EXPECT_FALSE(make_compressor().decode("-", dir_ / "out"));
+    EXPECT_THAT(err_.str(), HasSubstr("folder archive"));
+    EXPECT_FALSE(fs::exists(dir_ / "out"));
+}
+
+TEST_F(CompressorFolderTests, A_failed_folder_decode_leaves_no_output_or_temporary_directory)
+{
+    ASSERT_TRUE(make_compressor().encode(folder_, archive_));
+    std::string bytes = read_file(archive_);
+    bytes.back() = 'Z';
+    write_file(archive_, bytes);
+
+    EXPECT_FALSE(make_compressor().decode(archive_, extracted_));
+    EXPECT_THAT(err_.str(), HasSubstr("index is corrupt"));
+    EXPECT_EQ(names(dir_), (std::vector<std::string>{"folder", "folder.ingot"}));
 }

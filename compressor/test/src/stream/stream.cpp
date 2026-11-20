@@ -371,3 +371,55 @@ TEST(BlockStreamTests, The_coders_make_one_engine_per_thread)
     const compressor::BlockDecoder decoder(engine_factory(&made), 0);
     EXPECT_EQ(made, 4);
 }
+
+TEST(BlockStreamTests, Encode_frame_reports_where_each_block_starts)
+{
+    compressor::BlockEncoder encoder(engine_factory(), block_size_log2, 2);
+    const std::string text = sample_text((2 * block_size) + 5);
+    std::istringstream in(text);
+    std::ostringstream out;
+
+    const auto layout = encoder.encode_frame(in, out, compressor::archive_flag);
+    ASSERT_TRUE(layout);
+    const std::string bytes = out.str();
+    EXPECT_EQ(layout->size, bytes.size());
+    EXPECT_EQ(layout->total_size, text.size());
+    ASSERT_EQ(layout->block_offsets.size(), 3U);
+    EXPECT_EQ(layout->block_offsets[0], compressor::frame_header_bytes);
+    // Each offset is a block header: method 0 or 1, then the full block size.
+    for (const uint64_t offset : layout->block_offsets)
+    {
+        EXPECT_LE(static_cast<uint8_t>(bytes[offset]), 1);
+    }
+    EXPECT_EQ(static_cast<uint8_t>(bytes[layout->size - compressor::end_block_bytes]), 0xFF);
+}
+
+TEST(BlockStreamTests, Decode_rejects_an_archive_and_decode_frame_reads_its_data)
+{
+    compressor::BlockEncoder encoder(engine_factory(), block_size_log2, 1);
+    std::istringstream text("archived bytes");
+    std::ostringstream archive;
+    ASSERT_TRUE(encoder.encode_frame(text, archive, compressor::archive_flag));
+    const std::string bytes = archive.str() + "index follows";
+
+    EXPECT_EQ(decode(bytes), std::unexpected(compressor::Error::unexpected_archive));
+
+    compressor::BlockDecoder decoder(engine_factory(), 1);
+    std::istringstream in(bytes);
+    std::ostringstream out;
+    ASSERT_TRUE(decoder.decode_frame(in, out, compressor::archive_flag));
+    EXPECT_EQ(out.str(), "archived bytes");
+    EXPECT_EQ(in.tellg(), static_cast<std::streamoff>(archive.str().size()));
+}
+
+TEST(BlockStreamTests, Decode_frame_rejects_a_plain_container_when_an_archive_is_expected)
+{
+    const auto bytes = encode("plain");
+    ASSERT_TRUE(bytes);
+    compressor::BlockDecoder decoder(engine_factory(), 1);
+    std::istringstream in(*bytes);
+    std::ostringstream out;
+
+    EXPECT_EQ(decoder.decode_frame(in, out, compressor::archive_flag),
+              std::unexpected(compressor::Error::corrupt_header));
+}

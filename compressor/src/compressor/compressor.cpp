@@ -17,6 +17,7 @@
 #include <system_error>
 #include <utility>
 
+#include <compressor/archive/archive.h>
 #include <compressor/data/data.h>
 #include <compressor/engine/engine.h>
 #include <compressor/error.h>
@@ -92,46 +93,43 @@ std::string display_name(const fs::path& path, std::string_view standard_name)
     return is_standard(path) ? std::string(standard_name) : path.string();
 }
 
-template <class Coder>
-std::expected<void, Error> write_in_place(Coder& code, std::istream& in, std::ostream& out)
+using Result = std::expected<void, Failure>;
+
+void report(std::ostream& err, std::string_view action, const fs::path& input,
+            const Failure& failure)
 {
-    std::expected<void, Error> result = code(in, out);
+    err << "Cannot " << action << ' ' << display_name(input, "standard input") << ": "
+        << describe(failure.error);
+    if (!failure.detail.empty())
+    {
+        err << " (" << failure.detail << ')';
+    }
+    err << '\n';
+}
+
+template <class Write> Result write_in_place(Write& write, std::ostream& out)
+{
+    Result result = write(out);
     out.flush();
     if (result && out.fail())
     {
-        result = std::unexpected(Error::write_failed);
+        result = std::unexpected(Failure{.error = Error::write_failed, .detail = {}});
     }
     return result;
 }
 
-template <class Coder>
-bool transcode(const StandardStreams& streams, std::string_view action, const fs::path& input,
-               const fs::path& output, Coder code)
+// `write` fills the output stream; `report_failure` gets its failure.
+template <class Write, class Report>
+bool write_output(const StandardStreams& streams, const fs::path& output, Write write,
+                  Report report_failure)
 {
     std::ostream& err = streams.err;
-    std::ifstream file;
-    std::istream* in = &streams.in;
-    if (!is_standard(input))
-    {
-        file.open(input, std::ios::in | std::ios::binary);
-        if (!file)
-        {
-            err << "Cannot open input file: " << input.string() << '\n';
-            return false;
-        }
-        in = &file;
-    }
-    const auto report = [&](Error error) {
-        err << "Cannot " << action << ' ' << display_name(input, "standard input") << ": "
-            << describe(error) << '\n';
-        return false;
-    };
-
     if (is_standard(output))
     {
-        if (auto result = write_in_place(code, *in, streams.out); !result)
+        if (auto result = write_in_place(write, streams.out); !result)
         {
-            return report(result.error());
+            report_failure(result.error());
+            return false;
         }
         return true;
     }
@@ -144,9 +142,10 @@ bool transcode(const StandardStreams& streams, std::string_view action, const fs
             err << "Cannot open output file: " << output.string() << '\n';
             return false;
         }
-        if (auto result = write_in_place(code, *in, out); !result)
+        if (auto result = write_in_place(write, out); !result)
         {
-            return report(result.error());
+            report_failure(result.error());
+            return false;
         }
         return true;
     }
@@ -157,18 +156,18 @@ bool transcode(const StandardStreams& streams, std::string_view action, const fs
         err << "Cannot open output file: " << output.string() << '\n';
         return false;
     }
-    std::expected<void, Error> result = code(*in, temp->stream);
-    file.close();
+    Result result = write(temp->stream);
     temp->stream.close();
     if (result && temp->stream.fail())
     {
-        result = std::unexpected(Error::write_failed);
+        result = std::unexpected(Failure{.error = Error::write_failed, .detail = {}});
     }
     std::error_code error;
     if (!result)
     {
         fs::remove(temp->path, error);
-        return report(result.error());
+        report_failure(result.error());
+        return false;
     }
     fs::rename(temp->path, output, error);
     if (error)
@@ -178,6 +177,67 @@ bool transcode(const StandardStreams& streams, std::string_view action, const fs
         return false;
     }
     return true;
+}
+
+template <class Coder>
+bool transcode(const StandardStreams& streams, std::string_view action, const fs::path& input,
+               const fs::path& output, Coder code)
+{
+    std::ifstream file;
+    std::istream* in = &streams.in;
+    if (!is_standard(input))
+    {
+        file.open(input, std::ios::in | std::ios::binary);
+        if (!file)
+        {
+            streams.err << "Cannot open input file: " << input.string() << '\n';
+            return false;
+        }
+        in = &file;
+    }
+    return write_output(streams, output, [&](std::ostream& out) -> Result {
+        std::expected<void, Error> result = code(*in, out);
+        // Closed before the output is renamed, which may replace the input.
+        file.close();
+        if (!result)
+        {
+            return std::unexpected(Failure{.error = result.error(), .detail = {}});
+        }
+        return {};
+    }, [&](const Failure& failure) {
+        report(streams.err, action, input, failure);
+    });
+}
+
+std::optional<fs::path> create_temp_directory_next_to(const fs::path& output)
+{
+    std::random_device random;
+    for (int attempt = 0; attempt < 8; ++attempt)
+    {
+        std::ostringstream name;
+        name << '.' << output.filename().string() << '.' << std::hex << random() << ".tmp";
+        fs::path path = output.parent_path() / name.str();
+        std::error_code error;
+        if (fs::create_directory(path, error))
+        {
+            return path;
+        }
+        if (error || !fs::exists(path, error))
+        {
+            break;
+        }
+    }
+    return std::nullopt;
+}
+
+bool is_archive_file(const fs::path& input)
+{
+    if (is_standard(input))
+    {
+        return false;
+    }
+    std::ifstream file(input, std::ios::in | std::ios::binary);
+    return file && is_archive(file);
 }
 
 } // namespace
@@ -214,6 +274,11 @@ Compressor::Compressor(std::unique_ptr<IBlockEncoder> encoder,
 bool Compressor::encode(const fs::path& input, const fs::path& output)
 {
     PROFILE_SESSION("Compressor::Encode")
+    std::error_code error;
+    if (!is_standard(input) && fs::is_directory(input, error))
+    {
+        return encode_folder(input, output);
+    }
     return transcode(streams_, "encode", input, output,
                      [this](std::istream& in, std::ostream& out) {
         return encoder_->encode(in, out);
@@ -223,10 +288,70 @@ bool Compressor::encode(const fs::path& input, const fs::path& output)
 bool Compressor::decode(const fs::path& input, const fs::path& output)
 {
     PROFILE_SESSION("Compressor::Decode")
+    if (is_archive_file(input))
+    {
+        return decode_folder(input, output);
+    }
     return transcode(streams_, "decode", input, output,
                      [this](std::istream& in, std::ostream& out) {
         return decoder_->decode(in, out);
     });
+}
+
+bool Compressor::encode_folder(const fs::path& input, const fs::path& output)
+{
+    const auto report_failure = [&](const Failure& failure) {
+        report(streams_.err, "encode", input, failure);
+    };
+    auto entries = scan_tree(input, is_standard(output) ? fs::path{} : output, streams_.err);
+    if (!entries)
+    {
+        report_failure(entries.error());
+        return false;
+    }
+    return write_output(streams_, output, [&](std::ostream& out) {
+        return write_archive(*encoder_, input, std::move(*entries), out);
+    }, report_failure);
+}
+
+bool Compressor::decode_folder(const fs::path& input, const fs::path& output)
+{
+    std::ostream& err = streams_.err;
+    if (is_standard(output))
+    {
+        err << "Cannot decode " << input.string()
+            << ": it is a folder archive; name the new directory with -o\n";
+        return false;
+    }
+    std::error_code error;
+    if (fs::exists(fs::symlink_status(output, error)))
+    {
+        err << "Cannot decode " << input.string()
+            << ": the output already exists: " << output.string() << '\n';
+        return false;
+    }
+    const std::optional<fs::path> temp = create_temp_directory_next_to(output);
+    if (!temp)
+    {
+        err << "Cannot create output directory: " << output.string() << '\n';
+        return false;
+    }
+    std::ifstream in(input, std::ios::in | std::ios::binary);
+    if (auto result = extract_archive(*decoder_, in, *temp); !result)
+    {
+        fs::remove_all(*temp, error);
+        report(err, "decode", input, result.error());
+        return false;
+    }
+    fs::rename(*temp, output, error);
+    if (error)
+    {
+        err << "Cannot create output directory " << output.string() << ": " << error.message()
+            << '\n';
+        fs::remove_all(*temp, error);
+        return false;
+    }
+    return true;
 }
 
 } // namespace compressor

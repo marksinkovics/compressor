@@ -38,6 +38,8 @@ inline constexpr std::size_t frame_header_bytes = 8;
 inline constexpr std::size_t block_header_bytes = 13;
 inline constexpr std::size_t code_lengths_bytes = symbol_count / 2;
 inline constexpr std::size_t end_block_bytes = 9;
+// Frame header flag: a folder archive, whose index follows the end block.
+inline constexpr uint16_t archive_flag = 0x0001;
 
 // The values are stored in the file; 0xFF marks the end block, the rest are reserved.
 enum class Method : uint8_t
@@ -67,9 +69,11 @@ struct EncodedData : IData
 };
 
 // The container written piece by piece; operator<< on EncodedData is the three in order.
-void write_frame_header(std::ostream& ostream, uint8_t block_size_log2);
+void write_frame_header(std::ostream& ostream, uint8_t block_size_log2, uint16_t flags = 0);
 void write_block(std::ostream& ostream, const EncodedBlock& block);
 void write_end_block(std::ostream& ostream, uint64_t total_size);
+// The bytes write_block() writes.
+uint64_t written_size(const EncodedBlock& block);
 
 // Reads a container one block at a time, checking every rule that needs no decoding.
 class FrameReader
@@ -80,11 +84,15 @@ public:
     // Returns the block size log2.
     std::expected<uint8_t, Error> read_header();
     // Fills `block`, reusing its payload's capacity, and returns true; returns false once the end
-    // block's total matches and nothing follows it. Only after read_header().
+    // block's total matches and, unless this is an archive, nothing follows it. An archive's
+    // stream is left just after its end block. Only after read_header().
     std::expected<bool, Error> read_block(EncodedBlock& block);
+    uint16_t flags() const;
+    uint64_t total_size() const;
 
 private:
     std::istream& istream_;
+    uint16_t flags_ = 0;
     uint64_t block_size_ = 0;
     uint64_t total_ = 0;
     std::optional<uint32_t> last_size_;

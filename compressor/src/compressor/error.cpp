@@ -25,6 +25,12 @@ std::string_view describe(Error error)
         return "a payload is corrupt";
     case Error::checksum_mismatch:
         return "a block's checksum does not match its data";
+    case Error::unexpected_archive:
+        return "it is a folder archive, which must be decoded from a file into a directory";
+    case Error::corrupt_index:
+        return "the archive index is corrupt";
+    case Error::file_failed:
+        return "a file could not be read or written";
     }
     return "unknown error";
 }

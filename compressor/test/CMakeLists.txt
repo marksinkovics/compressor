@@ -10,6 +10,8 @@ set(INCLUDE_FILES
 
 set(SRC_DIR ${PROJECT_SOURCE_DIR}/src)
 set(SRC_FILES
+    "${SRC_DIR}/archive/archive.cpp"
+    "${SRC_DIR}/archive/index.cpp"
     "${SRC_DIR}/checksum/crc32.cpp"
     "${SRC_DIR}/compressor/compressor.cpp"
     "${SRC_DIR}/engine/engine.cpp"

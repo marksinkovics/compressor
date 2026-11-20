@@ -26,17 +26,27 @@ std::string display_name(const std::string& path, std::string_view standard_name
     return path == standard_stream ? std::string(standard_name) : path;
 }
 
+// `folders`: the input may also be a directory.
 ::CLI::App* add_command(::CLI::App& app, const std::string& name, const std::string& description,
-                        Settings& settings)
+                        bool folders, Settings& settings)
 {
     auto* command = app.add_subcommand(name, description);
-    const ::CLI::Validator existing_file_or_stdin([](std::string& path) {
-        return path == standard_stream ? std::string{} : ::CLI::ExistingFile(path);
-    }, "FILE");
-    command->add_option("-i,--input", settings.input, "Input file; - or omitted: standard input")
-        ->check(existing_file_or_stdin);
+    const ::CLI::Validator existing_input([folders](std::string& path) {
+        if (path == standard_stream)
+        {
+            return std::string{};
+        }
+        return folders ? ::CLI::ExistingPath(path) : ::CLI::ExistingFile(path);
+    }, folders ? "PATH" : "FILE");
+    command
+        ->add_option("-i,--input", settings.input,
+                     folders ? "Input file or folder; - or omitted: standard input"
+                             : "Input file; - or omitted: standard input")
+        ->check(existing_input);
     command->add_option("-o,--output", settings.output,
-                        "Output file; - or omitted: standard output");
+                        folders ? "Output file; - or omitted: standard output"
+                                : "Output file, or the new directory for a folder archive; - or "
+                                  "omitted: standard output");
     command->add_option("-T,--threads", settings.threads, "Worker threads; 0 or omitted: all cores")
         ->check(::CLI::NonNegativeNumber);
     return command;
@@ -59,8 +69,8 @@ int CLI::run(std::span<const char* const> args)
 
     Settings encode_settings;
     Settings decode_settings;
-    auto* encode = add_command(app, "encode", "Compress a file", encode_settings);
-    add_command(app, "decode", "Decompress a file", decode_settings);
+    auto* encode = add_command(app, "encode", "Compress a file or a folder", true, encode_settings);
+    add_command(app, "decode", "Decompress a file or a folder archive", false, decode_settings);
 
     try
     {

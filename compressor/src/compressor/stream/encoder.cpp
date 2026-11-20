@@ -65,9 +65,20 @@ BlockEncoder::BlockEncoder(std::unique_ptr<IEngine> engine, uint8_t block_size_l
 
 std::expected<void, Error> BlockEncoder::encode(std::istream& in, std::ostream& out)
 {
+    if (auto layout = encode_frame(in, out, 0); !layout)
+    {
+        return std::unexpected(layout.error());
+    }
+    return {};
+}
+
+std::expected<FrameLayout, Error> BlockEncoder::encode_frame(std::istream& in, std::ostream& out,
+                                                             uint16_t flags)
+{
     const std::size_t block_size = std::size_t{1} << block_size_log2_;
     const std::size_t max_in_flight = 2 * pool_.size();
-    write_frame_header(out, block_size_log2_);
+    write_frame_header(out, block_size_log2_, flags);
+    FrameLayout layout{.block_offsets = {}, .total_size = 0, .size = frame_header_bytes};
 
     // Tasks left in flight after an early return still finish safely: they own their input, and
     // only this worker's engine touches it.
@@ -80,6 +91,8 @@ std::expected<void, Error> BlockEncoder::encode(std::istream& in, std::ostream& 
             PROFILE_SCOPE("Write")
             write_block(out, encoded.block);
         }
+        layout.block_offsets.push_back(layout.size);
+        layout.size += written_size(encoded.block);
         spare_buffers.push_back(std::move(encoded.input));
         return static_cast<bool>(out);
     };
@@ -140,7 +153,9 @@ std::expected<void, Error> BlockEncoder::encode(std::istream& in, std::ostream& 
     {
         return std::unexpected(Error::write_failed);
     }
-    return {};
+    layout.total_size = total;
+    layout.size += end_block_bytes;
+    return layout;
 }
 
 } // namespace compressor

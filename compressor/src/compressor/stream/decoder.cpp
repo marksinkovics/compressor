@@ -62,10 +62,21 @@ BlockDecoder::BlockDecoder(std::unique_ptr<IEngine> engine)
 
 std::expected<void, Error> BlockDecoder::decode(std::istream& in, std::ostream& out)
 {
+    return decode_frame(in, out, 0);
+}
+
+std::expected<void, Error> BlockDecoder::decode_frame(std::istream& in, std::ostream& out,
+                                                      uint16_t flags)
+{
     FrameReader reader(in);
     if (auto header = reader.read_header(); !header)
     {
         return std::unexpected(header.error());
+    }
+    if (reader.flags() != flags)
+    {
+        return std::unexpected((reader.flags() & archive_flag) != 0 ? Error::unexpected_archive
+                                                                    : Error::corrupt_header);
     }
 
     const std::size_t max_in_flight = 2 * pool_.size();

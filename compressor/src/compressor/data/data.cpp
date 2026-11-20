@@ -129,12 +129,12 @@ uint64_t max_huffman_payload(uint64_t size)
 
 } // namespace
 
-void write_frame_header(std::ostream& ostream, uint8_t block_size_log2)
+void write_frame_header(std::ostream& ostream, uint8_t block_size_log2, uint16_t flags)
 {
     std::string header(magic.begin(), magic.end());
     header.push_back(static_cast<char>(format_version));
     header.push_back(static_cast<char>(block_size_log2));
-    put_le<2>(header, 0);
+    put_le<2>(header, flags);
     ostream.write(header.data(), static_cast<std::streamsize>(header.size()));
 }
 
@@ -163,6 +163,11 @@ void write_end_block(std::ostream& ostream, uint64_t total_size)
     std::string end_block(1, static_cast<char>(end_marker));
     put_le<8>(end_block, total_size);
     ostream.write(end_block.data(), static_cast<std::streamsize>(end_block.size()));
+}
+
+uint64_t written_size(const EncodedBlock& block)
+{
+    return block_header_bytes + encoded_size(block);
 }
 
 std::ostream& operator<<(std::ostream& ostream, const EncodedData& data)
@@ -275,11 +280,13 @@ std::expected<uint8_t, Error> FrameReader::read_header()
         return std::unexpected(Error::unsupported_version);
     }
     const uint8_t block_size_log2 = header[5];
+    const auto flags = static_cast<uint16_t>(get_le<2>(std::span(header).subspan(6)));
     if (block_size_log2 < min_block_size_log2 || block_size_log2 > max_block_size_log2 ||
-        header[6] != 0 || header[7] != 0)
+        (flags & ~unsigned{archive_flag}) != 0U)
     {
         return std::unexpected(Error::corrupt_header);
     }
+    flags_ = flags;
     block_size_ = uint64_t{1} << block_size_log2;
     total_ = 0;
     last_size_.reset();
@@ -300,7 +307,8 @@ std::expected<bool, Error> FrameReader::read_block(EncodedBlock& block)
         {
             return std::unexpected(read.error());
         }
-        if (get_le<8>(end) != total_ || istream_.peek() != std::istream::traits_type::eof())
+        if (get_le<8>(end) != total_ ||
+            ((flags_ & archive_flag) == 0 && istream_.peek() != std::istream::traits_type::eof()))
         {
             return std::unexpected(Error::corrupt_header);
         }
@@ -329,6 +337,16 @@ std::expected<bool, Error> FrameReader::read_block(EncodedBlock& block)
     return true;
 }
 
+uint16_t FrameReader::flags() const
+{
+    return flags_;
+}
+
+uint64_t FrameReader::total_size() const
+{
+    return total_;
+}
+
 std::expected<EncodedData, Error> read_encoded(std::istream& istream)
 {
     FrameReader reader(istream);
@@ -336,6 +354,10 @@ std::expected<EncodedData, Error> read_encoded(std::istream& istream)
     if (!block_size_log2)
     {
         return std::unexpected(block_size_log2.error());
+    }
+    if (reader.flags() != 0)
+    {
+        return std::unexpected(Error::unexpected_archive);
     }
     EncodedData data;
     data.block_size_log2_ = *block_size_log2;

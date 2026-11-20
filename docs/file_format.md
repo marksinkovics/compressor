@@ -9,7 +9,7 @@ An ingot file (`.ingot`) is a frame header, a sequence of independently coded bl
 | 0 | 4 | Magic `89 49 4E 47` (`\x89ING`). The high first byte catches transfers that strip the 8th bit, as in PNG |
 | 4 | 1 | Format version: 1 |
 | 5 | 1 | log2 of the block size, 12–26 (4 KiB–64 MiB). The encoder writes 20 (1 MiB) |
-| 6 | 2 | Flags, must be 0 |
+| 6 | 2 | Flags. Bit 0: folder archive (see "Archive"); the other bits must be 0 |
 
 ## Block
 
@@ -29,7 +29,47 @@ An ingot file (`.ingot`) is a frame header, a sequence of independently coded bl
 | 0 | 1 | 0xFF |
 | 1 | 8 | Total decoded size: the sum of the blocks' decoded sizes |
 
-Empty input is the frame header followed directly by the end block, 17 bytes in all.
+Empty input is the frame header followed directly by the end block, 17 bytes in all. Without the archive flag, nothing may follow the end block.
+
+## Archive
+
+A folder archive is the container above with flag bit 0 set. Its decoded data is the contents of every regular file, back to back in entry order, so blocks span file boundaries and small files share blocks. The end block is followed by the index and a fixed-size trailer. Implemented in `compressor/src/compressor/archive/`.
+
+| Part | Size | Contents |
+|---|---:|---|
+| Index | varies | Block table, then the entries |
+| Trailer | 16 | Index offset (8): where the index starts, right after the end block. Index CRC32 (4): over the index bytes. Magic `89 49 44 58` (`\x89IDX`) |
+
+A reader seeks to the trailer, then reads the end block just before the index offset for the total size. Everything from the index offset to the trailer is the index.
+
+### Block table
+
+One 8-byte offset per block, `ceil(total size / block size)` of them: where the block's header starts, from the start of the file. The first is 8, each is at least 14 bytes after the one before, and the last is at least 14 bytes before the end block. Data byte `x` is in block `x >> log2(block size)`.
+
+### Entries
+
+A 4-byte entry count, then each entry:
+
+| Size | Field |
+|---:|---|
+| 1 | Type: 0 = file, 1 = directory, 2 = symlink; others are rejected |
+| 2 | Permission bits, at most `07777` (ignored for symlinks when extracting) |
+| 8 | Modification time: signed nanoseconds since 1970-01-01 UTC |
+| 2 + n | Path: length, then the bytes |
+| 8 + 8 + 4 | Files only: offset in the decoded data, size, CRC32 of the contents |
+| 2 + n | Symlinks only: target, length then bytes; stored as is, never followed |
+
+Rules, checked before anything is extracted (`corrupt_index` otherwise):
+
+- A path is relative and `/`-separated, with no empty, `.` or `..` component and no NUL byte. Paths are unique.
+- An entry's parent directory is an earlier directory entry, or the archive root. So no entry sits under a file or a symlink, and extraction never writes through a symlink.
+- Files' offsets run back to back from 0 in entry order, and their sizes add up to the end block's total.
+
+The encoder writes each directory before its contents, siblings in byte order of their names. Owners, hard links, devices, pipes and sockets aren't stored; the encoder skips special files with a warning.
+
+### Extracting
+
+`compressor_app decode` extracts into a new directory: it builds a temporary directory next to the output and renames it into place on success, and refuses an output that already exists or is standard output. It creates the directories, then decodes the data into the files in order (checking each file's CRC32), then creates the symlinks, then sets permissions and times, directories last. Archives can't be decoded from standard input yet, as the index is at the end.
 
 ## Choosing the method
 
@@ -61,8 +101,11 @@ Errors (`compressor::Error`):
 | `not_ingot` | Shorter than 4 bytes, or the magic differs |
 | `unsupported_version` | The version isn't 1 |
 | `truncated` | The file ends inside a header, a payload, or before the end block |
-| `corrupt_header` | Block size or flags out of range; unknown method; a decoded size of 0 or above the block size; a short block that isn't the last; a stored block whose encoded size differs from its decoded size; a Huffman block with fewer than 128 encoded bytes, a payload longer than 15 bits per byte, or invalid code lengths; a total size that doesn't match the blocks; any byte after the end block |
+| `corrupt_header` | Block size out of range, or a flag other than the archive flag; unknown method; a decoded size of 0 or above the block size; a short block that isn't the last; a stored block whose encoded size differs from its decoded size; a Huffman block with fewer than 128 encoded bytes, a payload longer than 15 bits per byte, or invalid code lengths; a total size that doesn't match the blocks; any byte after the end block of a plain container |
 | `corrupt_payload` | A Huffman payload ends before the decoded size is reached, no code matches within `max_code_length` bits, bytes follow the one that holds the last code, or a padding bit isn't zero |
-| `checksum_mismatch` | A block decodes, but its CRC32 differs |
+| `checksum_mismatch` | A block decodes, but its CRC32 differs; or an archive file's contents don't match its CRC32 |
+| `unexpected_archive` | A plain decode (standard input, or an in-memory read) meets the archive flag |
+| `corrupt_index` | An archive's trailer, index CRC32 or entries break the rules under "Archive", or its data ends somewhere other than the index offset |
+| `file_failed` | An archived file or directory can't be read, or an extracted one can't be created or written; the message names the path |
 
 `compressor_app decode` reports the error on stderr, exits non-zero and doesn't create or change the output file. Decoding to standard output can't take back what is already written: the blocks before the failing one stay in the output.
