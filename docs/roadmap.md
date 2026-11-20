@@ -348,7 +348,7 @@ Layout decided under "Decisions" (solid blocks plus an index); format in [file_f
 - [ ] **Transforms:** RLE, delta encoding, move-to-front, BWT (BWT + MTF + RLE + Huffman is the bzip2 approach).
 - [ ] **Dictionary methods:** LZ77/LZSS, LZW.
 - [ ] **Entropy coders:** adaptive Huffman, arithmetic coding, rANS/tANS.
-- [ ] **Auto mode:** try several pipelines per block and keep the smallest.
+- [x] **Auto mode** (done, autonomous run item 11, with item 12): every level from 2 codes a block with and without the transform `choose_transforms()` picks and keeps the smaller; from level 7 (`auto_level`) it tries up to three candidates found with looser thresholds. Pipelines with other coders join when item 13 adds them.
 - [ ] **Pre-trained dictionaries/tables** for many small similar inputs (like `zstd --train`).
 - [ ] **Advanced algorithms, with or without Huffman:** for example LZMA-style (LZ77 with a range coder), Zstd-style (LZ77 with Huffman literals and tANS for the rest), PPM and context mixing (PAQ). Each would be a pipeline in the pluggable pipeline, compared with the existing benchmarks.
 
@@ -363,8 +363,8 @@ Layout decided under "Decisions" (solid blocks plus an index); format in [file_f
 
 ### Data other than text
 
-- [ ] **Prediction transforms before entropy coding:** PNG-style filters for raw images (BMP, PPM), delta encoding for audio (WAV) and numeric data (CSV, logs). Already-compressed formats such as JPEG and PNG won't shrink further.
-- [ ] **Detect the file type** and pick a suitable transform automatically.
+- [x] **Prediction transforms before entropy coding** (done, autonomous run item 12): `transform/transform.{h,cpp}`: delta with any stride up to 65535 (16-bit samples, RGB pixels, image rows), ARM64 BL and x86 E8/E9 branch filters, all exactly invertible on any bytes (`TransformTests`); pipeline descriptors carry up to 4 transforms with a 4-byte parameter each. Silesia: x-ray −14%, ooffice −9%, mr −8%, an arm64 binary −7%, nothing larger (`docs/benchmarks.md`, "Transforms"). PNG's Paeth and Average filters (2-D, need the row width) aren't done.
+- [x] **Detect the file type** (done differently, item 12): blocks in the middle of a file or an archive have no header, so `choose_transforms()` samples each block's content instead: entropy of the delta strides, density of BL words and E8 bytes. A WAV/BMP header reader could still pick exact strides for the first block.
 
 ### Compressed file system
 
@@ -400,7 +400,7 @@ Existing examples: macOS compressed memory, Linux zram and zswap, Windows memory
 5. An LZ77 pipeline next to Huffman (done: format version 2, levels; from "Algorithms": the pluggable pipeline, transforms such as RLE, MTF and BWT, LZ77/LZW, other entropy coders, an auto mode, pre-trained dictionaries).
 6. A Deflate encoder, so the output is valid `.gz` and `.zip` (done).
 7. Search inside compressed data: jumping to the right block through the block index, zgrep-style search, search without decompressing, an FM-index. The macFUSE mount is skipped for now.
-8. Transforms for specific data types ("Data other than text").
+8. Transforms for specific data types ("Data other than text") (done).
 9. Other advanced compression algorithms, with or without Huffman ("Algorithms").
 
 Not scheduled: the macFUSE mount, the read-only compressed file system image and the compressed-memory experiments.
@@ -424,7 +424,7 @@ Decisions taken for the pipeline (Claude's defaults, accepted): each block recor
 - [x] 8. (done, folder extraction 54× faster) Known issue: file output speed with threads; profile with `bench-cli.sh`, keep only measured wins.
 - [x] 9. (done) Deflate: hash-chain LZ77 matcher (32 KB window), Deflate encoder with our length-limited canonical Huffman, `encode --gzip` (file) and `encode --zip` (folder); every output checked with zlib, by hand with `gunzip`/`unzip`; benchmarked against `gzip`.
 - [x] 10. (done) Pluggable pipeline (format version 2, as decided above) with LZ77 + Huffman as the first new pipeline, and compression levels.
-- [ ] 11. Auto mode: try several pipelines per block at the higher levels and keep the smallest.
-- [ ] 12. Transforms for data types: corpus (PPM/BMP, WAV, CSV/logs), delta with strides 1/2/4, PNG row filters, an x86/ARM branch filter; detection from known headers, else trying strides on a sample; benchmarked per type.
+- [x] 11. (done with 12) Auto mode: try several pipelines per block at the higher levels and keep the smallest.
+- [x] 12. (done) Transforms for data types: corpus (PPM/BMP, WAV, CSV/logs), delta with strides 1/2/4, PNG row filters, an x86/ARM branch filter; detection from known headers, else trying strides on a sample; benchmarked per type.
 - [ ] 13. Advanced algorithms, each a pipeline: tANS/rANS, adaptive arithmetic coding, BWT + MTF + RLE, Zstd-style LZ77 + tANS, LZMA-style LZ77 + context-modelled range coder, then PPM and context mixing as experiments.
 - [ ] 14. FM-index on the BWT from item 13, stored as its own archive section, with a search command using it.

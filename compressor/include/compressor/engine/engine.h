@@ -37,6 +37,9 @@ public:
 // Graphviz dot of the code tree, each node labelled with its symbols, frequency and code prefix.
 void write_code_graph(std::ostream& out, const Codes& codes, const Frequencies& frequencies);
 
+// The level from which Engine tries every transform choose_transforms() finds plausible.
+inline constexpr unsigned auto_level = 7;
+
 // Makes one engine per worker thread.
 using EngineFactory = std::function<std::unique_ptr<IEngine>()>;
 
@@ -48,7 +51,8 @@ class Engine : public IEngine
 {
 public:
     // Level 1 chooses between stored and Huffman; from 2 on, an LZ77 + Huffman pipeline block
-    // competes too, with longer match searches the higher the level.
+    // competes too, with longer match searches the higher the level: without a transform and with
+    // the one choose_transforms() picks, or from auto_level on with each of its candidates.
     explicit Engine(uint8_t block_size_log2 = default_block_size_log2, unsigned level = 1);
 
     // Graphviz dot of the code tree of the last block encoded or decoded, rebuilt from the codes.

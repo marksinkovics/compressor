@@ -5,7 +5,9 @@
 #include <expected>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <ostream>
+#include <ranges>
 #include <span>
 #include <string>
 #include <utility>
@@ -19,6 +21,7 @@
 #include <compressor/error.h>
 #include <compressor/huffman/huffman.h>
 #include <compressor/lz77/lz77.h>
+#include <compressor/transform/transform.h>
 #include <compressor/tree/binary/nodeiterator.h>
 #include <compressor/tree/binary/tree.h>
 #include <compressor/tree/symbolnode.h>
@@ -325,17 +328,50 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
         std::min<uint64_t>(bytes.size(), code_lengths_bytes + payload_bytes);
     if (level_ > 1)
     {
-        PROFILE_SCOPE("LZ77 + Huffman")
-        std::vector<uint8_t> deflated = deflate_bytes(bytes, lz77_options_for_level(level_));
+        PROFILE_SCOPE("Pipeline")
+        const auto pipeline = [&](std::span<const Transform> transforms) {
+            std::span<const uint8_t> input = bytes;
+            std::vector<uint8_t> transformed;
+            if (!transforms.empty())
+            {
+                transformed.assign(bytes.begin(), bytes.end());
+                for (const Transform& transform : transforms)
+                {
+                    apply_transform(transform, transformed);
+                }
+                input = transformed;
+            }
+            const std::vector<uint8_t> deflated =
+                deflate_bytes(input, lz77_options_for_level(level_));
+            std::vector<uint8_t> payload{static_cast<uint8_t>(transforms.size())};
+            for (const Transform& transform : transforms)
+            {
+                payload.push_back(static_cast<uint8_t>(transform.id));
+                for (unsigned shift = 0; shift < 32; shift += 8)
+                {
+                    payload.push_back(static_cast<uint8_t>(transform.parameter >> shift));
+                }
+            }
+            payload.push_back(static_cast<uint8_t>(Coder::lz77_huffman));
+            payload.insert(payload.end(), deflated.begin(), deflated.end());
+            return payload;
+        };
+        // A transform must beat coding the block without it; a tie keeps none.
+        std::vector<uint8_t> best_pipeline = pipeline({});
+        for (const Transform& transform : choose_transforms(bytes, level_ >= auto_level))
+        {
+            std::vector<uint8_t> candidate = pipeline(std::span(&transform, 1));
+            if (candidate.size() < best_pipeline.size())
+            {
+                best_pipeline = std::move(candidate);
+            }
+        }
         // Only when strictly smaller: Huffman and stored decode faster.
-        if (pipeline_descriptor_bytes + deflated.size() < best_bytes)
+        if (best_pipeline.size() < best_bytes)
         {
             codes_ = {};
             encoded.method_ = Method::pipeline;
-            encoded.payload_.reserve(pipeline_descriptor_bytes + deflated.size());
-            encoded.payload_.push_back(0); // no transforms
-            encoded.payload_.push_back(static_cast<uint8_t>(Coder::lz77_huffman));
-            encoded.payload_.insert(encoded.payload_.end(), deflated.begin(), deflated.end());
+            encoded.payload_ = std::move(best_pipeline);
             return encoded;
         }
     }
@@ -401,14 +437,48 @@ std::expected<void, Error> Engine::decode_block(const EncodedBlock& block,
 std::expected<void, Error> Engine::decode_pipeline(const EncodedBlock& block,
                                                    std::vector<uint8_t>& out)
 {
-    const std::span<const uint8_t> payload = block.payload_;
-    // No transforms are defined yet.
-    if (payload.size() < pipeline_descriptor_bytes || payload[0] != 0 ||
-        payload[1] != static_cast<uint8_t>(Coder::lz77_huffman))
+    std::span<const uint8_t> payload = block.payload_;
+    if (payload.empty() || payload[0] > max_pipeline_transforms)
     {
         return std::unexpected(Error::corrupt_payload);
     }
-    return inflate_bytes(payload.subspan(pipeline_descriptor_bytes), out, block.size_);
+    const std::size_t count = payload[0];
+    if (payload.size() < pipeline_descriptor_bytes + (count * pipeline_transform_bytes))
+    {
+        return std::unexpected(Error::corrupt_payload);
+    }
+    std::vector<Transform> transforms;
+    for (std::size_t i = 0; i < count; ++i)
+    {
+        const std::span<const uint8_t> field = payload.subspan(1 + (i * pipeline_transform_bytes));
+        uint32_t parameter = 0;
+        for (unsigned byte = 0; byte < 4; ++byte)
+        {
+            parameter |= uint32_t{field[1 + byte]} << (8 * byte);
+        }
+        const std::optional<Transform> transform = parse_transform(field[0], parameter);
+        if (!transform)
+        {
+            return std::unexpected(Error::corrupt_payload);
+        }
+        transforms.push_back(*transform);
+    }
+    payload = payload.subspan(1 + (count * pipeline_transform_bytes));
+    if (payload[0] != static_cast<uint8_t>(Coder::lz77_huffman))
+    {
+        return std::unexpected(Error::corrupt_payload);
+    }
+    const std::size_t start = out.size();
+    if (auto inflated = inflate_bytes(payload.subspan(1), out, block.size_); !inflated)
+    {
+        return inflated;
+    }
+    const std::span<uint8_t> decoded = std::span(out).subspan(start);
+    for (const Transform& transform : transforms | std::views::reverse)
+    {
+        undo_transform(transform, decoded);
+    }
+    return {};
 }
 
 std::expected<void, Error> Engine::decode_huffman(const EncodedBlock& block,

@@ -14,6 +14,7 @@
 #include <compressor/data/data.h>
 #include <compressor/engine/engine.h>
 #include <compressor/error.h>
+#include <compressor/transform/transform.h>
 
 namespace
 {
@@ -540,10 +541,12 @@ TEST_F(EngineTests, Random_bytes_stay_stored_at_every_level)
 
 TEST_F(EngineTests, A_pipeline_with_an_unknown_transform_or_coder_is_corrupt)
 {
-    const std::string text = repeat("abcabcabd", 500);
+    // Sentences: no transform is chosen, so the descriptor is just the count 0 and the coder.
+    const std::string text = repeat("the quick brown fox jumps over the lazy dog. ", 300);
     compressor::Engine engine(compressor::default_block_size_log2, 6);
     compressor::EncodedBlock block = engine.encode_block(bytes(text));
     ASSERT_EQ(block.method_, compressor::Method::pipeline);
+    ASSERT_EQ(block.payload_[0], 0);
 
     compressor::EncodedBlock unknown_transform = block;
     unknown_transform.payload_[0] = 1;
@@ -557,4 +560,46 @@ TEST_F(EngineTests, A_pipeline_with_an_unknown_transform_or_coder_is_corrupt)
     wrong_crc.crc_ ^= 1U;
     EXPECT_EQ(decode_block(engine, wrong_crc),
               std::unexpected(compressor::Error::checksum_mismatch));
+}
+
+TEST_F(EngineTests, Sixteen_bit_samples_get_a_delta_transform_and_round_trip)
+{
+    // A slow wave in little-endian 16-bit samples: deltas of stride 2 are small.
+    std::string samples;
+    for (int i = 0; i < 100'000; ++i)
+    {
+        const auto value = static_cast<uint16_t>(30'000 + ((i * 37) % 2000) + ((i / 7) % 13));
+        samples.push_back(static_cast<char>(value & 0xFFU));
+        samples.push_back(static_cast<char>(value >> 8U));
+    }
+    for (const unsigned level : {6U, compressor::auto_level})
+    {
+        compressor::Engine engine(compressor::default_block_size_log2, level);
+        const compressor::EncodedBlock block = engine.encode_block(bytes(samples));
+        ASSERT_EQ(block.method_, compressor::Method::pipeline);
+        EXPECT_EQ(block.payload_[0], 1) << "one transform";
+        EXPECT_EQ(block.payload_[1], static_cast<uint8_t>(compressor::TransformId::delta));
+        EXPECT_EQ(decode_block(engine, block), decoded(samples)) << level;
+    }
+}
+
+TEST_F(EngineTests, A_transform_with_an_invalid_parameter_is_corrupt)
+{
+    std::string samples;
+    for (int i = 0; i < 50'000; ++i)
+    {
+        samples.push_back(static_cast<char>(i));
+        samples.push_back(static_cast<char>(i / 256));
+    }
+    compressor::Engine engine(compressor::default_block_size_log2, 6);
+    compressor::EncodedBlock block = engine.encode_block(bytes(samples));
+    ASSERT_EQ(block.method_, compressor::Method::pipeline);
+    ASSERT_EQ(block.payload_[0], 1);
+    compressor::EncodedBlock zero_stride = block;
+    std::fill_n(zero_stride.payload_.begin() + 2, 4, 0);
+    EXPECT_EQ(decode_block(engine, zero_stride),
+              std::unexpected(compressor::Error::corrupt_payload));
+    compressor::EncodedBlock too_many = block;
+    too_many.payload_[0] = 5;
+    EXPECT_EQ(decode_block(engine, too_many), std::unexpected(compressor::Error::corrupt_payload));
 }

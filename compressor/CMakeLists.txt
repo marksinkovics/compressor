@@ -26,6 +26,7 @@ set(INCLUDE_FILES
     "${COMPRESSOR_INCLUDE_DIR}/stream/decoder.h"
     "${COMPRESSOR_INCLUDE_DIR}/stream/stdio.h"
     "${COMPRESSOR_INCLUDE_DIR}/thread/pool.h"
+    "${COMPRESSOR_INCLUDE_DIR}/transform/transform.h"
 )
 
 set(SRC_DIR ${PROJECT_SOURCE_DIR}/src)
@@ -54,6 +55,7 @@ set(SRC_FILES
     "${COMPRESSOR_SRC_DIR}/stream/decoder.cpp"
     "${COMPRESSOR_SRC_DIR}/stream/stdio.cpp"
     "${COMPRESSOR_SRC_DIR}/thread/pool.cpp"
+    "${COMPRESSOR_SRC_DIR}/transform/transform.cpp"
 )
 
 add_library(${PROJECT_NAME} ${INCLUDE_FILES} ${SRC_FILES} )

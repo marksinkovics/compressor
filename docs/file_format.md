@@ -28,10 +28,20 @@ A pipeline block's payload starts with a descriptor naming what was done to the 
 
 | Size | Field |
 |---:|---|
-| 1 | Transform count `n`. Each transform turns bytes into bytes; decoding undoes them last to first. None is defined yet, so `n` must be 0 |
-| 2 × n | Each transform: id, then a one-byte parameter |
+| 1 | Transform count `n`, at most 4. Each transform turns bytes into bytes; decoding undoes them last to first |
+| 5 × n | Each transform: id, then a 4-byte parameter (see below) |
 | 1 | Coder: 2 = LZ77 + Huffman. Others are reserved |
 | rest | The coder's output |
+
+Transforms (`compressor/include/compressor/transform/transform.h`); positions count from the start of the block:
+
+| Id | Name | Parameter | Encoding (decoding does the reverse) |
+|---:|---|---|---|
+| 1 | Delta | Stride `s`, 1–65535 | Each byte from `s` on minus the byte `s` before it, mod 256: stride 2 or 4 suits 16-bit samples, 3 RGB pixels, a row's width an image's rows |
+| 3 | ARM64 branches | 0 | Every 4-byte-aligned little-endian word whose top 6 bits are `100101` (BL): its 26-bit word offset plus the word's index, mod 2^26 |
+| 4 | x86 branches | 0 | Scanning from the start, every `E8` or `E9` byte with 4 bytes after it: those 4 bytes as a little-endian number plus the position after them, mod 2^32; the scan then continues after them |
+
+Other ids and parameters are rejected. The encoder picks a transform by sampling the block's first 64 KiB (`choose_transforms()`): a delta stride from 1, 2, 3, 4, 6, 8 or 16 that lowers the order-0 entropy by a tenth, or a branch filter when BL words or `E8` bytes are dense enough to be machine code. It codes the block both with and without it and keeps the smaller; from level 7 on (`auto_level`) it tries up to three candidates found with looser thresholds.
 
 LZ77 + Huffman is a raw Deflate stream (RFC 1951) of the block: matches reach back at most 32 KiB and only within the block, so blocks still decode independently and in parallel. It decodes to exactly the block's decoded size, with nothing after its final block. Decoding needs the block's own output and the payload, about twice the block size.
 

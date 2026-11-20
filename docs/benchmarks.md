@@ -264,3 +264,18 @@ After container step 2 ([roadmap.md](roadmap.md#container-format-and-streaming))
 
 - LZ77 doubles the ratio at almost no cost in decoding; level 6 encodes about 6× faster than single-threaded `gzip -6` (5.2 s, 68.2 MB for the 12 files) at the same size, because blocks run on every core. The independent 1 MiB blocks cost little: level 6 here is 0.1% larger than one Deflate stream per file (item 9).
 - Level 4 is worse than 3, as in zlib: its lazy search has shorter chains. The first level-1 run took 24.8 s during a load spike; the reruns are the range shown.
+
+## Transforms (2026-11-20)
+
+`compressor_app encode -L 6` and `-L 7` per Silesia file and on our own arm64 `compressor_app` binary (`arm64.bin`), `old_app` the build before transforms; every output decodes to the input. Raw output in `docs/benchmarks/transforms.txt`.
+
+| File | Level 6 | Level 7 (auto) | Transform |
+| --- | --- | --- | --- |
+| x-ray (12-bit medical image in 16 bits) | −14.2% | −14.6% | delta |
+| ooffice (x86 DLL) | −9.0% | −9.0% | x86 branches |
+| mr (16-bit MRI) | −7.9% | −8.9% | delta |
+| arm64.bin (Mach-O arm64) | −6.9% | −6.9% | ARM64 branches |
+| the other 8 files | 0 | 0 | none kept |
+
+- A chosen transform must beat the same block without it, so nothing gets larger; before that rule, level 6 made `mozilla` 3.5% larger (a tar whose blocks mix code and data). No transform helps `mozilla` overall.
+- Cost, all of Silesia as one file, 14 threads: level 6 encodes in 1.05 s instead of 0.78 s, level 7 in 1.58 s instead of 0.85 s (a second or more encodings of the blocks where a transform looks promising). Decoding is unchanged.
