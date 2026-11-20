@@ -1,0 +1,366 @@
+{
+  "date": "2026-11-20T13:03:44",
+  "commit": "4593a2adf79f61403abe84a9f90c83fa83828336",
+  "dirty": false,
+  "machine": "Darwin arm64, 14 cores",
+  "threads": 6,
+  "runs": 1,
+  "versions": {
+    "zstd": [
+      "*** Zstandard CLI (64-bit) v1.5.7, by Yann Collet ***"
+    ],
+    "xz": [
+      "xz (XZ Utils) 5.8.4"
+    ],
+    "brotli": [
+      "brotli 1.1.0"
+    ]
+  },
+  "corpora": {
+    "canterbury": {
+      "bytes": 2826240,
+      "results": [
+        {
+          "tool": "ingot -L 1",
+          "threads": 6,
+          "size": 1575675,
+          "ratio": 1.7937,
+          "encode_s": 0.0097,
+          "decode_s": 0.0095,
+          "encode_mb_s": 290.66,
+          "decode_mb_s": 297.56
+        },
+        {
+          "tool": "ingot -L 6",
+          "threads": 6,
+          "size": 736535,
+          "ratio": 3.8372,
+          "encode_s": 0.0942,
+          "decode_s": 0.0106,
+          "encode_mb_s": 29.99,
+          "decode_mb_s": 267.72
+        },
+        {
+          "tool": "ingot -L 9",
+          "threads": 6,
+          "size": 425248,
+          "ratio": 6.6461,
+          "encode_s": 1.3537,
+          "decode_s": 0.4983,
+          "encode_mb_s": 2.09,
+          "decode_mb_s": 5.67
+        },
+        {
+          "tool": "gzip -6",
+          "threads": 1,
+          "size": 733077,
+          "ratio": 3.8553,
+          "encode_s": 0.0727,
+          "decode_s": 0.0064,
+          "encode_mb_s": 38.9,
+          "decode_mb_s": 438.76
+        },
+        {
+          "tool": "gzip -9",
+          "threads": 1,
+          "size": 729960,
+          "ratio": 3.8718,
+          "encode_s": 0.4086,
+          "decode_s": 0.0066,
+          "encode_mb_s": 6.92,
+          "decode_mb_s": 426.47
+        },
+        {
+          "tool": "zstd -3",
+          "threads": 6,
+          "size": 632706,
+          "ratio": 4.4669,
+          "encode_s": 0.0127,
+          "decode_s": 0.0066,
+          "encode_mb_s": 222.85,
+          "decode_mb_s": 427.51
+        },
+        {
+          "tool": "zstd -19",
+          "threads": 6,
+          "size": 511802,
+          "ratio": 5.5221,
+          "encode_s": 0.4953,
+          "decode_s": 0.0078,
+          "encode_mb_s": 5.71,
+          "decode_mb_s": 361.64
+        },
+        {
+          "tool": "xz -6",
+          "threads": 6,
+          "size": 485788,
+          "ratio": 5.8178,
+          "encode_s": 0.4733,
+          "decode_s": 0.0274,
+          "encode_mb_s": 5.97,
+          "decode_mb_s": 102.97
+        },
+        {
+          "tool": "xz -9",
+          "threads": 6,
+          "size": 485788,
+          "ratio": 5.8178,
+          "encode_s": 0.4824,
+          "decode_s": 0.0261,
+          "encode_mb_s": 5.86,
+          "decode_mb_s": 108.32
+        },
+        {
+          "tool": "bzip2 -9",
+          "threads": 1,
+          "size": 568606,
+          "ratio": 4.9705,
+          "encode_s": 0.1012,
+          "decode_s": 0.044,
+          "encode_mb_s": 27.92,
+          "decode_mb_s": 64.3
+        },
+        {
+          "tool": "brotli -q 9",
+          "threads": 1,
+          "size": 586723,
+          "ratio": 4.817,
+          "encode_s": 0.1146,
+          "decode_s": 0.0091,
+          "encode_mb_s": 24.66,
+          "decode_mb_s": 309.0
+        }
+      ]
+    },
+    "silesia": {
+      "bytes": 211957760,
+      "results": [
+        {
+          "tool": "ingot -L 1",
+          "threads": 6,
+          "size": 135231487,
+          "ratio": 1.5674,
+          "encode_s": 0.1163,
+          "decode_s": 0.1827,
+          "encode_mb_s": 1823.01,
+          "decode_mb_s": 1160.22
+        },
+        {
+          "tool": "ingot -L 6",
+          "threads": 6,
+          "size": 66632520,
+          "ratio": 3.181,
+          "encode_s": 2.5117,
+          "decode_s": 0.2068,
+          "encode_mb_s": 84.39,
+          "decode_mb_s": 1025.01
+        },
+        {
+          "tool": "ingot -L 9",
+          "threads": 6,
+          "size": 47658754,
+          "ratio": 4.4474,
+          "encode_s": 48.4992,
+          "decode_s": 18.3412,
+          "encode_mb_s": 4.37,
+          "decode_mb_s": 11.56
+        },
+        {
+          "tool": "gzip -6",
+          "threads": 1,
+          "size": 68228577,
+          "ratio": 3.1066,
+          "encode_s": 4.5247,
+          "decode_s": 0.2594,
+          "encode_mb_s": 46.84,
+          "decode_mb_s": 817.06
+        },
+        {
+          "tool": "gzip -9",
+          "threads": 1,
+          "size": 67643875,
+          "ratio": 3.1334,
+          "encode_s": 11.1455,
+          "decode_s": 0.2425,
+          "encode_mb_s": 19.02,
+          "decode_mb_s": 873.97
+        },
+        {
+          "tool": "zstd -3",
+          "threads": 6,
+          "size": 66217820,
+          "ratio": 3.2009,
+          "encode_s": 0.1286,
+          "decode_s": 0.2217,
+          "encode_mb_s": 1648.45,
+          "decode_mb_s": 955.97
+        },
+        {
+          "tool": "zstd -19",
+          "threads": 6,
+          "size": 52848640,
+          "ratio": 4.0107,
+          "encode_s": 14.1941,
+          "decode_s": 0.1858,
+          "encode_mb_s": 14.93,
+          "decode_mb_s": 1140.92
+        },
+        {
+          "tool": "xz -6",
+          "threads": 6,
+          "size": 49498572,
+          "ratio": 4.2821,
+          "encode_s": 13.2506,
+          "decode_s": 0.4233,
+          "encode_mb_s": 16.0,
+          "decode_mb_s": 500.71
+        },
+        {
+          "tool": "xz -9",
+          "threads": 6,
+          "size": 48772876,
+          "ratio": 4.3458,
+          "encode_s": 51.7672,
+          "decode_s": 1.6716,
+          "encode_mb_s": 4.09,
+          "decode_mb_s": 126.8
+        },
+        {
+          "tool": "bzip2 -9",
+          "threads": 1,
+          "size": 54591623,
+          "ratio": 3.8826,
+          "encode_s": 10.4741,
+          "decode_s": 3.6042,
+          "encode_mb_s": 20.24,
+          "decode_mb_s": 58.81
+        },
+        {
+          "tool": "brotli -q 9",
+          "threads": 1,
+          "size": 56413609,
+          "ratio": 3.7572,
+          "encode_s": 21.1788,
+          "decode_s": 0.3367,
+          "encode_mb_s": 10.01,
+          "decode_mb_s": 629.42
+        }
+      ]
+    },
+    "images": {
+      "bytes": 32440320,
+      "results": [
+        {
+          "tool": "ingot -L 1",
+          "threads": 6,
+          "size": 26888203,
+          "ratio": 1.2065,
+          "encode_s": 0.0164,
+          "decode_s": 0.0303,
+          "encode_mb_s": 1972.48,
+          "decode_mb_s": 1071.33
+        },
+        {
+          "tool": "ingot -L 6",
+          "threads": 6,
+          "size": 9156751,
+          "ratio": 3.5428,
+          "encode_s": 1.3488,
+          "decode_s": 0.0456,
+          "encode_mb_s": 24.05,
+          "decode_mb_s": 711.05
+        },
+        {
+          "tool": "ingot -L 9",
+          "threads": 6,
+          "size": 7315550,
+          "ratio": 4.4344,
+          "encode_s": 28.7167,
+          "decode_s": 2.852,
+          "encode_mb_s": 1.13,
+          "decode_mb_s": 11.37
+        },
+        {
+          "tool": "gzip -6",
+          "threads": 1,
+          "size": 14490012,
+          "ratio": 2.2388,
+          "encode_s": 0.9336,
+          "decode_s": 0.0566,
+          "encode_mb_s": 34.75,
+          "decode_mb_s": 573.23
+        },
+        {
+          "tool": "gzip -9",
+          "threads": 1,
+          "size": 14482040,
+          "ratio": 2.24,
+          "encode_s": 1.3033,
+          "decode_s": 0.0553,
+          "encode_mb_s": 24.89,
+          "decode_mb_s": 586.71
+        },
+        {
+          "tool": "zstd -3",
+          "threads": 6,
+          "size": 15275310,
+          "ratio": 2.1237,
+          "encode_s": 0.045,
+          "decode_s": 0.0425,
+          "encode_mb_s": 720.75,
+          "decode_mb_s": 763.86
+        },
+        {
+          "tool": "zstd -19",
+          "threads": 6,
+          "size": 11647107,
+          "ratio": 2.7853,
+          "encode_s": 4.759,
+          "decode_s": 0.0545,
+          "encode_mb_s": 6.82,
+          "decode_mb_s": 595.24
+        },
+        {
+          "tool": "xz -6",
+          "threads": 6,
+          "size": 10047792,
+          "ratio": 3.2286,
+          "encode_s": 5.4289,
+          "decode_s": 0.3454,
+          "encode_mb_s": 5.98,
+          "decode_mb_s": 93.92
+        },
+        {
+          "tool": "xz -9",
+          "threads": 6,
+          "size": 10041328,
+          "ratio": 3.2307,
+          "encode_s": 6.828,
+          "decode_s": 0.4445,
+          "encode_mb_s": 4.75,
+          "decode_mb_s": 72.98
+        },
+        {
+          "tool": "bzip2 -9",
+          "threads": 1,
+          "size": 8672434,
+          "ratio": 3.7406,
+          "encode_s": 1.6666,
+          "decode_s": 0.5984,
+          "encode_mb_s": 19.47,
+          "decode_mb_s": 54.21
+        },
+        {
+          "tool": "brotli -q 9",
+          "threads": 1,
+          "size": 12527282,
+          "ratio": 2.5896,
+          "encode_s": 4.4758,
+          "decode_s": 0.0848,
+          "encode_mb_s": 7.25,
+          "decode_mb_s": 382.53
+        }
+      ]
+    }
+  }
+}

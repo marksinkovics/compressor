@@ -26,8 +26,8 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 - The search index is searched in place (wavelet matrix through `mmap`): rare patterns 12–15× faster than `grep`, common ones as fast; 345/345 pass.
 - Zip64 is done: zip archives with files over 4 GiB or more than 65 535 entries; 347/347 pass.
 - Autonomous run 2 (list at the end of `docs/roadmap.md`, same branch, Claude commits): item 1, multithreaded Deflate (`-f gzip`/`-f zip` take `-T` and `-L`), item 2, the CM coder (coder 6 at level 9, 11.4% below level 8 on Silesia), and item 4, the 2-D median image predictor (transform 5), are done; item 3 (`grep` prefilter) was skipped as not worth it; 360/360 pass. Run 2 is finished.
-- Autonomous run 3 (list at the end of `docs/roadmap.md`, same branch, Claude commits): item 1, the rename (the program is `ingot`, in `ingot/`; libraries keep `compressor`), is done; 360/360 pass.
-- **Next:** run 3 item 2, the benchmark harness against gzip, zstd, xz.
+- Autonomous run 3 (list at the end of `docs/roadmap.md`, same branch, Claude commits): item 1, the rename (the program is `ingot`, in `ingot/`; libraries keep `compressor`), and item 2, `tools/compare.py` against gzip, zstd, xz, bzip2, brotli with history in `docs/benchmarks/history/`, are done; 361/361 pass.
+- **Next:** run 3 item 3, entropy coders (tANS, an adaptive order-1 coder after the BWT).
 
 ## Commands
 
@@ -40,6 +40,7 @@ cmake --workflow --preset fuzz    # libFuzzer + ASan build, unit tests and short
 bash tools/quality.sh check       # clang-format, clang-tidy, shellcheck, shfmt (see docs/development.md)
 bash tools/bench.sh               # release benchmarks -> JSON; corpora via tools/fetch-corpus.sh (docs/benchmarks.md)
 bash tools/bench-cli.sh           # ingot end to end with hyperfine (python3 fallback)
+python3 tools/compare.py          # against gzip/zstd/xz/bzip2/brotli; history in docs/benchmarks/history/
 ```
 
 - Needs `VCPKG_ROOT` set to a vcpkg checkout; the root `CMakeLists.txt` takes vcpkg's toolchain from there, and configure installs `vcpkg.json` (gtest, benchmark, cli11, zlib). Third-party code comes only through vcpkg. Every port, transitive and host ones included, needs an exact `overrides` pin in `vcpkg.json`; configure fails otherwise.

@@ -149,7 +149,11 @@ bash tools/bench.sh --out new.json       # all three sets, about 2 minutes (defa
 bash tools/bench.sh --filter 'Engine/.*/canterbury'
 python3 tools/bench-compare.py docs/benchmarks/decode-table.json new.json
 bash tools/bench-cli.sh --out cli.json  # ingot end to end, file I/O included
+python3 tools/compare.py                # ingot against gzip, zstd, xz, bzip2, brotli (about 10 minutes)
+python3 tools/compare.py --corpus canterbury images --tools ingot xz --no-save
 ```
+
+`tools/compare.py` packs each corpus into one reproducible tar (`build/compare/`) and runs `ingot -L 1/6/9`, `gzip -6/-9`, `zstd -3/-19`, `xz -6/-9`, `bzip2 -9` and `brotli -q 9` from the command line, checking every round trip; ingot, zstd and xz get `--threads` (default 6). It writes `docs/benchmarks/history/<date>-<commit>.json` (`--no-save` doesn't) and prints, for the ingot rows, the change in size and speed against the newest earlier file. Commit the file with the change it measures. `--dir PATH` adds any folder; ctest's `CompareHarness.Samples` runs it on the samples with ingot only. The tools come from Homebrew (`brew install zstd xz brotli`).
 
 `tools/bench-cli.sh` times `ingot encode`/`decode` on `kennedy.xls`, `webster` and `mozilla` (or the files given, relative to the repo root), after checking that each round-trips. It uses [hyperfine](https://github.com/sharkdp/hyperfine) 2.x (`brew install hyperfine`) and falls back to a python3 loop without it; both write `results[].summary.time_wall_clock`, and the script prints a table from it.
 

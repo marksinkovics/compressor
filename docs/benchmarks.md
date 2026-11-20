@@ -443,3 +443,30 @@ Then `ingot encode -L 9 -T 6` per file, `decode -T 6`, every output compared wit
 - Per 1 MiB block with each coder, the median predictor beat Paeth on every image by 1–8%, so Paeth was dropped. On the smoothed photo, coding the raw bytes with BWT or CM beats any predictor; there the predictor only helps LZ77.
 - Level 6 on the abstract picture first gained only 0.7%: its bytes look like dense x86 and ARM64 calls, the branch filters came first and level 6 keeps one candidate. A predictor that passes the entropy test now comes before them. `ooffice`, `mozilla`, `osdb` and our arm64 binary came out byte-identical at levels 6 and 9.
 - Cost: the row search and a second coding make level 6 on the photo 0.82 s instead of 0.54 s; Silesia joined is unchanged within noise (2.8 s against 3.3 s, load average 35–60).
+
+## Comparison with other compressors (2026-11-20)
+
+`tools/compare.py` (autonomous run 3, item 2), first run at 4593a2a: each corpus as one tar, wall time of the command line tools with file output, ingot, zstd and xz on 6 threads, the rest on one; Apple M3 Max, 14 cores. Full numbers in `docs/benchmarks/history/2026-11-20-4593a2adf.json`.
+
+| Silesia (212 MB) | size | ratio | encode MB/s | decode MB/s |
+| --- | ---: | ---: | ---: | ---: |
+| ingot -L 1 | 135,231,487 | 1.57 | 1823 | 1160 |
+| ingot -L 6 | 66,632,520 | 3.18 | 84 | 1025 |
+| ingot -L 9 | 47,658,754 | 4.45 | 4.4 | 11.6 |
+| gzip -6 | 68,228,577 | 3.11 | 47 | 817 |
+| zstd -3 | 66,217,820 | 3.20 | 1649 | 956 |
+| zstd -19 | 52,848,640 | 4.01 | 15 | 1141 |
+| xz -6 | 49,498,572 | 4.28 | 16 | 501 |
+| xz -9 | 48,772,876 | 4.35 | 4.1 | 127 |
+| bzip2 -9 | 54,591,623 | 3.88 | 20 | 59 |
+| brotli -q 9 | 56,413,609 | 3.76 | 10 | 629 |
+
+| Ratio | ingot -L 6 | ingot -L 9 | gzip -6 | zstd -19 | xz -9 | bzip2 -9 | brotli -q 9 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Canterbury (2.8 MB) | 3.84 | 6.65 | 3.86 | 5.52 | 5.82 | 4.97 | 4.82 |
+| Images (32 MB) | 3.54 | 4.43 | 2.24 | 2.79 | 3.23 | 3.74 | 2.59 |
+
+- Level 6 compresses like `gzip -6` and `zstd -3` (it is Deflate per block, plus other choices per block), decodes faster than gzip, but encodes 20× slower than zstd -3.
+- Level 9 has the best ratio on all three sets (2.3% below `xz -9` on Silesia, 12% on Canterbury, 27% on the images, where the median predictor and CM work), but decodes at 6–12 MB/s against xz's 100+: the price of context mixing.
+- Canterbury is 3 blocks, so only 3 threads work: level 9 encodes it at 2.1 MB/s.
+- The harness found level 9 spending 17 s per MiB of a photo in LZR's match search (4096-entry chains over a 1 MiB window); LZR now searches like level 7 at every level (4593a2a): a 4 MiB photo encodes 3× faster with the same output, Silesia per file at level 9 in 61 instead of 127 s with the same size.

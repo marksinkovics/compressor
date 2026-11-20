@@ -43,3 +43,12 @@ foreach(sample empty lorem_50p.txt flower.png)
             -P "${PROJECT_SOURCE_DIR}/test/pipe_roundtrip.cmake"
     )
 endforeach()
+
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+    add_test(NAME CompareHarness.Samples
+        COMMAND "${Python3_EXECUTABLE}" -I "${CMAKE_SOURCE_DIR}/tools/compare.py"
+            --corpus --dir "${SAMPLES_DIR}" --tools ingot --no-save
+            --app "$<TARGET_FILE:${PROJECT_NAME}>"
+    )
+endif()
