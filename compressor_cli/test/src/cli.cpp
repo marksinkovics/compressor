@@ -318,3 +318,30 @@ TEST_F(CLITests, Verify_reads_a_file_or_standard_input)
     EXPECT_NE(run({"verify"}), EXIT_SUCCESS);
     EXPECT_THAT(err_.str(), HasSubstr("Verifying standard input failed"));
 }
+
+TEST_F(CLITests, Stats_passes_the_input_and_the_options)
+{
+    compressor::StatsOptions options;
+    EXPECT_CALL(*compressor_, stats(fs::path(input_), ::testing::_))
+        .WillOnce([&](const fs::path& /*input*/, const compressor::StatsOptions& given) {
+        options = given;
+        return true;
+    });
+
+    EXPECT_EQ(run({"stats", input_, "--blocks", "--histogram", "--graph", "-"}), EXIT_SUCCESS);
+    EXPECT_TRUE(options.report.blocks);
+    EXPECT_TRUE(options.report.histogram);
+    EXPECT_EQ(options.graph, fs::path("-"));
+}
+
+TEST_F(CLITests, Stats_needs_an_existing_file)
+{
+    EXPECT_CALL(*compressor_, stats(::testing::_, ::testing::_)).Times(0);
+    EXPECT_NE(run({"stats"}), EXIT_SUCCESS);
+    EXPECT_NE(run({"stats", "-"}), EXIT_SUCCESS);
+
+    compressor_ = std::make_unique<MockICompressor>();
+    EXPECT_CALL(*compressor_, stats(::testing::_, ::testing::_)).WillOnce(Return(false));
+    EXPECT_NE(run({"stats", "-i", input_}), EXIT_SUCCESS);
+    EXPECT_THAT(err_.str(), HasSubstr("Analysing " + input_ + " failed"));
+}

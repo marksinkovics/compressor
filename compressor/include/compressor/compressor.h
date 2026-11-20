@@ -7,6 +7,7 @@
 #include <string>
 #include <string_view>
 
+#include <compressor/stats/stats.h>
 #include <compressor/stream/decoder.h>
 #include <compressor/stream/encoder.h>
 
@@ -26,6 +27,14 @@ struct StandardStreams
 // stdin and stdout through StdioInputBuf and StdioOutputBuf, and std::cerr.
 StandardStreams process_streams();
 
+struct StatsOptions
+{
+    StatsReport report;
+    // Where to write the Huffman code tree as Graphviz: none when empty; on the standard output,
+    // instead of the report, for "-".
+    std::filesystem::path graph;
+};
+
 class ICompressor
 {
 public:
@@ -43,6 +52,8 @@ public:
                          const std::filesystem::path& output) = 0;
     // Decodes everything and checks every checksum, writing nothing but a line on success.
     virtual bool verify(const std::filesystem::path& input) = 0;
+    // Prints what the input holds and how well it compresses; any file, an ingot file is decoded.
+    virtual bool stats(const std::filesystem::path& input, const StatsOptions& options) = 0;
 };
 
 // Writes a regular output through a temporary file next to it and renames that on success, so a
@@ -67,6 +78,7 @@ public:
     bool extract(const std::filesystem::path& archive, const std::string& path,
                  const std::filesystem::path& output) override;
     bool verify(const std::filesystem::path& input) override;
+    bool stats(const std::filesystem::path& input, const StatsOptions& options) override;
 
 private:
     bool encode_folder(const std::filesystem::path& input, const std::filesystem::path& output);

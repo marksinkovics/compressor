@@ -484,3 +484,39 @@ TEST_F(CompressorArchiveCommandTests, Verify_reports_a_damaged_archive)
     EXPECT_THAT(err_.str(), HasSubstr("Cannot verify"));
     EXPECT_EQ(out_.str(), "");
 }
+
+TEST_F(CompressorArchiveCommandTests, Stats_prints_the_report)
+{
+    ASSERT_TRUE(make_compressor().stats(archive_, {.report = {.blocks = true}, .graph = {}}))
+        << err_.str();
+    EXPECT_THAT(out_.str(), HasSubstr("ingot folder archive with 2 files, 1 directory and 1 "
+                                      "symlink\n"));
+    EXPECT_THAT(out_.str(), HasSubstr("Content:  10005 bytes"));
+    EXPECT_THAT(out_.str(), HasSubstr("Block  Method"));
+}
+
+TEST_F(CompressorArchiveCommandTests, Stats_writes_the_graph_to_a_file_or_instead_of_the_report)
+{
+    const fs::path graph = dir_ / "tree.dot";
+    ASSERT_TRUE(make_compressor().stats(folder_ / "a.txt", {.report = {}, .graph = graph}))
+        << err_.str();
+    EXPECT_THAT(out_.str(), HasSubstr("not an ingot file"));
+    EXPECT_THAT(read_file(graph), HasSubstr("digraph G {"));
+
+    out_.str("");
+    ASSERT_TRUE(make_compressor().stats(folder_ / "a.txt", {.report = {}, .graph = "-"}));
+    EXPECT_EQ(out_.str(), read_file(graph));
+}
+
+TEST_F(CompressorArchiveCommandTests, Stats_reports_a_damaged_file_and_needs_a_file)
+{
+    std::string bytes = read_file(archive_);
+    bytes.back() = 'Z';
+    write_file(archive_, bytes);
+
+    EXPECT_FALSE(make_compressor().stats(archive_, {}));
+    EXPECT_THAT(err_.str(), HasSubstr("Cannot analyse"));
+    EXPECT_FALSE(make_compressor().stats("-", {}));
+    EXPECT_THAT(err_.str(), HasSubstr("needs a file"));
+    EXPECT_EQ(out_.str(), "");
+}

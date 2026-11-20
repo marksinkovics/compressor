@@ -26,6 +26,7 @@
 #include <compressor/data/data.h>
 #include <compressor/engine/engine.h>
 #include <compressor/error.h>
+#include <compressor/stats/stats.h>
 #include <compressor/stream/decoder.h>
 #include <compressor/stream/encoder.h>
 #include <compressor/stream/stdio.h>
@@ -555,6 +556,54 @@ bool Compressor::verify(const fs::path& input)
     }
     streams_.out << display_name(input, "standard input") << ": OK\n";
     streams_.out.flush();
+    return true;
+}
+
+bool Compressor::stats(const fs::path& input, const StatsOptions& options)
+{
+    PROFILE_SESSION("Compressor::Stats")
+    std::ostream& err = streams_.err;
+    if (is_standard(input))
+    {
+        err << "Cannot analyse standard input: stats needs a file\n";
+        return false;
+    }
+    std::ifstream file(input, std::ios::in | std::ios::binary);
+    if (!file)
+    {
+        err << "Cannot open input file: " << input.string() << '\n';
+        return false;
+    }
+    const auto collected = collect_stats(file);
+    if (!collected)
+    {
+        report(err, "analyse", input, {.error = collected.error(), .detail = {}});
+        return false;
+    }
+    if (options.graph.empty() || !is_standard(options.graph))
+    {
+        print_stats(*collected, options.report, streams_.out);
+        streams_.out.flush();
+    }
+    if (!options.graph.empty())
+    {
+        const bool written =
+            write_output(streams_, options.graph, [&](std::ostream& out) -> Result {
+            write_content_graph(*collected, out);
+            return {};
+        }, [&](const Failure& failure) {
+            report(err, "write the graph of", input, failure);
+        });
+        if (!written)
+        {
+            return false;
+        }
+    }
+    if (!streams_.out)
+    {
+        err << "Cannot write the statistics\n";
+        return false;
+    }
     return true;
 }
 

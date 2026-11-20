@@ -18,6 +18,7 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 - Multithreaded blocks are done: `thread/pool.h`'s `ThreadPool`, one engine per worker, `-T/--threads` (default all cores); 166/166 pass, clean under an ad hoc TSan build.
 - Folder archives step 1 is done: solid blocks plus an index after the end block, flag bit 0 in the frame header; `encode -i <dir>` archives, `decode` extracts into a new directory (`compressor/archive/`, format in `docs/file_format.md`); 202/202 pass.
 - Folder archives step 2 is done: `list [-l]`, `extract ARCHIVE PATH [-o OUT]`, `cat`, `verify`; extraction decodes only the blocks a selection needs (`IBlockDecoder::decode_blocks`); 236/236 pass.
+- `stats` (folder compression step 3) is done; 250/250 pass.
 - **Next:** the "Autonomous run" list at the end of `docs/roadmap.md`, on branch `feat/autonomous-run`: work through it in order, committing each item (no push, no co-author line).
 
 ## Commands

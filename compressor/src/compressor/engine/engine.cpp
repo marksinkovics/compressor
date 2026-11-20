@@ -5,6 +5,7 @@
 #include <expected>
 #include <iostream>
 #include <memory>
+#include <ostream>
 #include <span>
 #include <string>
 #include <utility>
@@ -203,30 +204,35 @@ void Engine::set_codes(const CodeLengths& lengths)
     codes_ = canonical_codes(lengths);
 }
 
-void Engine::print_graph() const
+void write_code_graph(std::ostream& out, const Codes& codes, const Frequencies& frequencies)
 {
-    auto root = build_subtree(codes_, frequencies_, 0, 0);
-    std::cout << "digraph G {\n";
+    auto root = build_subtree(codes, frequencies, 0, 0);
+    out << "digraph G {\n";
     if (root)
     {
         BinaryTree tree;
         tree.setRoot(root);
         std::for_each(tree.preOrderBegin(), tree.preOrderEnd(),
-                      [](const std::shared_ptr<BinaryNode>& bin_node) {
+                      [&out](const std::shared_ptr<BinaryNode>& bin_node) {
             auto node = std::static_pointer_cast<SymbolNode>(bin_node);
             const std::string id = "n" + node->tag();
-            std::cout << "\t\"" << id << "\" [label=\"" << node->value() << " ["
-                      << node->frequency() << ", " << node->tag() << "]\"];\n";
+            out << "\t\"" << id << "\" [label=\"" << node->value() << " [" << node->frequency()
+                << ", " << node->tag() << "]\"];\n";
             for (const auto& child : {node->left(), node->right()})
             {
                 if (child)
                 {
-                    std::cout << "\t\"" << id << "\" -> \"n" << child->tag() << "\";\n";
+                    out << "\t\"" << id << "\" -> \"n" << child->tag() << "\";\n";
                 }
             }
         });
     }
-    std::cout << "}\n";
+    out << "}\n";
+}
+
+void Engine::print_graph() const
+{
+    write_code_graph(std::cout, codes_, frequencies_);
 }
 
 void Engine::print_dict() const

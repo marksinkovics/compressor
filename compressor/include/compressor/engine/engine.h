@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <expected>
 #include <functional>
+#include <iosfwd>
 #include <memory>
 #include <span>
 #include <vector>
@@ -32,6 +33,9 @@ public:
     virtual std::expected<void, Error> decode_block(const EncodedBlock& block,
                                                     std::vector<uint8_t>& out) = 0;
 };
+
+// Graphviz dot of the code tree, each node labelled with its symbols, frequency and code prefix.
+void write_code_graph(std::ostream& out, const Codes& codes, const Frequencies& frequencies);
 
 // Makes one engine per worker thread.
 using EngineFactory = std::function<std::unique_ptr<IEngine>()>;

@@ -20,6 +20,8 @@ public:
                 (const std::filesystem::path&, const std::string&, const std::filesystem::path&),
                 (override));
     MOCK_METHOD(bool, verify, (const std::filesystem::path&), (override));
+    MOCK_METHOD(bool, stats, (const std::filesystem::path&, const compressor::StatsOptions&),
+                (override));
 };
 
 #endif /* MockICompressor_h */

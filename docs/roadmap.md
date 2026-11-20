@@ -330,7 +330,12 @@ Layout decided under "Decisions" (solid blocks plus an index); format in [file_f
   - CLI: `list [-l] ARCHIVE`, `extract ARCHIVE PATH [-o OUT]` (default: the entry's name in the current directory), `cat ARCHIVE PATH` (= `extract -o -`), `verify [INPUT]`; the archive can also be given as `-i`.
   - Tests: `DecodeBlocksTests` (ranges, bad offsets, past the end, 1 and 3 threads), `ArchivePathTests`, `ArchiveSubtreeTests`, `ArchiveListTests`, new `ArchiveTests` (subtree extraction with root metadata, file from its blocks only with an unrelated block damaged, verify), `CompressorArchiveCommandTests`, new `CLITests`. 236/236 pass. Checked by hand with `compressor_app` on `compressor/` plus a symlink.
   - Not done: several paths per `extract`; globbing; `verify` of an archive from stdin (same index-at-the-end limit as `decode`).
-- [ ] **Step 3, `stats`:** entropy, byte histogram, Huffman tree as Graphviz (the engine's `print_graph`).
+- [x] **Step 3, `stats` (done):** `compressor_app stats FILE [--blocks] [--histogram] [--graph OUT]`.
+  - `stats/stats.{h,cpp}`: `collect_stats()` reads a seekable input once; an ingot file is read with `FrameReader` and decoded block by block with one `Engine` (method, decoded and encoded size per block; archive entry counts from `read_archive_index()`), anything else is counted as it is. `entropy_bits_per_byte()`, `huffman_bits()` (one length-limited code over all the content), `print_stats()` (input, blocks, ratio, content, entropy bound, Huffman size; `--blocks` a table, `--histogram` the byte counts, most frequent first), `write_content_graph()`.
+  - `write_code_graph(out, codes, frequencies)` in `engine.h` is the old `Engine::print_graph` body on any stream; `print_graph` calls it with `std::cout`.
+  - `ICompressor::stats(input, StatsOptions)`; `--graph -` writes the Graphviz to the standard output instead of the report, otherwise a file through the temp-file `write_output`. Standard input is rejected (one pass can't tell an ingot file first).
+  - Tests: `StatsTests` (entropy and Huffman sizes, raw and ingot input, archive counts, damaged input, the exact report, the graph), `CompressorArchiveCommandTests.Stats_*`, `CLITests.Stats_*`. 250/250 pass.
+  - Also: `gtest_discover_tests` gets `DISCOVERY_TIMEOUT 60`, since macOS's first-launch scan of a relinked test binary took 14 s and failed ctest's 5 s discovery.
 - [ ] **Deduplication:** store identical files only once. The index already stores each file's offset; dedup would let a file point back at earlier data, which relaxes the "back to back" rule and makes extraction copy from an earlier file.
 
 ### Well-known output formats
@@ -390,7 +395,7 @@ Existing examples: macOS compressed memory, Linux zram and zswap, Windows memory
 1. Container format with streaming and blocks (steps 1–3, done).
 2. Hardware CRC32 (known issue "CRC32 caps stored blocks", done).
 3. Multithreaded blocks (container format, done).
-4. Folder support: steps 1–2 done; step 3, `stats`, is next, then deduplication.
+4. Folder support: steps 1–3 done; deduplication next.
 5. An LZ77 pipeline next to Huffman (from "Algorithms": the pluggable pipeline, transforms such as RLE, MTF and BWT, LZ77/LZW, other entropy coders, an auto mode, pre-trained dictionaries).
 6. A Deflate encoder, so the output is valid `.gz` and `.zip`.
 7. Search inside compressed data: jumping to the right block through the block index, zgrep-style search, search without decompressing, an FM-index. The macFUSE mount is skipped for now.
@@ -403,12 +408,12 @@ The benchmark harness and fuzzing can be added alongside any of these steps.
 
 ### Autonomous run (agreed 2026-11-19)
 
-Claude works through this list on branch `feat/autonomous-run` without stopping: one or more commits per item (Angular style, no co-author line, never pushed), each after the full `tools/quality.sh check` (clang-tidy included), the full test suite and the `finish-step` docs update. A blocked item gets a note in `docs/handover.md` and the run moves to the next independent item.
+Claude works through this list on branch `feat/autonomous-run` without stopping: one or more commits per item (Angular style, no co-author line, never pushed), each after the full `tools/quality.sh check` (clang-tidy included), the full test suite and the `finish-step` docs update. Nothing outside the repository folder is deleted. A blocked item gets a note in `docs/handover.md` and the run moves to the next independent item.
 
 Decisions taken for the pipeline (Claude's defaults, accepted): each block records a small pipeline descriptor in its header and the format version becomes 2, with version 1 still readable; blocks stay independent (no matches into earlier blocks); compression levels `-1` (fast) to `-9` (best), the auto mode at the higher levels; decoding a block needs at most about twice the block size. An algorithm that loses its benchmarks stays in the code only if it wins on some data type; otherwise the result is recorded and the code removed. Data-type order: images, audio, then CSV and logs.
 
 - [ ] 0. Branch, commit the clang-tidy hook change and this plan.
-- [ ] 1. `stats` (folder compression step 3): size, ratio, entropy, byte histogram, stored/Huffman split per block; `--graph` writes the Huffman tree as Graphviz.
+- [x] 1. (done) `stats` (folder compression step 3): size, ratio, entropy, byte histogram, stored/Huffman split per block; `--graph` writes the Huffman tree as Graphviz.
 - [ ] 2. Fuzzing the decoder: libFuzzer targets (Homebrew llvm) for the container reader, the archive index and extraction, seeded from the samples, with a short run under ctest; every crash fixed with a regression test.
 - [ ] 3. Deduplication: identical files stored once and pointing back at the first copy's data; index rules, docs and extraction updated.
 - [ ] 4. zgrep-style search: `grep PATTERN INPUT [PATH...]` over a plain file or an archive, streaming, matches across block boundaries, `path:line:text`, `-c`, `-l`, `-b`; fixed strings first.

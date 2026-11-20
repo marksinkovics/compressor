@@ -21,6 +21,7 @@ set(SRC_FILES
     "${SRC_DIR}/tree/binary/nodeiterator.cpp"
     "${SRC_DIR}/data/data.cpp"
     "${SRC_DIR}/roundtrip/roundtrip.cpp"
+    "${SRC_DIR}/stats/stats.cpp"
     "${SRC_DIR}/stream/stream.cpp"
     "${SRC_DIR}/stream/stdio.cpp"
     "${SRC_DIR}/thread/pool.cpp"

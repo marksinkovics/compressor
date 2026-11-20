@@ -23,6 +23,8 @@ struct Settings
     std::string path; // in an archive
     unsigned threads = 0;
     bool details = false;
+    StatsOptions stats;
+    std::string graph;
 };
 
 std::string display_name(const std::string& path, std::string_view standard_name)
@@ -103,6 +105,7 @@ int CLI::run(std::span<const char* const> args)
     Settings extract_settings;
     Settings cat_settings;
     Settings verify_settings;
+    Settings stats_settings;
     auto* encode = add_command(app, "encode", "Compress a file or a folder", true, encode_settings);
     auto* decode =
         add_command(app, "decode", "Decompress a file or a folder archive", false, decode_settings);
@@ -136,6 +139,19 @@ int CLI::run(std::span<const char* const> args)
                      "Input file; - or omitted: standard input")
         ->check(existing_input(false));
     add_threads(*verify, verify_settings);
+
+    auto* stats = app.add_subcommand(
+        "stats", "Show what a file holds and how well it compresses; an ingot file is decoded");
+    stats->add_option("-i,--input,input", stats_settings.input, "Input file")
+        ->required()
+        ->check(::CLI::ExistingFile);
+    stats->add_flag("--blocks", stats_settings.stats.report.blocks,
+                    "One line per block of an ingot file");
+    stats->add_flag("--histogram", stats_settings.stats.report.histogram,
+                    "One line per byte value, most frequent first");
+    stats->add_option("--graph", stats_settings.graph,
+                      "Write the Huffman code tree as Graphviz to this file; -: standard output, "
+                      "instead of the report");
 
     try
     {
@@ -188,6 +204,13 @@ int CLI::run(std::span<const char* const> args)
         const auto compressor = make_compressor_(settings.threads);
         return finish(compressor->extract(settings.input, settings.path, output),
                       "Extracting " + settings.path + " from " + settings.input);
+    }
+    if (stats->parsed())
+    {
+        stats_settings.stats.graph = stats_settings.graph;
+        const auto compressor = make_compressor_(1);
+        return finish(compressor->stats(stats_settings.input, stats_settings.stats),
+                      "Analysing " + stats_settings.input);
     }
     const auto compressor = make_compressor_(verify_settings.threads);
     return finish(compressor->verify(verify_settings.input),
