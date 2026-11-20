@@ -82,7 +82,7 @@ TEST(ThreadPoolTests, An_exception_reaches_the_future)
     auto failed = pool.submit([](std::size_t /*worker*/) -> int {
         throw std::runtime_error("task failed");
     });
-    EXPECT_THROW(failed.get(), std::runtime_error);
+    EXPECT_THROW((void)failed.get(), std::runtime_error);
     EXPECT_EQ(pool.submit([](std::size_t /*worker*/) {
         return 7;
     }).get(),

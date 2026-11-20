@@ -35,6 +35,13 @@ if(MSVC)
     add_compile_options(/W4)
 else()
     add_compile_options(-Wall -Wextra -Wpedantic)
+    # Clang 23 adds this to -Wextra; leaving out designated fields to default them is intended.
+    include(CheckCXXCompilerFlag)
+    check_cxx_compiler_flag(-Wmissing-designated-field-initializers
+                            COMPRESSOR_HAS_DESIGNATED_INITIALIZER_WARNING)
+    if(COMPRESSOR_HAS_DESIGNATED_INITIALIZER_WARNING)
+        add_compile_options(-Wno-missing-designated-field-initializers)
+    endif()
 endif()
 
 # No -fsanitize=leak: Apple Clang rejects it on arm64, and on Linux ASan already includes LSan.

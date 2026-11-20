@@ -1,6 +1,7 @@
 #include <compressor/huffman/huffman.h>
 
 #include <algorithm>
+#include <iterator>
 #include <vector>
 
 namespace compressor
