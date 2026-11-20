@@ -591,6 +591,31 @@ TEST_F(CompressorArchiveCommandTests, A_file_encodes_as_gzip_and_a_folder_as_zip
     EXPECT_EQ(read_file(zip).substr(0, 4), "PK\x03\x04");
 }
 
+TEST_F(CompressorArchiveCommandTests, Gzip_takes_the_level_and_any_thread_count)
+{
+    using compressor::OutputFormat;
+    std::string input;
+    for (int i = 0; i < 120'000; ++i)
+    {
+        input += std::to_string(i % 1000) + (i % 7 == 0 ? "\n" : " ");
+    }
+    write_file(folder_ / "big.txt", input);
+    const auto gzip = [&](unsigned threads, unsigned level) {
+        const fs::path gz = dir_ / "big.gz";
+        compressor::Compressor compressor({.threads = threads, .level = level});
+        EXPECT_TRUE(compressor.encode_as(folder_ / "big.txt", gz, OutputFormat::gzip));
+        return read_file(gz);
+    };
+    const std::string one_thread = gzip(1, 6);
+    EXPECT_EQ(gzip(4, 6), one_thread);
+    EXPECT_GT(gzip(4, 1).size(), gzip(4, 9).size());
+
+    const fs::path decoded = dir_ / "big.out";
+    write_file(dir_ / "big.gz", one_thread);
+    ASSERT_TRUE(make_compressor().decode(dir_ / "big.gz", decoded)) << err_.str();
+    EXPECT_EQ(read_file(decoded), input);
+}
+
 TEST_F(CompressorArchiveCommandTests, Gzip_needs_a_file_and_zip_a_folder)
 {
     using compressor::OutputFormat;

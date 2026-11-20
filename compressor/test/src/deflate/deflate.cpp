@@ -13,6 +13,7 @@
 
 #include <compressor/deflate/deflate.h>
 #include <compressor/lz77/lz77.h>
+#include <compressor/thread/pool.h>
 
 namespace
 {
@@ -47,11 +48,12 @@ std::string inflate_with_zlib(const std::string& compressed, int window_bits,
     return out;
 }
 
-std::string deflate(const std::string& input, const compressor::Lz77Options& options = {})
+std::string deflate(const std::string& input, const compressor::Lz77Options& options = {},
+                    compressor::ThreadPool* pool = nullptr)
 {
     std::istringstream in(input);
     std::ostringstream out;
-    const auto result = compressor::deflate_stream(in, out, options);
+    const auto result = compressor::deflate_stream(in, out, options, pool);
     EXPECT_TRUE(result);
     if (result)
     {
@@ -134,6 +136,35 @@ TEST(DeflateTests, Matches_reach_back_across_pieces_and_the_whole_window)
     const std::string compressed = deflate(input);
     EXPECT_LT(compressed.size(), input.size() / 2);
     EXPECT_EQ(inflate_with_zlib(compressed, -15), input);
+}
+
+TEST(DeflateTests, A_piece_matches_into_the_piece_before_it)
+{
+    // 20 KiB of noise repeated past several 256 KiB pieces: each piece starts with matches.
+    const std::string chunk = noise(std::size_t{20} * 1024, 3);
+    std::string input;
+    while (input.size() < std::size_t{1024} * 1024)
+    {
+        input += chunk;
+    }
+    const std::string compressed = deflate(input);
+    EXPECT_LT(compressed.size(), chunk.size() + (input.size() / 100));
+    EXPECT_EQ(inflate_with_zlib(compressed, -15), input);
+}
+
+TEST(DeflateTests, A_thread_pool_gives_the_same_stream)
+{
+    compressor::ThreadPool pool(3);
+    const std::size_t piece = std::size_t{256} * 1024;
+    for (const std::size_t size :
+         {std::size_t{0}, piece - 1, piece, piece + 1, 2 * piece, (5 * piece) + 12'345})
+    {
+        const std::string input =
+            text(size / 2) + noise(size / 4) + text(size - (size / 2) - (size / 4));
+        const std::string alone = deflate(input);
+        EXPECT_EQ(deflate(input, {}, &pool), alone) << size;
+        EXPECT_EQ(inflate_with_zlib(alone, -15), input) << size;
+    }
 }
 
 TEST(DeflateTests, Long_runs_use_the_longest_matches)

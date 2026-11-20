@@ -3,13 +3,16 @@
 #include <cstddef>
 #include <cstdint>
 #include <ctime>
+#include <deque>
 #include <expected>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <ostream>
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <compressor/archive/archive.h>
@@ -17,6 +20,7 @@
 #include <compressor/checksum/crc32.h>
 #include <compressor/deflate/deflate.h>
 #include <compressor/error.h>
+#include <compressor/thread/pool.h>
 
 namespace compressor
 {
@@ -107,6 +111,37 @@ DosTime dos_time(int64_t mtime_ns)
                                           (field(local.tm_mon + 1) << 5U) | field(local.tm_mday))};
 }
 
+// Files up to this size are read and deflated whole, ahead of their turn when there is a thread
+// pool; larger ones are deflated in pieces by deflate_stream().
+constexpr uint64_t small_file_bytes = uint64_t{256} * 1024;
+
+struct Deflated
+{
+    std::vector<uint8_t> data;
+    DeflateResult result;
+};
+
+std::expected<Deflated, Failure> deflate_file(const fs::path& path, const Lz77Options& options)
+{
+    std::ifstream file(path, std::ios::in | std::ios::binary);
+    std::vector<uint8_t> bytes;
+    std::vector<char> chunk(std::size_t{64} * 1024);
+    while (file)
+    {
+        file.read(chunk.data(), static_cast<std::streamsize>(chunk.size()));
+        bytes.insert(bytes.end(), chunk.begin(), chunk.begin() + file.gcount());
+    }
+    if (!file.eof() || file.bad())
+    {
+        return std::unexpected(
+            Failure{.error = Error::file_failed, .detail = path.string() + ": cannot be read"});
+    }
+    Deflated deflated{.data = deflate_bytes(bytes, options), .result = {}};
+    deflated.result = {
+        .input_bytes = bytes.size(), .output_bytes = deflated.data.size(), .crc = crc32(bytes)};
+    return deflated;
+}
+
 struct Central
 {
     bool zip64 = false; // the local header and data descriptor use Zip64
@@ -125,7 +160,7 @@ struct Central
 
 std::expected<void, Failure> write_zip(const fs::path& root, const std::vector<Entry>& entries,
                                        std::ostream& out, const Lz77Options& options,
-                                       bool force_zip64)
+                                       ThreadPool* pool, bool force_zip64)
 {
     std::vector<Central> central;
     uint64_t offset = 0;
@@ -133,9 +168,30 @@ std::expected<void, Failure> write_zip(const fs::path& root, const std::vector<E
         out.write(bytes.str().data(), static_cast<std::streamsize>(bytes.str().size()));
         offset += bytes.str().size();
     };
+    const auto is_small_file = [](const Entry& entry) {
+        return entry.type == EntryType::file && entry.size <= small_file_bytes;
+    };
+    // Small files deflated ahead on the pool, by entry index.
+    std::deque<std::pair<std::size_t, std::future<std::expected<Deflated, Failure>>>> ahead;
+    std::size_t looked_ahead = 0;
+    const std::size_t max_ahead = pool != nullptr ? 4 * pool->size() : 0;
 
-    for (const Entry& entry : entries)
+    for (std::size_t index = 0; index < entries.size(); ++index)
     {
+        const Entry& entry = entries[index];
+        looked_ahead = std::max(looked_ahead, index);
+        while (ahead.size() < max_ahead && looked_ahead < entries.size())
+        {
+            if (is_small_file(entries[looked_ahead]))
+            {
+                ahead.emplace_back(looked_ahead,
+                                   pool->submit([path = root / entries[looked_ahead].path,
+                                                 options](std::size_t /*worker*/) {
+                    return deflate_file(path, options);
+                }));
+            }
+            ++looked_ahead;
+        }
         Central record{.zip64 = false,
                        .name = entry.path,
                        .flags = utf8_flag,
@@ -200,13 +256,33 @@ std::expected<void, Failure> write_zip(const fs::path& root, const std::vector<E
         if (entry.type == EntryType::file)
         {
             const fs::path path = root / entry.path;
-            std::ifstream file(path, std::ios::in | std::ios::binary);
-            if (!file)
+            std::expected<DeflateResult, Error> result;
+            if (!ahead.empty() && ahead.front().first == index)
             {
-                return std::unexpected(Failure{.error = Error::file_failed,
-                                               .detail = path.string() + ": cannot be read"});
+                auto deflated = ahead.front().second.get();
+                ahead.pop_front();
+                if (!deflated)
+                {
+                    return std::unexpected(deflated.error());
+                }
+                out.write(reinterpret_cast<const char*>(deflated->data.data()),
+                          static_cast<std::streamsize>(deflated->data.size()));
+                result = deflated->result;
+                if (!out)
+                {
+                    result = std::unexpected(Error::write_failed);
+                }
             }
-            const auto result = deflate_stream(file, out, options);
+            else
+            {
+                std::ifstream file(path, std::ios::in | std::ios::binary);
+                if (!file)
+                {
+                    return std::unexpected(Failure{.error = Error::file_failed,
+                                                   .detail = path.string() + ": cannot be read"});
+                }
+                result = deflate_stream(file, out, options, pool);
+            }
             if (!result)
             {
                 return std::unexpected(Failure{.error = result.error(), .detail = path.string()});

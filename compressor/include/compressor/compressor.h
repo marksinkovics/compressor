@@ -124,6 +124,8 @@ private:
     std::unique_ptr<IBlockDecoder> decoder_;
     StandardStreams streams_;
     bool search_index_;
+    // Threads and level for the gzip and zip formats; one thread unless given.
+    CompressorSettings settings_{.threads = 1, .level = default_level, .search_index = false};
 };
 
 } // namespace compressor

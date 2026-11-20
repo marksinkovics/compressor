@@ -25,7 +25,8 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 - `decode`, `verify` and `grep` read `.gz` files with our own streaming inflater; 343/343 pass.
 - The search index is searched in place (wavelet matrix through `mmap`): rare patterns 12–15× faster than `grep`, common ones as fast; 345/345 pass.
 - Zip64 is done: zip archives with files over 4 GiB or more than 65 535 entries; 347/347 pass.
-- **Next:** pick from the roadmap's open items: "Compressed-domain prefilter", a CM coder with a match model, CI.
+- Autonomous run 2 (list at the end of `docs/roadmap.md`, same branch, Claude commits): item 1, multithreaded Deflate (`-f gzip`/`-f zip` take `-T` and `-L`), is done; 351/351 pass.
+- **Next:** run 2 item 2, a context-mixing coder with a match model.
 
 ## Commands
 

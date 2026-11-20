@@ -4,8 +4,11 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <expected>
+#include <future>
 #include <istream>
+#include <memory>
 #include <ostream>
 #include <span>
 #include <string>
@@ -15,6 +18,7 @@
 #include <compressor/error.h>
 #include <compressor/huffman/huffman.h>
 #include <compressor/lz77/lz77.h>
+#include <compressor/thread/pool.h>
 
 namespace compressor
 {
@@ -28,7 +32,8 @@ constexpr std::size_t code_length_symbols = 19;
 constexpr uint16_t end_of_block = 256;
 constexpr std::size_t max_code_length_code = 7;
 constexpr std::size_t tokens_per_block = std::size_t{16} * 1024;
-constexpr std::size_t piece_bytes = std::size_t{1} << 20U;
+// Streams are deflated in pieces this large, in parallel when there is a thread pool.
+constexpr std::size_t stream_piece_bytes = std::size_t{256} * 1024;
 constexpr std::size_t max_stored_bytes = 65535;
 
 constexpr std::array<uint16_t, 29> length_base{3,  4,  5,  6,   7,   8,   9,   10,  11, 13,
@@ -346,6 +351,13 @@ public:
         bits_.align();
     }
 
+    // An empty stored block, which ends on a byte boundary: zlib's Z_SYNC_FLUSH.
+    void sync()
+    {
+        write_stored({}, false);
+        bits_.align();
+    }
+
 private:
     static std::size_t trimmed(std::span<const uint8_t> lengths, std::size_t minimum)
     {
@@ -428,6 +440,13 @@ void put_le(std::ostream& out, uint64_t value, std::size_t bytes)
     }
 }
 
+enum class Flush : uint8_t
+{
+    none,  // more input follows
+    sync,  // end on a byte boundary, the stream not ended
+    final, // end the stream
+};
+
 // Raw Deflate over input added in pieces.
 class DeflateWriter
 {
@@ -438,11 +457,18 @@ public:
     {
     }
 
-    // Appends what this piece completes to encoded().
-    void add(std::span<const uint8_t> bytes, bool final)
+    void prime(std::span<const uint8_t> dictionary)
     {
+        finder_.prime(dictionary);
+        block_start_ = finder_.position();
+    }
+
+    // Appends what this piece completes to encoded().
+    void add(std::span<const uint8_t> bytes, Flush flush)
+    {
+        const bool final = flush == Flush::final;
         finder_.add(bytes);
-        finder_.tokenize(tokens_, final);
+        finder_.tokenize(tokens_, flush != Flush::none);
         // Blocks of at most tokens_per_block, each with the raw bytes it covers.
         std::size_t first = 0;
         while (first < tokens_.size())
@@ -467,6 +493,10 @@ public:
         {
             writer_.finish();
         }
+        else if (flush == Flush::sync)
+        {
+            writer_.sync();
+        }
         tokens_.clear();
         finder_.drop_old(block_start_);
     }
@@ -484,51 +514,93 @@ private:
     uint64_t block_start_ = 0;
 };
 
+using Piece = std::shared_ptr<const std::vector<uint8_t>>;
+
+// One piece of a stream: matches may reach into the end of the piece before it, and it ends on a
+// byte boundary, so the pieces' outputs simply follow each other.
+std::vector<uint8_t> deflate_piece(const Piece& previous, const Piece& piece, bool final,
+                                   const Lz77Options& options)
+{
+    DeflateWriter writer(options);
+    if (previous)
+    {
+        const std::size_t keep = std::min(previous->size(), options.window);
+        writer.prime(std::span(*previous).last(keep));
+    }
+    writer.add(*piece, final ? Flush::final : Flush::sync);
+    return std::move(writer.encoded());
+}
+
 } // namespace
 
 std::vector<uint8_t> deflate_bytes(std::span<const uint8_t> bytes, const Lz77Options& options)
 {
     DeflateWriter writer(options);
-    writer.add(bytes, true);
+    writer.add(bytes, Flush::final);
     return std::move(writer.encoded());
 }
 
 std::expected<DeflateResult, Error> deflate_stream(std::istream& in, std::ostream& out,
-                                                   const Lz77Options& options)
+                                                   const Lz77Options& options, ThreadPool* pool)
 {
     DeflateResult result;
-    DeflateWriter writer(options);
-    std::vector<char> piece(piece_bytes);
+    std::deque<std::future<std::vector<uint8_t>>> pending;
+    const std::size_t in_flight = pool != nullptr ? 2 * pool->size() : 0;
+    const auto write = [&](const std::vector<uint8_t>& encoded) {
+        out.write(reinterpret_cast<const char*>(encoded.data()),
+                  static_cast<std::streamsize>(encoded.size()));
+        result.output_bytes += encoded.size();
+        return static_cast<bool>(out);
+    };
+    Piece previous;
     bool done = false;
     while (!done)
     {
-        in.read(piece.data(), static_cast<std::streamsize>(piece.size()));
+        auto piece = std::make_shared<std::vector<uint8_t>>(stream_piece_bytes);
+        in.read(reinterpret_cast<char*>(piece->data()),
+                static_cast<std::streamsize>(piece->size()));
         const auto got = static_cast<std::size_t>(in.gcount());
+        done = got < piece->size() || in.peek() == std::istream::traits_type::eof();
         if (in.bad())
         {
             return std::unexpected(Error::read_failed);
         }
-        done = got < piece.size();
-        const std::span<const uint8_t> bytes(reinterpret_cast<const uint8_t*>(piece.data()), got);
-        result.crc = crc32(bytes, result.crc);
+        piece->resize(got);
+        result.crc = crc32(*piece, result.crc);
         result.input_bytes += got;
-        writer.add(bytes, done);
 
-        std::vector<uint8_t>& encoded = writer.encoded();
-        out.write(reinterpret_cast<const char*>(encoded.data()),
-                  static_cast<std::streamsize>(encoded.size()));
-        result.output_bytes += encoded.size();
-        encoded.clear();
-        if (!out)
+        Piece current = std::move(piece);
+        if (pool == nullptr)
         {
-            return std::unexpected(Error::write_failed);
+            if (!write(deflate_piece(previous, current, done, options)))
+            {
+                return std::unexpected(Error::write_failed);
+            }
+        }
+        else
+        {
+            pending.push_back(
+                pool->submit([previous, current, done, options](std::size_t /*worker*/) {
+                return deflate_piece(previous, current, done, options);
+            }));
+        }
+        previous = std::move(current);
+        while (!pending.empty() && (done || pending.size() >= in_flight))
+        {
+            const std::vector<uint8_t> encoded = pending.front().get();
+            pending.pop_front();
+            if (!write(encoded))
+            {
+                return std::unexpected(Error::write_failed);
+            }
         }
     }
     return result;
 }
 
 std::expected<DeflateResult, Error> write_gzip(std::istream& in, std::ostream& out,
-                                               const GzipHeader& header, const Lz77Options& options)
+                                               const GzipHeader& header, const Lz77Options& options,
+                                               ThreadPool* pool)
 {
     constexpr uint8_t name_flag = 0x08;
     constexpr uint8_t unix_os = 3;
@@ -544,7 +616,7 @@ std::expected<DeflateResult, Error> write_gzip(std::istream& in, std::ostream& o
         out.write(header.name.data(), static_cast<std::streamsize>(header.name.size()));
         out.put(0);
     }
-    auto deflated = deflate_stream(in, out, options);
+    auto deflated = deflate_stream(in, out, options, pool);
     if (!deflated)
     {
         return deflated;

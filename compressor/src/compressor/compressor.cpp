@@ -32,6 +32,7 @@
 #include <compressor/engine/engine.h>
 #include <compressor/error.h>
 #include <compressor/fmindex/fmindex.h>
+#include <compressor/lz77/lz77.h>
 #include <compressor/search/search.h>
 #include <compressor/stats/stats.h>
 #include <compressor/stream/decoder.h>
@@ -52,6 +53,13 @@ namespace fs = std::filesystem;
 unsigned thread_count(unsigned requested)
 {
     return requested == 0 ? default_thread_count() : requested;
+}
+
+// None for one thread: Deflate then runs on the calling thread.
+std::unique_ptr<ThreadPool> deflate_pool(unsigned requested)
+{
+    const unsigned threads = thread_count(requested);
+    return threads > 1 ? std::make_unique<ThreadPool>(threads) : nullptr;
 }
 
 struct TempFile
@@ -512,6 +520,7 @@ Compressor::Compressor(CompressorSettings settings)
                      }, thread_count(settings.threads)),
                  process_streams(), settings.search_index)
 {
+    settings_ = settings;
 }
 
 Compressor::Compressor(std::unique_ptr<IBlockEncoder> encoder,
@@ -580,10 +589,12 @@ bool Compressor::encode_as(const fs::path& input, const fs::path& output, Output
                     std::min<int64_t>(metadata->mtime_ns / 1'000'000'000, 0xFFFFFFFF));
             }
         }
-        return transcode(
-            streams_, "encode", input, output,
-            [&header](std::istream& in, std::ostream& out) -> std::expected<void, Error> {
-            if (auto written = write_gzip(in, out, header); !written)
+        return transcode(streams_, "encode", input, output,
+                         [&](std::istream& in, std::ostream& out) -> std::expected<void, Error> {
+            const auto pool = deflate_pool(settings_.threads);
+            if (auto written = write_gzip(in, out, header, lz77_options_for_level(settings_.level),
+                                          pool.get());
+                !written)
             {
                 return std::unexpected(written.error());
             }
@@ -608,7 +619,9 @@ bool Compressor::encode_as(const fs::path& input, const fs::path& output, Output
             return false;
         }
         return write_output(streams_, output, [&](std::ostream& out) {
-            return write_zip(input, *entries, out);
+            const auto pool = deflate_pool(settings_.threads);
+            return write_zip(input, *entries, out, lz77_options_for_level(settings_.level),
+                             pool.get());
         }, report_failure);
     }
     }

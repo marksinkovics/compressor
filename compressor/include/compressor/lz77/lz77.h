@@ -47,6 +47,9 @@ public:
 
     // Appends input. Positions are counted from the first byte ever added.
     void add(std::span<const uint8_t> bytes);
+    // Appends bytes that matches may refer to but that aren't tokenized themselves (a preset
+    // dictionary). Only before anything is tokenized.
+    void prime(std::span<const uint8_t> bytes);
     // Turns everything added so far into tokens, except up to lz77_max_match - 1 bytes kept back
     // for a match that may continue into the next piece, unless `final`.
     void tokenize(std::vector<Lz77Token>& tokens, bool final);

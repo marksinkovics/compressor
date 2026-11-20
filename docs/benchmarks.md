@@ -377,3 +377,16 @@ The search index rewritten to be searched without loading it (section version 2:
 
 - A query costs time in the pattern's length and its matches: a selective pattern is found 12–15× faster than by decoding. Locating a match walks up to 63 rows back (about 0.7 µs each), so above 100 000 matches (counted first, which costs almost nothing) `search` decodes and scans instead, as fast as `grep`. Both give the same offsets: per-file counts equal `grep -o` on Silesia.
 - The index is now larger: the BWT is stored uncompressed (1 byte per byte, plus 1/16 for the rank directories) where version 1 stored it BWT-coded and decoded it per query. Counts per file must be scanned for `e` because the index only knows where matches are, not which file's.
+
+## Multithreaded Deflate (2026-11-20)
+
+`compressor_app encode -f gzip|zip -T <n>` to `/dev/null`, hyperfine, 3 runs after a warm-up, mean wall time. Another project's test suite kept the load average between 40 and 55 on the 14 cores, so absolute times are high and noisy; the speed-ups are the point. `pigz` isn't installed; Apple gzip 479 is the reference.
+
+| Input | `-T 1` | `-T 6` | Speed-up |
+| --- | --- | --- | --- |
+| Silesia joined (212 MB), gzip | 14.8 s | 3.2 s | 4.7× |
+| Silesia folder (12 files), zip | 13.8 s | 3.6 s | 4.1× |
+| 5000 files of 6000 bytes, zip | 1.63 s | 0.82 s | 2.0× |
+
+- Streams are deflated in 256 KiB pieces, each primed with the 32 KiB before it and ending in an empty stored block (zlib's sync flush), so the output is the same for every thread count and 5 bytes per piece larger: 68 152 076 bytes for joined Silesia against `gzip -6`'s 68 227 961 (5.40 s, single-threaded). `gzip -dc` gives back the input.
+- Small files gain less: each file's match finder clears 512 KiB of hash tables, which costs more than deflating 6000 bytes. Sizing the tables by the input would help many small files.

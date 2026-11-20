@@ -15,6 +15,7 @@
 #include <compressor/archive/archive.h>
 #include <compressor/archive/metadata.h>
 #include <compressor/deflate/zip.h>
+#include <compressor/thread/pool.h>
 
 namespace
 {
@@ -155,13 +156,13 @@ protected:
         fs::remove_all(root_, error);
     }
 
-    std::string zip(bool force_zip64 = false) const
+    std::string zip(bool force_zip64 = false, compressor::ThreadPool* pool = nullptr) const
     {
         std::ostringstream warnings;
         const auto entries = compressor::scan_tree(root_, {}, warnings);
         EXPECT_TRUE(entries);
         std::ostringstream out;
-        EXPECT_TRUE(compressor::write_zip(root_, *entries, out, {}, force_zip64));
+        EXPECT_TRUE(compressor::write_zip(root_, *entries, out, {}, pool, force_zip64));
         return out.str();
     }
 
@@ -246,4 +247,28 @@ TEST_F(ZipTests, More_than_65535_entries_take_the_zip64_end_record)
     const auto entries = read_zip(archive);
     EXPECT_EQ(entries.size(), 66'001U);
     EXPECT_EQ(entries.at("d65000/file").contents, "x");
+}
+
+TEST_F(ZipTests, A_thread_pool_gives_the_same_archive)
+{
+    std::string big;
+    for (int i = 0; i < 100'000; ++i)
+    {
+        big += "row " + std::to_string(i * 7919 % 1009) + "\n";
+    }
+    for (int i = 0; i < 300; ++i)
+    {
+        std::ofstream(root_ / ("small" + std::to_string(i) + ".txt"))
+            << std::string(static_cast<std::size_t>(i) * 37, static_cast<char>('a' + (i % 26)));
+        if (i == 150)
+        {
+            std::ofstream(root_ / "docs" / "big.txt") << big;
+        }
+    }
+    const std::string alone = zip();
+    compressor::ThreadPool pool(4);
+    EXPECT_EQ(zip(false, &pool), alone);
+    const auto entries = read_zip(alone);
+    EXPECT_EQ(entries.at("docs/big.txt").contents, big);
+    EXPECT_EQ(entries.at("small299.txt").contents, std::string(std::size_t{299} * 37, 'n'));
 }

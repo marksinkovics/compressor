@@ -66,6 +66,16 @@ void Lz77MatchFinder::add(std::span<const uint8_t> bytes)
     data_.insert(data_.end(), bytes.begin(), bytes.end());
 }
 
+void Lz77MatchFinder::prime(std::span<const uint8_t> bytes)
+{
+    add(bytes);
+    const uint64_t end = base_ + data_.size();
+    for (; position_ < end; ++position_)
+    {
+        insert(position_);
+    }
+}
+
 uint64_t Lz77MatchFinder::position() const
 {
     return position_;
