@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <span>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -15,9 +16,14 @@
 
 #include <compressor/archive/archive.h>
 #include <compressor/archive/metadata.h>
+#include <compressor/bwt/bwt.h>
+#include <compressor/checksum/crc32.h>
+#include <compressor/cm/cm.h>
 #include <compressor/data/data.h>
 #include <compressor/deflate/deflate.h>
 #include <compressor/engine/engine.h>
+#include <compressor/entropy/rans.h>
+#include <compressor/entropy/tans.h>
 #include <compressor/stream/encoder.h>
 
 namespace
@@ -77,7 +83,7 @@ std::string samples(std::size_t count)
     return bytes;
 }
 
-// 16-bit samples taking wide random steps, which get a delta and the rANS coder.
+// 16-bit samples taking wide random steps, which get a delta.
 std::string random_walk(std::size_t count)
 {
     std::string bytes;
@@ -170,6 +176,49 @@ std::string encode(const std::string& input, unsigned level = 6)
     return out.str();
 }
 
+// One pipeline block per 4 KiB of `input`, all with `coder` (no transform), whatever the engine
+// would choose, so every coder's decoder has a seed.
+std::string with_coder(const std::string& input, compressor::Coder coder)
+{
+    std::ostringstream out;
+    compressor::write_frame_header(out, block_size_log2);
+    constexpr std::size_t block = std::size_t{1} << block_size_log2;
+    for (std::size_t at = 0; at < input.size(); at += block)
+    {
+        const std::string_view piece = std::string_view(input).substr(at, block);
+        const std::span<const uint8_t> bytes(reinterpret_cast<const uint8_t*>(piece.data()),
+                                             piece.size());
+        compressor::EncodedBlock encoded;
+        encoded.method_ = compressor::Method::pipeline;
+        encoded.size_ = static_cast<uint32_t>(bytes.size());
+        encoded.crc_ = compressor::crc32(bytes);
+        encoded.payload_ = {0, static_cast<uint8_t>(coder)};
+        std::vector<uint8_t> coded;
+        switch (coder)
+        {
+        case compressor::Coder::bwt:
+            coded = compressor::bwt_encode(bytes);
+            break;
+        case compressor::Coder::rans:
+            compressor::rans_encode(std::vector<uint16_t>(bytes.begin(), bytes.end()), 256, coded);
+            break;
+        case compressor::Coder::tans:
+            compressor::tans_encode(bytes, coded);
+            break;
+        case compressor::Coder::bwt_cm:
+            coded = compressor::bwt_cm_encode(bytes);
+            break;
+        default:
+            std::cerr << "no seed builder for this coder\n";
+            std::exit(1);
+        }
+        encoded.payload_.insert(encoded.payload_.end(), coded.begin(), coded.end());
+        compressor::write_block(out, encoded);
+    }
+    compressor::write_end_block(out, input.size());
+    return out.str();
+}
+
 std::string archive(const fs::path& scratch, bool search_index = false)
 {
     fs::remove_all(scratch);
@@ -246,6 +295,10 @@ try
     write(dir / "container" / "bwt.ingot", encode(words(6000), 8));
     write(dir / "container" / "cm.ingot", encode(words(2000), 9));
     write(dir / "container" / "walk.ingot", encode(random_walk(3000)));
+    write(dir / "container" / "coder3.ingot", with_coder(words(6000), compressor::Coder::bwt));
+    write(dir / "container" / "coder4.ingot", with_coder(text(6000), compressor::Coder::rans));
+    write(dir / "container" / "coder7.ingot", with_coder(words(6000), compressor::Coder::bwt_cm));
+    write(dir / "container" / "coder8.ingot", with_coder(text(6000), compressor::Coder::tans));
     write(dir / "container" / "image.ingot", encode(image(40)));
     write(dir / "container" / "records.ingot", encode(records(400), 8));
     write(dir / "inflate" / "text.deflate", deflate_seed(words(5000)));

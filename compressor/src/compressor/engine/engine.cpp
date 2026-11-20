@@ -21,6 +21,7 @@
 #include <compressor/deflate/inflate.h>
 #include <compressor/engine/engine.h>
 #include <compressor/entropy/rans.h>
+#include <compressor/entropy/tans.h>
 #include <compressor/error.h>
 #include <compressor/huffman/huffman.h>
 #include <compressor/lz77/lz77.h>
@@ -365,6 +366,12 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
             case Coder::cm:
                 coded = cm_encode(input);
                 break;
+            case Coder::bwt_cm:
+                coded = bwt_cm_encode(input);
+                break;
+            case Coder::tans:
+                tans_encode(input, coded);
+                break;
             }
             std::vector<uint8_t> payload{static_cast<uint8_t>(transforms.size())};
             for (const Transform& transform : transforms)
@@ -384,6 +391,7 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
         if (level_ >= bwt_level)
         {
             coders.push_back(Coder::bwt);
+            coders.push_back(Coder::bwt_cm);
             coders.push_back(Coder::lzr);
         }
         const std::vector<Transform> transforms = choose_transforms(bytes, level_ >= auto_level);
@@ -410,11 +418,22 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
                 consider(&transform, coder);
             }
         }
-        // Order-0 rANS only wins on transformed noisy samples (delta'd images), so it is only
-        // tried after a transform.
+        // An order-0 coder only wins on transformed noisy samples (delta'd images), so it is only
+        // tried after a transform. tANS decodes about twice as fast as rANS, so rANS must be more
+        // than 0.5% smaller to be kept.
         for (const Transform& transform : transforms)
         {
-            consider(&transform, Coder::rans);
+            std::vector<uint8_t> order0 = pipeline(std::span(&transform, 1), Coder::tans);
+            std::vector<uint8_t> rans = pipeline(std::span(&transform, 1), Coder::rans);
+            if (rans.size() + (rans.size() / 200) < order0.size())
+            {
+                order0 = std::move(rans);
+            }
+            if (order0.size() < best_pipeline.size())
+            {
+                best_pipeline = std::move(order0);
+                best_transform = &transform;
+            }
         }
         // Context mixing is slow, so only twice.
         if (level_ >= cm_level)
@@ -541,6 +560,14 @@ std::expected<void, Error> Engine::decode_pipeline(const EncodedBlock& block,
     else if (payload[0] == static_cast<uint8_t>(Coder::cm))
     {
         decoded = cm_decode(payload.subspan(1), out, block.size_);
+    }
+    else if (payload[0] == static_cast<uint8_t>(Coder::bwt_cm))
+    {
+        decoded = bwt_cm_decode(payload.subspan(1), out, block.size_);
+    }
+    else if (payload[0] == static_cast<uint8_t>(Coder::tans))
+    {
+        decoded = tans_decode(payload.subspan(1), block.size_, out);
     }
     else if (payload[0] == static_cast<uint8_t>(Coder::rans))
     {

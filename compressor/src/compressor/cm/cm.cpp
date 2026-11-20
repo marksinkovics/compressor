@@ -9,6 +9,7 @@
 #include <span>
 #include <vector>
 
+#include <compressor/bwt/bwt.h>
 #include <compressor/error.h>
 
 namespace compressor
@@ -75,11 +76,12 @@ int stretch(int p)
     return tables().stretch[static_cast<std::size_t>(p)];
 }
 
-// v >> shift for a negative v too (rounding down).
+// v >> shift for a negative v too (rounding down), for |v| < 2^62. Without a branch: the sign
+// of v is unpredictable and a branch on it cost most of the coders' time.
 int64_t floor_shift(int64_t v, unsigned shift)
 {
-    const auto divisor = static_cast<int64_t>(uint64_t{1} << shift);
-    return v >= 0 ? v / divisor : -((-v + divisor - 1) / divisor);
+    constexpr uint64_t bias = uint64_t{1} << 62U;
+    return static_cast<int64_t>(((static_cast<uint64_t>(v) + bias) >> shift) - (bias >> shift));
 }
 
 // An adaptive probability: 22 bits of it and a 10-bit count of updates, which sets the rate
@@ -438,13 +440,100 @@ private:
     int mixed_ = 2048;
 };
 
-} // namespace
-
-std::vector<uint8_t> cm_encode(std::span<const uint8_t> bytes, unsigned table_log2)
+// For BWT output: long runs of a byte, and contexts that change slowly. Order 1 at two rates,
+// hashed order 2, and the current run of the previous byte, mixed by weights selected by the run
+// and the partial byte, then refined by an APM over the same.
+class BwtModel
 {
-    table_log2 = std::clamp(table_log2, cm_min_table_log2, cm_max_table_log2);
-    std::vector<uint8_t> out{static_cast<uint8_t>(table_log2)};
-    Model model(bytes, table_log2);
+public:
+    BwtModel()
+        : order1_(std::size_t{65536} * 2, Counter::initial)
+        , order2_(std::size_t{1} << order2_bits, Counter::initial)
+        , run_counters_(std::size_t{64} * 2, Counter::initial)
+        , mixer_(std::size_t{4} * 256, bwt_inputs)
+        , apm_(std::size_t{4} * 256)
+    {
+    }
+
+    int p()
+    {
+        i1_ = ((std::size_t{c1_} << 8U) | partial_) * 2;
+        o2_ = h2_ + partial_;
+        inputs_[0] = stretch(Counter::p(order1_[i1_]));
+        inputs_[1] = stretch(Counter::p(order1_[i1_ + 1]));
+        inputs_[2] = stretch(Counter::p(order2_[o2_]));
+        expected_bit_ = 2;
+        const unsigned expected = unsigned{c1_} | 256U;
+        const unsigned shift = 8 - bit_;
+        if ((expected >> shift) == partial_)
+        {
+            expected_bit_ = (expected >> (shift - 1)) & 1U;
+            run_slot_ = (std::min<std::size_t>(run_, 63) * 2) + expected_bit_;
+            inputs_[3] = stretch(Counter::p(run_counters_[run_slot_]));
+        }
+        else
+        {
+            inputs_[3] = 0;
+        }
+        inputs_[4] = 256;
+        const std::size_t bucket = expected_bit_ == 2 ? 0 : run_ < 4 ? 1 : run_ < 16 ? 2 : 3;
+        const std::size_t set = (bucket << 8U) | partial_;
+        const int mixed = squash(mixer_.mix(inputs_, set));
+        return std::clamp((mixed + apm_.p(mixed, set) + 1) / 2, 1, 4095);
+    }
+
+    void update(unsigned bit)
+    {
+        mixer_.update(inputs_, bit, 2);
+        apm_.update(bit);
+        Counter::update(order1_[i1_], bit, 4);
+        Counter::update(order1_[i1_ + 1], bit, 255);
+        Counter::update(order2_[o2_], bit, 30);
+        if (expected_bit_ < 2)
+        {
+            Counter::update(run_counters_[run_slot_], bit, 255);
+        }
+        partial_ = (partial_ << 1U) | bit;
+        if (++bit_ == 8)
+        {
+            const auto byte = static_cast<uint8_t>(partial_ & 0xFFU);
+            run_ = byte == c1_ ? run_ + 1 : 0;
+            c2_ = c1_;
+            c1_ = byte;
+            h2_ = static_cast<std::size_t>(mix64((uint64_t{c2_} << 8U) | c1_) >>
+                                           (64U - order2_bits)) &
+                  ~std::size_t{0xFF};
+            bit_ = 0;
+            partial_ = 1;
+        }
+    }
+
+private:
+    static constexpr unsigned order2_bits = 20;
+    static constexpr std::size_t bwt_inputs = 5;
+
+    std::vector<uint32_t> order1_; // fast and slow side by side
+    std::vector<uint32_t> order2_;
+    std::vector<uint32_t> run_counters_;
+    Mixer mixer_;
+    Apm apm_;
+    std::array<int, bwt_inputs> inputs_{};
+    uint8_t c1_ = 0;
+    uint8_t c2_ = 0;
+    std::size_t h2_ = 0;
+    std::size_t i1_ = 0;
+    std::size_t o2_ = 0;
+    std::size_t run_ = 0;
+    std::size_t run_slot_ = 0;
+    unsigned expected_bit_ = 2;
+    unsigned partial_ = 1;
+    unsigned bit_ = 0;
+};
+
+// A binary arithmetic coder over a model's 12-bit predictions, most significant bit first.
+template <class Model>
+void encode_bits(Model& model, std::span<const uint8_t> bytes, std::vector<uint8_t>& out)
+{
     uint32_t low = 0;
     uint32_t high = 0xFFFFFFFFU;
     for (const uint8_t byte : bytes)
@@ -477,22 +566,12 @@ std::vector<uint8_t> cm_encode(std::span<const uint8_t> bytes, unsigned table_lo
         out.push_back(static_cast<uint8_t>(low >> 24U));
         low <<= 8U;
     }
-    return out;
 }
 
-std::expected<void, Error> cm_decode(std::span<const uint8_t> payload, std::vector<uint8_t>& out,
-                                     std::size_t size)
+// Fills `decoded`; false when the stream ends early or leaves bytes over.
+template <class Model>
+bool decode_bits(Model& model, std::span<const uint8_t> coded, std::span<uint8_t> decoded)
 {
-    if (payload.empty() || payload[0] < cm_min_table_log2 || payload[0] > cm_max_table_log2)
-    {
-        return std::unexpected(Error::corrupt_payload);
-    }
-    const unsigned table_log2 = payload[0];
-    const std::span<const uint8_t> coded = payload.subspan(1);
-    const std::size_t base = out.size();
-    out.resize(base + size);
-    const std::span<uint8_t> decoded(out.data() + base, size);
-    Model model(decoded, table_log2);
     uint32_t low = 0;
     uint32_t high = 0xFFFFFFFFU;
     uint32_t x = 0;
@@ -538,16 +617,75 @@ std::expected<void, Error> cm_decode(std::span<const uint8_t> payload, std::vect
         }
         if (next > coded.size())
         {
-            out.resize(base);
-            return std::unexpected(Error::corrupt_payload);
+            return false;
         }
     }
-    if (next != coded.size())
+    return next == coded.size();
+}
+
+} // namespace
+
+std::vector<uint8_t> cm_encode(std::span<const uint8_t> bytes, unsigned table_log2)
+{
+    table_log2 = std::clamp(table_log2, cm_min_table_log2, cm_max_table_log2);
+    std::vector<uint8_t> out{static_cast<uint8_t>(table_log2)};
+    Model model(bytes, table_log2);
+    encode_bits(model, bytes, out);
+    return out;
+}
+
+std::expected<void, Error> cm_decode(std::span<const uint8_t> payload, std::vector<uint8_t>& out,
+                                     std::size_t size)
+{
+    if (payload.empty() || payload[0] < cm_min_table_log2 || payload[0] > cm_max_table_log2)
+    {
+        return std::unexpected(Error::corrupt_payload);
+    }
+    const std::size_t base = out.size();
+    out.resize(base + size);
+    const std::span<uint8_t> decoded(out.data() + base, size);
+    Model model(decoded, payload[0]);
+    if (!decode_bits(model, payload.subspan(1), decoded))
     {
         out.resize(base);
         return std::unexpected(Error::corrupt_payload);
     }
     return {};
+}
+
+std::vector<uint8_t> bwt_cm_encode(std::span<const uint8_t> bytes)
+{
+    std::vector<uint8_t> transformed;
+    const uint32_t primary = forward_bwt(bytes, transformed);
+    std::vector<uint8_t> out;
+    for (unsigned shift = 0; shift < 32; shift += 8)
+    {
+        out.push_back(static_cast<uint8_t>(primary >> shift));
+    }
+    BwtModel model;
+    encode_bits(model, transformed, out);
+    return out;
+}
+
+std::expected<void, Error> bwt_cm_decode(std::span<const uint8_t> payload,
+                                         std::vector<uint8_t>& out, std::size_t size)
+{
+    if (payload.size() < 4)
+    {
+        return std::unexpected(Error::corrupt_payload);
+    }
+    uint32_t primary = 0;
+    for (unsigned i = 0; i < 4; ++i)
+    {
+        primary |= uint32_t{payload[i]} << (8 * i);
+    }
+    std::vector<uint8_t> transformed(size);
+    BwtModel model;
+    if (!decode_bits(model, payload.subspan(4), transformed))
+    {
+        return std::unexpected(Error::corrupt_payload);
+    }
+    return inverse_bwt(transformed, primary, out);
 }
 
 } // namespace compressor

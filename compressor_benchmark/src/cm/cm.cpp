@@ -72,6 +72,53 @@ void cm_against_others(::benchmark::State& state, const fs::path& path)
     state.counters["lzr"] = static_cast<double>(lzr);
 }
 
+// Per 1 MiB block: the BWT + CM coder's size and time against the BWT coder's size, decoded back.
+void bwt_cm_against_bwt(::benchmark::State& state, const fs::path& path, bool decode)
+{
+    const std::vector<uint8_t> data = read_file(path);
+    constexpr std::size_t block = std::size_t{1} << 20U;
+    std::vector<std::vector<uint8_t>> coded;
+    std::size_t bwt = 0;
+    for (std::size_t at = 0; at < data.size(); at += block)
+    {
+        const std::span<const uint8_t> input(data.data() + at, std::min(data.size() - at, block));
+        coded.push_back(bwt_cm_encode(input));
+        bwt += bwt_encode(input).size();
+        std::vector<uint8_t> decoded;
+        if (!bwt_cm_decode(coded.back(), decoded, input.size()) ||
+            !std::ranges::equal(decoded, input))
+        {
+            state.SkipWithError("BWT + CM did not decode to the input");
+            return;
+        }
+    }
+    for (auto _ : state)
+    {
+        for (std::size_t i = 0; i < coded.size(); ++i)
+        {
+            const std::span<const uint8_t> input(data.data() + (i * block),
+                                                 std::min(data.size() - (i * block), block));
+            if (decode)
+            {
+                std::vector<uint8_t> decoded;
+                ::benchmark::DoNotOptimize(bwt_cm_decode(coded[i], decoded, input.size()));
+            }
+            else
+            {
+                ::benchmark::DoNotOptimize(bwt_cm_encode(input));
+            }
+        }
+    }
+    std::size_t size = 0;
+    for (const auto& c : coded)
+    {
+        size += c.size();
+    }
+    state.SetBytesProcessed(state.iterations() * static_cast<int64_t>(data.size()));
+    state.counters["bwt_cm"] = static_cast<double>(size);
+    state.counters["bwt"] = static_cast<double>(bwt);
+}
+
 } // namespace
 
 void register_cm_benchmarks()
@@ -90,6 +137,14 @@ void register_cm_benchmarks()
                                        path)
             ->Unit(::benchmark::kMillisecond)
             ->Iterations(1);
+        for (const bool decode : {false, true})
+        {
+            ::benchmark::RegisterBenchmark(std::string("BwtCm/") +
+                                               (decode ? "decode/" : "encode/") + name,
+                                           bwt_cm_against_bwt, path, decode)
+                ->Unit(::benchmark::kMillisecond)
+                ->Iterations(1);
+        }
     }
 }
 

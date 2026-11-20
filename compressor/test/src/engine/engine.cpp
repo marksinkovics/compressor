@@ -11,9 +11,11 @@
 
 #include <gtest/gtest.h>
 
+#include <compressor/bwt/bwt.h>
 #include <compressor/checksum/crc32.h>
 #include <compressor/data/data.h>
 #include <compressor/engine/engine.h>
+#include <compressor/entropy/rans.h>
 #include <compressor/error.h>
 #include <compressor/transform/transform.h>
 
@@ -628,14 +630,29 @@ std::string bwt_words()
 
 } // namespace
 
-TEST_F(EngineTests, At_level_8_text_can_take_the_bwt_coder)
+TEST_F(EngineTests, At_level_8_text_takes_the_bwt_cm_coder)
 {
     const std::string text = bwt_words();
     compressor::Engine engine(compressor::default_block_size_log2, compressor::bwt_level);
     const compressor::EncodedBlock block = engine.encode_block(bytes(text));
     ASSERT_EQ(block.method_, compressor::Method::pipeline);
     EXPECT_EQ(block.payload_[(block.payload_[0] * 5) + 1],
-              static_cast<uint8_t>(compressor::Coder::bwt));
+              static_cast<uint8_t>(compressor::Coder::bwt_cm));
+    EXPECT_EQ(decode_block(engine, block), decoded(text));
+}
+
+TEST_F(EngineTests, A_bwt_coder_block_still_decodes)
+{
+    // Level 8 wrote coder 3 before coder 7 replaced it on text.
+    const std::string text = bwt_words();
+    compressor::EncodedBlock block;
+    block.method_ = compressor::Method::pipeline;
+    block.size_ = static_cast<uint32_t>(text.size());
+    block.crc_ = compressor::crc32(bytes(text));
+    block.payload_ = {0, static_cast<uint8_t>(compressor::Coder::bwt)};
+    const std::vector<uint8_t> coded = compressor::bwt_encode(bytes(text));
+    block.payload_.insert(block.payload_.end(), coded.begin(), coded.end());
+    compressor::Engine engine(compressor::default_block_size_log2, 1);
     EXPECT_EQ(decode_block(engine, block), decoded(text));
 }
 
@@ -654,7 +671,7 @@ TEST_F(EngineTests, At_level_9_text_takes_the_context_mixing_coder)
     EXPECT_EQ(decode_block(engine, damaged), std::unexpected(compressor::Error::corrupt_payload));
 }
 
-TEST_F(EngineTests, Noisy_samples_take_a_delta_and_the_rans_coder)
+TEST_F(EngineTests, Noisy_samples_take_a_delta_and_the_tans_coder)
 {
     // A random walk with wide steps: after a delta, noise that LZ77 can't match.
     std::string samples;
@@ -671,15 +688,27 @@ TEST_F(EngineTests, Noisy_samples_take_a_delta_and_the_rans_coder)
     const compressor::EncodedBlock block = engine.encode_block(bytes(samples));
     ASSERT_EQ(block.method_, compressor::Method::pipeline);
     ASSERT_EQ(block.payload_[0], 1);
-    EXPECT_EQ(block.payload_[6], static_cast<uint8_t>(compressor::Coder::rans));
+    EXPECT_EQ(block.payload_[6], static_cast<uint8_t>(compressor::Coder::tans));
     EXPECT_EQ(decode_block(engine, block), decoded(samples));
 
-    // Level 9 tries context mixing after the same transform, and wins with it.
+    // rANS codes the same within 0.5%, and blocks written with it before tANS still decode.
+    compressor::EncodedBlock rans = block;
+    rans.payload_.resize(6);
+    rans.payload_.push_back(static_cast<uint8_t>(compressor::Coder::rans));
+    std::vector<uint8_t> delta(samples.begin(), samples.end());
+    compressor::apply_transform({.id = compressor::TransformId::delta, .parameter = 2}, delta);
+    ASSERT_EQ(block.payload_[1], static_cast<uint8_t>(compressor::TransformId::delta));
+    ASSERT_EQ(block.payload_[2], 2);
+    compressor::rans_encode(std::vector<uint16_t>(delta.begin(), delta.end()), 256, rans.payload_);
+    EXPECT_LT(block.payload_.size(), rans.payload_.size() + (rans.payload_.size() / 200));
+    EXPECT_EQ(decode_block(engine, rans), decoded(samples));
+
+    // Levels 8 and 9 try the context models after the same transform, and win with BWT + CM.
     compressor::Engine best(compressor::default_block_size_log2, compressor::cm_level);
     const compressor::EncodedBlock mixed = best.encode_block(bytes(samples));
     ASSERT_EQ(mixed.method_, compressor::Method::pipeline);
     ASSERT_EQ(mixed.payload_[0], 1);
-    EXPECT_EQ(mixed.payload_[6], static_cast<uint8_t>(compressor::Coder::cm));
+    EXPECT_EQ(mixed.payload_[6], static_cast<uint8_t>(compressor::Coder::bwt_cm));
     EXPECT_LT(mixed.payload_.size(), block.payload_.size());
     EXPECT_EQ(decode_block(best, mixed), decoded(samples));
 }

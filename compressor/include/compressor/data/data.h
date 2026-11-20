@@ -62,6 +62,8 @@ enum class Coder : uint8_t
     rans = 4,         // order-0 rANS of the transformed bytes (rans_encode())
     lzr = 5,          // LZ77 over the block with LZMA's range-coded model (lzr_encode())
     cm = 6,           // context mixing (cm_encode())
+    bwt_cm = 7,       // BWT, then a context model for its output (bwt_cm_encode())
+    tans = 8,         // order-0 tANS of the transformed bytes (tans_encode())
 };
 inline constexpr std::size_t pipeline_descriptor_bytes = 2; // with no transforms
 inline constexpr std::size_t pipeline_transform_bytes = 5;  // id, then a 4-byte parameter

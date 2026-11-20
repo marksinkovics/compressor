@@ -129,3 +129,69 @@ TEST(CmTests, Damaged_payloads_fail)
               compressor::Error::corrupt_payload);
     EXPECT_TRUE(out.empty());
 }
+
+namespace
+{
+
+Bytes bwt_cm_round_trip(const Bytes& input)
+{
+    const Bytes coded = compressor::bwt_cm_encode(input);
+    Bytes decoded;
+    EXPECT_TRUE(compressor::bwt_cm_decode(coded, decoded, input.size()));
+    return decoded;
+}
+
+} // namespace
+
+TEST(BwtCmTests, Small_inputs_decode_back)
+{
+    for (const std::string_view input : {"", "a", "ab", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                                         "abcabcabcabcabcabcabcabcabc", "\xff\x00\xff"})
+    {
+        const Bytes bytes(input.begin(), input.end());
+        EXPECT_EQ(bwt_cm_round_trip(bytes), bytes) << input;
+    }
+}
+
+TEST(BwtCmTests, Text_beats_the_bwt_coder)
+{
+    const Bytes input = text(300'000);
+    EXPECT_LT(compressor::bwt_cm_encode(input).size(), compressor::bwt_encode(input).size());
+    EXPECT_EQ(bwt_cm_round_trip(input), input);
+}
+
+TEST(BwtCmTests, Noise_grows_only_slightly)
+{
+    const Bytes input = noise(100'000, 2);
+    EXPECT_LT(compressor::bwt_cm_encode(input).size(), input.size() + (input.size() / 100));
+    EXPECT_EQ(bwt_cm_round_trip(input), input);
+}
+
+TEST(BwtCmTests, Decoding_appends_to_what_is_there)
+{
+    const Bytes input = text(5000);
+    Bytes out{1, 2, 3};
+    ASSERT_TRUE(compressor::bwt_cm_decode(compressor::bwt_cm_encode(input), out, input.size()));
+    EXPECT_EQ(Bytes(out.begin(), out.begin() + 3), Bytes({1, 2, 3}));
+    EXPECT_EQ(Bytes(out.begin() + 3, out.end()), input);
+}
+
+TEST(BwtCmTests, Damaged_payloads_fail)
+{
+    const Bytes input = text(20'000);
+    const Bytes coded = compressor::bwt_cm_encode(input);
+    Bytes out;
+    EXPECT_EQ(compressor::bwt_cm_decode({}, out, 1).error(), compressor::Error::corrupt_payload);
+    Bytes bad_primary = coded;
+    bad_primary[3] = 0x7F;
+    EXPECT_EQ(compressor::bwt_cm_decode(bad_primary, out, input.size()).error(),
+              compressor::Error::corrupt_payload);
+    const Bytes short_payload(coded.begin(), coded.end() - 10);
+    EXPECT_EQ(compressor::bwt_cm_decode(short_payload, out, input.size()).error(),
+              compressor::Error::corrupt_payload);
+    Bytes long_payload = coded;
+    long_payload.push_back(0);
+    EXPECT_EQ(compressor::bwt_cm_decode(long_payload, out, input.size()).error(),
+              compressor::Error::corrupt_payload);
+    EXPECT_TRUE(out.empty());
+}

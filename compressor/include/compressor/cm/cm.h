@@ -27,6 +27,15 @@ std::vector<uint8_t> cm_encode(std::span<const uint8_t> bytes,
 std::expected<void, Error> cm_decode(std::span<const uint8_t> payload, std::vector<uint8_t>& out,
                                      std::size_t size);
 
+// BWT, then a context model made for its output (orders 0-2 and the run of the previous byte,
+// mixed and refined by APMs) with the same arithmetic coder, in the style of bcm. A pipeline
+// coder (docs/file_format.md, "BWT + CM"): the primary index (4 bytes, little-endian), then the
+// coded transform.
+std::vector<uint8_t> bwt_cm_encode(std::span<const uint8_t> bytes);
+// Appends exactly `size` bytes; corrupt_payload on anything malformed.
+std::expected<void, Error> bwt_cm_decode(std::span<const uint8_t> payload,
+                                         std::vector<uint8_t>& out, std::size_t size);
+
 } // namespace compressor
 
 #endif /* Cm_h */

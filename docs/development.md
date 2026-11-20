@@ -88,7 +88,7 @@ container run --rm -v "$PWD":/src -w /src docker.io/library/gcc:14 \
 - In normal builds each target links `fuzz/src/replay_main.cpp` instead and replays its corpus in `fuzz/corpus/<target>/` once (`FuzzCorpus.*` tests). A crashing input found by fuzzing goes into that directory with the fix, so it stays a regression test.
 - `cmake --workflow --preset fuzz` builds with libFuzzer and ASan and runs every test, plus 50 000 runs per target (`Fuzz.*`). New corpus entries go to `build/fuzz/fuzz/corpus/<target>/`.
 - A longer run: `build/fuzz/fuzz/fuzz_archive -max_total_time=600 -max_len=65536 -artifact_prefix=build/fuzz/artifacts/archive- build/fuzz/fuzz/corpus/archive fuzz/corpus/archive`.
-- `fuzz_make_seeds <dir>` regenerates the seeds (4 KiB blocks, fixed times, so the output is the same every run): `build/debug/fuzz/fuzz_make_seeds fuzz/corpus`.
+- `fuzz_make_seeds <dir>` regenerates the seeds (4 KiB blocks, fixed times, so the output is the same every run): `build/debug/fuzz/fuzz_make_seeds fuzz/corpus`. Besides what the engine chooses, it writes one container per coder that the engine rarely picks on small inputs (`container/coder<N>.ingot`), built block by block with that coder.
 
 Tests for known bugs are added with a `DISABLED_` prefix until the fix lands. Run one with `--gtest_also_run_disabled_tests --gtest_filter=<Suite>.DISABLED_<name>`; some of them crash or hang before their fix, so run them one at a time.
 

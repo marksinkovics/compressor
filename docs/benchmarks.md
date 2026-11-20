@@ -470,3 +470,41 @@ Then `ingot encode -L 9 -T 6` per file, `decode -T 6`, every output compared wit
 - Level 9 has the best ratio on all three sets (2.3% below `xz -9` on Silesia, 12% on Canterbury, 27% on the images, where the median predictor and CM work), but decodes at 6–12 MB/s against xz's 100+: the price of context mixing.
 - Canterbury is 3 blocks, so only 3 threads work: level 9 encodes it at 2.1 MB/s.
 - The harness found level 9 spending 17 s per MiB of a photo in LZR's match search (4096-entry chains over a 1 MiB window); LZR now searches like level 7 at every level (4593a2a): a 4 MiB photo encodes 3× faster with the same output, Silesia per file at level 9 in 61 instead of 127 s with the same size.
+
+## Entropy coders: BWT + CM and tANS (2026-11-20)
+
+Autonomous run 3, item 3. Two coders, both measured per 1 MiB block (`compressor_benchmark`'s `BwtCm/*` and `Order0/*`) and end to end; the machine was busy with other work throughout, so times are user CPU seconds or relative.
+
+**BWT + CM (coder 7)**, the bcm approach: the BWT's output coded bit by bit with order 1 at two rates, hashed order 2, a run model, one mixer and one APM. Against the BWT coder (BWT, move-to-front, zero runs, rANS) it is 8–18% smaller on every Silesia file (dickens −9.8%, ooffice −9.3%, osdb −16.1%, samba −9.9%, sao −11.2%, x-ray −18.3%, xml −8.1%), and codes and decodes at about 3.5 MiB/s per thread. Tuning, per 1 MiB block on seven Silesia files:
+
+| Variant | Size | Decode (dickens) |
+| --- | ---: | ---: |
+| orders 0, 1 (two rates), 2, run model, two APMs | 21,165,614 | 3.50 MiB/s |
+| without the APMs | 21,334,658 | 4.57 MiB/s |
+| without the APMs and order 0 | 21,337,038 | 4.82 MiB/s |
+| fixed-rate 16-bit counters instead of adaptive ones | 21,378,787 | 4.74 MiB/s |
+| one APM by order 1 | 21,187,783 | 3.62 MiB/s |
+| one APM by run bucket and partial byte (kept) | 21,114,828 | 3.53 MiB/s |
+
+Order 2 in 2^20 instead of 2^22 counters costs 0.07%; a branch-free `floor_shift` changed nothing (the compiler had already removed the branch). The time goes to the per-bit dependency chain (counter, stretch, mix, squash, coder, then the next bit's context), not to memory.
+
+It competes from level 8. Whole corpora as one tar, 6 threads, against level 8 before:
+
+| Level 8 | Silesia | Canterbury | Images |
+| --- | ---: | ---: | ---: |
+| before | 54,084,293 | 561,904 | 8,378,016 |
+| with BWT + CM | 50,329,601 (−6.9%) | 470,053 (−16.3%) | 7,332,638 (−12.5%) |
+
+On Silesia, encoding took 309 instead of 202 CPU seconds and decoding 50.5 instead of 4.6: level 8 now decodes at about 4 MB/s per thread instead of 45. The level before was already larger and slower to decode than `xz -6` (49.5 MB at 500 MB/s on 6 threads), so level 8 is now a step between it and level 9 (CM, 47.7 MB) rather than a fast-decoding level. If decode speed at level 8 matters more, coder 7 can move to level 9 only (one line in `Engine::encode_block`). At level 9 it wins only some blocks (noisy samples after a delta); alice29 and kennedy.xls come out byte-identical.
+
+**tANS (coder 8)**, order 0, 2^11 states, two interleaved states, against order-0 rANS (2^15) per 1 MiB block:
+
+| File | rANS size | tANS size | rANS decode | tANS decode |
+| --- | ---: | ---: | ---: | ---: |
+| dickens | 5,766,440 | 5,786,270 (+0.34%) | 162 MiB/s | 389 MiB/s |
+| x-ray + delta | 4,961,920 | 4,989,110 (+0.55%) | 160 MiB/s | 258 MiB/s |
+| mr + delta | 7,374,260 | 7,381,450 (+0.10%) | 170 MiB/s | 386 MiB/s |
+| sao + delta | 7,141,430 | 7,142,770 (+0.02%) | 184 MiB/s | 261 MiB/s |
+| ooffice | 4,996,090 | 5,000,690 (+0.09%) | 152 MiB/s | 394 MiB/s |
+
+(Measured under heavy load from other work; the ratios held across runs.) Encoding is 10–20% faster too. tANS loses precision on very skewed bytes (2.3% at p = 0.99, `TansTests`). The engine tries both wherever it tried rANS (after a transform) and keeps rANS only when it is more than 0.5% smaller. Not done: tANS as the BWT coder's last stage (a new coder id for a few percent of decode speed of a coder that BWT + CM now mostly replaces), and LZ77 + tANS in the style of zstd.
