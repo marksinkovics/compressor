@@ -431,3 +431,12 @@ Decisions taken for the pipeline (Claude's defaults, accepted): each block recor
 - [x] 12. (done) Transforms for data types: corpus (PPM/BMP, WAV, CSV/logs), delta with strides 1/2/4, PNG row filters, an x86/ARM branch filter; detection from known headers, else trying strides on a sample; benchmarked per type.
 - [x] 13. (done: BWT, rANS, LZR as coders; context mixing as an experiment that wins only on x-ray; Zstd-style tANS and PPM not done, see "Algorithms") Advanced algorithms, each a pipeline: tANS/rANS, adaptive arithmetic coding, BWT + MTF + RLE, Zstd-style LZ77 + tANS, LZMA-style LZ77 + context-modelled range coder, then PPM and context mixing as experiments.
 - [x] 14. (done; exact but slower than grep, see the roadmap follow-up) FM-index on the BWT from item 13, stored as its own archive section, with a search command using it.
+
+### Autonomous run 2 (agreed 2026-11-20)
+
+Same rules as the first run, on the same branch: one or more commits per item after the full `tools/quality.sh check`, the full test suite and `finish-step`; never pushed, no co-author line; builds with `-j6` and `ctest -j4`, one fuzzer at a time. A blocked item gets a note in `docs/handover.md` and the run moves on.
+
+- [ ] 1. Multithreaded Deflate: `-f gzip` and `-f zip` use `-T`. Pieces deflated in parallel, each primed with the previous 32 KiB and ending in a sync flush (pigz-style), CRCs combined; the output doesn't depend on the thread count. Checked with zlib; benchmarked against `pigz` if installed, else `gzip`.
+- [ ] 2. Context-mixing coder with a match model, as coder 6 at level 9: order-1–4 contexts plus a match model, mixed by a small neural mixer with an APM. Kept only if it beats level 8 clearly on Silesia at a usable speed (about 1 MB/s or more); otherwise recorded in `docs/benchmarks.md` and removed.
+- [ ] 3. Compressed-domain prefilter for `grep` ("Search inside compressed data"): skip Huffman blocks without BitScan candidates, with what the exact output needs (newline counts, block boundaries).
+- [ ] 4. 2-D image filters (PNG's Average and Paeth) with the row width found by sampling, as transforms; kept only if they win on the image corpus.
