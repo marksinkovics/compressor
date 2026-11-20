@@ -1,0 +1,90 @@
+{
+ "context": {
+  "date": "2026-11-20T01:03:37-05:00",
+  "host_name": "atakama-002",
+  "executable": "./build/release/compressor_benchmark/compressor_benchmark",
+  "num_cpus": 14,
+  "mhz_per_cpu": 24,
+  "cpu_scaling_enabled": false,
+  "caches": [
+   {
+    "type": "Data",
+    "level": 1,
+    "size": 65536,
+    "num_sharing": 0
+   },
+   {
+    "type": "Instruction",
+    "level": 1,
+    "size": 131072,
+    "num_sharing": 0
+   },
+   {
+    "type": "Unified",
+    "level": 2,
+    "size": 4194304,
+    "num_sharing": 1
+   }
+  ],
+  "load_avg": [
+   33.6904,
+   51.77,
+   41.3467
+  ],
+  "library_version": "v1.9.5",
+  "library_build_type": "release",
+  "json_schema_version": 1
+ },
+ "before": [
+  {
+   "name": "Crc32/Dispatched/1048576_median",
+   "real_time": 110138.44875030339,
+   "time_unit": "ns",
+   "bytes_per_second": 9551620964.877901
+  },
+  {
+   "name": "Crc32/Portable/1048576_median",
+   "real_time": 475284.0732945168,
+   "time_unit": "ns",
+   "bytes_per_second": 2212926605.374383
+  },
+  {
+   "name": "Crc32/Dispatched/100003_median",
+   "real_time": 10615.954834155249,
+   "time_unit": "ns",
+   "bytes_per_second": 9522530081.999674
+  },
+  {
+   "name": "Crc32/Portable/100003_median",
+   "real_time": 44692.37245684418,
+   "time_unit": "ns",
+   "bytes_per_second": 2251793007.7998977
+  }
+ ],
+ "after": [
+  {
+   "name": "Crc32/Dispatched/1048576_median",
+   "real_time": 41615.6153057652,
+   "time_unit": "ns",
+   "bytes_per_second": 25282845002.299816
+  },
+  {
+   "name": "Crc32/Portable/1048576_median",
+   "real_time": 468399.07757982344,
+   "time_unit": "ns",
+   "bytes_per_second": 2247500712.330632
+  },
+  {
+   "name": "Crc32/Dispatched/100003_median",
+   "real_time": 4025.093896904026,
+   "time_unit": "ns",
+   "bytes_per_second": 24925521852.143185
+  },
+  {
+   "name": "Crc32/Portable/100003_median",
+   "real_time": 44790.91402207203,
+   "time_unit": "ns",
+   "bytes_per_second": 2240255034.2383986
+  }
+ ]
+}

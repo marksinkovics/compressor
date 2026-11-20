@@ -208,3 +208,14 @@ After container step 2 ([roadmap.md](roadmap.md#container-format-and-streaming))
 
 - Scanning the compressed bits finds candidates about 4× faster than decoding finds matches (about 1 GB/s of original data against 0.25 GB/s per core). From about 8 characters on there were no false candidates; for `the`, 10% start inside a code.
 - BitScan is only a filter: a candidate is a match only if it starts on a code boundary, which takes decoding to know. Its use would be skipping the blocks that have no candidates. Exact `grep` output can't skip them yet: line numbers need each skipped block's newline count (in the compressed bits those are candidates too), a match across a block boundary spans two code tables, and `-c` must know whether matches in different blocks share a line. See the roadmap item "Compressed-domain prefilter".
+
+## Interleaved ARM CRC32 (2026-11-20)
+
+`compressor_benchmark --benchmark_filter=Crc32/`, 5 repetitions, medians, on random bytes; same loaded machine. Results in `docs/benchmarks/crc32-chains.json`.
+
+| Size | One `crc32x` chain | Three chains | Portable (slicing-by-8) |
+| --- | --- | --- | --- |
+| 1 MiB | 8.9 GB/s | 23.5 GB/s | 2.1 GB/s |
+| 100 003 bytes | 8.9 GB/s | 23.2 GB/s | 2.1 GB/s |
+
+- The hardware path now runs three independent chains over consecutive 4 KiB stretches and joins them by multiplying by x^(8·4096) mod P (zlib's `multmodp`, a constant computed at compile time), about 64 cycles per 12 KiB, so no PMULL is needed. 2.6×, as `crc32x`'s 3-cycle latency predicts. The x86 PCLMUL path is unchanged.

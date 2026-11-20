@@ -71,6 +71,39 @@ constexpr Tables make_tables()
 
 constexpr Tables tables = make_tables();
 
+constexpr uint32_t reflected_polynomial = 0xEDB88320U;
+
+// a * b mod P, polynomials in the reflected order the CRC uses (zlib's multmodp).
+constexpr uint32_t multiply_mod_p(uint32_t a, uint32_t b)
+{
+    uint32_t product = 0;
+    for (uint32_t bit = 1U << 31U; bit != 0; bit >>= 1U)
+    {
+        if ((a & bit) != 0)
+        {
+            product ^= b;
+        }
+        b = (b & 1U) != 0 ? (b >> 1U) ^ reflected_polynomial : b >> 1U;
+    }
+    return product;
+}
+
+// x^(8 * bytes) mod P: multiplying a CRC register by it is the same as feeding it `bytes` zeros.
+constexpr uint32_t shift_by_bytes(uint64_t bytes)
+{
+    uint32_t result = 1U << 31U; // x^0
+    uint32_t power = 1U << 30U;  // x^1, squared to x^2, x^4, ...
+    for (uint64_t exponent = bytes * 8; exponent != 0; exponent >>= 1U)
+    {
+        if ((exponent & 1U) != 0)
+        {
+            result = multiply_mod_p(power, result);
+        }
+        power = multiply_mod_p(power, power);
+    }
+    return result;
+}
+
 uint32_t load_le32(std::span<const uint8_t, 4> bytes)
 {
     return static_cast<uint32_t>(bytes[0]) | (static_cast<uint32_t>(bytes[1]) << 8U) |
@@ -114,10 +147,36 @@ bool cpu_has_crc32()
 #endif
 }
 
+uint64_t load_u64(const uint8_t* bytes)
+{
+    uint64_t word = 0;
+    std::memcpy(&word, bytes, sizeof(word));
+    return word;
+}
+
+// crc32d has a latency of about 3 cycles but issues every cycle, so three independent chains over
+// consecutive stretches keep it busy; their registers are then joined as if one ran after another.
+constexpr std::size_t chain_bytes = 4096;
+constexpr uint32_t chain_shift = shift_by_bytes(chain_bytes);
+
 COMPRESSOR_CRC32_TARGET uint32_t crc32_inverted_hardware(std::span<const uint8_t> bytes,
                                                          uint32_t crc)
 {
     static_assert(std::endian::native == std::endian::little);
+    while (bytes.size() >= 3 * chain_bytes)
+    {
+        const uint8_t* first = bytes.data();
+        uint32_t crc1 = 0;
+        uint32_t crc2 = 0;
+        for (std::size_t at = 0; at < chain_bytes; at += 8)
+        {
+            crc = __crc32d(crc, load_u64(first + at));
+            crc1 = __crc32d(crc1, load_u64(first + chain_bytes + at));
+            crc2 = __crc32d(crc2, load_u64(first + (2 * chain_bytes) + at));
+        }
+        crc = multiply_mod_p(chain_shift, multiply_mod_p(chain_shift, crc) ^ crc1) ^ crc2;
+        bytes = bytes.subspan(3 * chain_bytes);
+    }
     while (bytes.size() >= 8)
     {
         uint64_t word = 0;

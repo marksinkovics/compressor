@@ -71,6 +71,24 @@ TEST(Crc32Tests, Matches_zlib_on_unaligned_input)
     }
 }
 
+TEST(Crc32Tests, Matches_zlib_around_the_interleaved_stretches)
+{
+    // The ARM path runs three chains over 3 x 4096 bytes at a time.
+    const std::vector<uint8_t> bytes = pseudo_random((3 * 3 * 4096) + 64);
+    for (const std::size_t offset : {0UZ, 1UZ, 5UZ})
+    {
+        for (const std::size_t length :
+             {12'287UZ, 12'288UZ, 12'289UZ, 12'296UZ, 24'576UZ, 24'583UZ, 36'863UZ})
+        {
+            const auto part = std::span(bytes).subspan(offset, length);
+            EXPECT_EQ(compressor::crc32(part), zlib_crc32(part)) << offset << ' ' << length;
+            const uint32_t start = compressor::crc32(std::span(bytes).first(3));
+            EXPECT_EQ(compressor::crc32(part, start), compressor::crc32_portable(part, start))
+                << offset << ' ' << length;
+        }
+    }
+}
+
 #if defined(__APPLE__) && defined(__aarch64__)
 TEST(Crc32Tests, Uses_the_hardware_path_on_apple_silicon)
 {
