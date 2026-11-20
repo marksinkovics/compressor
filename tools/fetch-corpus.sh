@@ -2,7 +2,10 @@
 # Download the benchmark corpora into corpus/ (git-ignored).
 #
 #   tools/fetch-corpus.sh            Canterbury and Silesia
-#   tools/fetch-corpus.sh <name>...  only the named ones (canterbury, silesia)
+#   tools/fetch-corpus.sh <name>...  only the named ones (canterbury, silesia, images)
+#
+# images (macOS only) isn't downloaded: sips converts some of the system's desktop pictures and an
+# app icon into uncompressed BMP files, so the bytes depend on the macOS version.
 #
 # A corpus whose directory already exists is skipped; delete the directory to fetch it again.
 
@@ -63,6 +66,30 @@ fetch() {
     printf '%s: %s files in %s\n' "$name" "$(find "$target" -type f | wc -l | tr -d ' ')" "$target"
 }
 
+# Uncompressed images for the 2-D transforms: a photo, a gradient, an abstract picture (24-bit, odd
+# widths so rows are padded) and an icon with alpha.
+make_images() {
+    local target="$CORPUS_DIR/images"
+    if [[ -d "$target" ]]; then
+        printf 'images: already in %s\n' "$target"
+        return
+    fi
+    command -v sips > /dev/null 2>&1 || fail "images: needs macOS's sips"
+    local pictures="/System/Library/Desktop Pictures"
+    local work
+    work="$(mktemp -d "$CORPUS_DIR/.fetch-images.XXXXXX")"
+    # shellcheck disable=SC2064 # expand $work now, while it is set
+    trap "rm -rf '$work'" RETURN EXIT
+    sips -Z 1999 -s format bmp "$pictures/Sonoma.heic" --out "$work/photo.bmp" > /dev/null
+    sips -Z 1501 -s format bmp "$pictures/Radial Sky Blue.heic" --out "$work/gradient.bmp" > /dev/null
+    sips -Z 1777 -s format bmp "$pictures/iMac Blue.heic" --out "$work/abstract.bmp" > /dev/null
+    sips -Z 1024 -s format tiff "/Applications/Safari.app/Contents/Resources/AppIcon.icns" \
+        --out "$work/icon.tiff" > /dev/null
+    mv "$work" "$target"
+    trap - RETURN EXIT
+    printf 'images: %s files in %s\n' "$(find "$target" -type f | wc -l | tr -d ' ')" "$target"
+}
+
 main() {
     local names=("$@")
     [[ ${#names[@]} -gt 0 ]] || names=(canterbury silesia)
@@ -71,7 +98,8 @@ main() {
         case "$name" in
             canterbury) fetch canterbury "$CANTERBURY_URL" "$CANTERBURY_SHA256" ;;
             silesia) fetch silesia "$SILESIA_URL" "$SILESIA_SHA256" ;;
-            *) fail "unknown corpus: $name (known: canterbury, silesia)" ;;
+            images) make_images ;;
+            *) fail "unknown corpus: $name (known: canterbury, silesia, images)" ;;
         esac
     done
 }

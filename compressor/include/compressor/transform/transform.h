@@ -16,6 +16,7 @@ enum class TransformId : uint8_t
     delta = 1,        // each byte minus the one `parameter` bytes before it
     arm64_branch = 3, // BL targets made absolute, so repeated calls to one function match
     x86_branch = 4,   // the same for E8/E9 call and jump targets
+    med = 5,          // each byte minus JPEG-LS's median edge prediction from left, up and up-left
 };
 
 struct Transform
@@ -27,6 +28,10 @@ struct Transform
 };
 
 inline constexpr uint32_t max_delta_stride = 65535;
+// The 2-D predictor's parameter: the row length in bytes in the low 24 bits, the bytes per pixel
+// (the distance to the left neighbour) in the top 8; the row must be longer than a pixel.
+inline constexpr uint32_t max_pixel_bytes = 16;
+uint32_t image_parameter(uint32_t row_bytes, uint32_t pixel_bytes);
 
 // The transform a descriptor names, if it is a known id with a valid parameter.
 std::optional<Transform> parse_transform(uint8_t id, uint32_t parameter);

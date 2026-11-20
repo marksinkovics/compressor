@@ -144,6 +144,7 @@ Tool: [Google benchmark framework](https://github.com/google/benchmark) (vcpkg p
 
 ```bash
 bash tools/fetch-corpus.sh               # once: Canterbury and Silesia into corpus/ (git-ignored)
+bash tools/fetch-corpus.sh images        # macOS only: uncompressed images made with sips
 bash tools/bench.sh --out new.json       # all three sets, about 2 minutes (default: build/release/benchmark.json)
 bash tools/bench.sh --filter 'Engine/.*/canterbury'
 python3 tools/bench-compare.py docs/benchmarks/decode-table.json new.json

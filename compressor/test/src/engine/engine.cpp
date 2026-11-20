@@ -565,13 +565,17 @@ TEST_F(EngineTests, A_pipeline_with_an_unknown_transform_or_coder_is_corrupt)
 
 TEST_F(EngineTests, Sixteen_bit_samples_get_a_delta_transform_and_round_trip)
 {
-    // A slow wave in little-endian 16-bit samples: deltas of stride 2 are small.
+    // A random walk with small steps in little-endian 16-bit samples: deltas of stride 2 are
+    // small, and nothing repeats at a longer distance (as rows of an image would).
     std::string samples;
+    uint32_t state = 7;
+    int32_t value = 30'000;
     for (int i = 0; i < 100'000; ++i)
     {
-        const auto value = static_cast<uint16_t>(30'000 + ((i * 37) % 2000) + ((i / 7) % 13));
-        samples.push_back(static_cast<char>(value & 0xFFU));
-        samples.push_back(static_cast<char>(value >> 8U));
+        state = (state * 1103515245U) + 12345U;
+        value += static_cast<int32_t>((state >> 16U) % 15) - 7;
+        samples.push_back(static_cast<char>(static_cast<uint16_t>(value) & 0xFFU));
+        samples.push_back(static_cast<char>(static_cast<uint16_t>(value) >> 8U));
     }
     for (const unsigned level : {6U, compressor::auto_level})
     {

@@ -93,6 +93,26 @@ std::string random_walk(std::size_t count)
     return bytes;
 }
 
+// A textured RGB image, 90 pixels and 2 bytes of padding a row, which takes the median predictor.
+std::string image(std::size_t height)
+{
+    std::string bytes;
+    uint32_t state = 7;
+    for (std::size_t y = 0; y < height; ++y)
+    {
+        for (std::size_t x = 0; x < 90; ++x)
+        {
+            state = (state * 1103515245U) + 12345U;
+            const auto grain = static_cast<std::size_t>((state >> 16U) % 7);
+            bytes.push_back(static_cast<char>((x * 2) + y + grain));
+            bytes.push_back(static_cast<char>(((x * y) / 32) + grain));
+            bytes.push_back(static_cast<char>(150 - y + grain));
+        }
+        bytes.append(2, '\0');
+    }
+    return bytes;
+}
+
 // Binary records (a counter, a field from a few values, random bytes), which take the LZR coder.
 std::string records(std::size_t count)
 {
@@ -226,6 +246,7 @@ try
     write(dir / "container" / "bwt.ingot", encode(words(6000), 8));
     write(dir / "container" / "cm.ingot", encode(words(2000), 9));
     write(dir / "container" / "walk.ingot", encode(random_walk(3000)));
+    write(dir / "container" / "image.ingot", encode(image(40)));
     write(dir / "container" / "records.ingot", encode(records(400), 8));
     write(dir / "inflate" / "text.deflate", deflate_seed(words(5000)));
     write(dir / "inflate" / "noise.deflate", deflate_seed(noise(700)));

@@ -426,3 +426,20 @@ Then `compressor_app encode -L 9 -T 6` per file, `decode -T 6`, every output com
 
 - Against other tools on the same files: `xz -9` 48 795 480 (level 9 is 2.3% smaller), `bzip2 -9` 54 506 769 (12.6%).
 - Encoding all 12 files took 300 s and decoding 44 s (about 5 MB/s with 6 threads); CM codes about 1–2 MB/s per thread in both directions, so level 9 is for archiving, not for data decoded often.
+
+## Median image predictor (2026-11-20)
+
+`compressor_app encode -L <level> -T 6` before (`old_app`, the CM commit) and after transform 5, the JPEG-LS median predictor with the row length found by sampling; every output decodes to the input. Images from `tools/fetch-corpus.sh images`: `photo.bmp` 1999² 24-bit (Sonoma), `gradient.bmp` 1501² (Radial Sky Blue), `abstract.bmp` 1777² (iMac Blue), `icon.tiff` 1024² RGBA (Safari's icon).
+
+| File | Level 6 | Level 8 | Level 9 |
+| --- | --- | --- | --- |
+| abstract.bmp | 4 756 567 → 3 138 583 (−34.0%) | 3 202 843 → 3 138 293 (−2.0%) | 2 760 146 → 2 754 426 (−0.2%) |
+| gradient.bmp | 2 654 300 → 2 425 921 (−8.6%) | 2 245 058 → 2 239 939 (−0.2%) | 1 959 489 → 1 940 814 (−1.0%) |
+| icon.tiff | 366 421 → 340 104 (−7.2%) | 217 619 → 190 762 (−12.3%) | 216 610 → 182 046 (−16.0%) |
+| photo.bmp | 4 024 560 → 4 018 897 (−0.1%) | unchanged | unchanged |
+| Silesia mr | 3 380 155 → 3 097 741 (−8.4%) | | 2 309 706 → 2 159 861 (−6.5%) |
+| Silesia x-ray | 4 962 127 → 4 970 132 (+0.2%) | | unchanged |
+
+- Per 1 MiB block with each coder, the median predictor beat Paeth on every image by 1–8%, so Paeth was dropped. On the smoothed photo, coding the raw bytes with BWT or CM beats any predictor; there the predictor only helps LZ77.
+- Level 6 on the abstract picture first gained only 0.7%: its bytes look like dense x86 and ARM64 calls, the branch filters came first and level 6 keeps one candidate. A predictor that passes the entropy test now comes before them. `ooffice`, `mozilla`, `osdb` and our arm64 binary came out byte-identical at levels 6 and 9.
+- Cost: the row search and a second coding make level 6 on the photo 0.82 s instead of 0.54 s; Silesia joined is unchanged within noise (2.8 s against 3.3 s, load average 35–60).

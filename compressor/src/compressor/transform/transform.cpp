@@ -5,6 +5,8 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <limits>
 #include <optional>
 #include <span>
 #include <utility>
@@ -75,6 +77,60 @@ void x86_branches(std::span<uint8_t> bytes, bool encode)
     }
 }
 
+uint32_t row_bytes_of(uint32_t parameter)
+{
+    return parameter & 0xFFFFFFU;
+}
+
+uint32_t pixel_bytes_of(uint32_t parameter)
+{
+    return parameter >> 24U;
+}
+
+uint8_t med(uint8_t left, uint8_t up, uint8_t up_left)
+{
+    const auto [low, high] = std::minmax(left, up);
+    if (up_left >= high)
+    {
+        return low;
+    }
+    if (up_left <= low)
+    {
+        return high;
+    }
+    return static_cast<uint8_t>(left + up - up_left);
+}
+
+// The prediction for bytes[at] from the bytes before it; missing neighbours are 0.
+uint8_t predict(std::span<const uint8_t> bytes, std::size_t at, std::size_t row, std::size_t pixel)
+{
+    const uint8_t left = at >= pixel ? bytes[at - pixel] : 0;
+    const uint8_t up = at >= row ? bytes[at - row] : 0;
+    const uint8_t up_left = at >= row + pixel ? bytes[at - row - pixel] : 0;
+    return med(left, up, up_left);
+}
+
+// Back to front, so every prediction still sees the original bytes.
+void apply_image(uint32_t parameter, std::span<uint8_t> bytes)
+{
+    const std::size_t row = row_bytes_of(parameter);
+    const std::size_t pixel = pixel_bytes_of(parameter);
+    for (std::size_t i = bytes.size(); i-- > 0;)
+    {
+        bytes[i] = static_cast<uint8_t>(bytes[i] - predict(bytes, i, row, pixel));
+    }
+}
+
+void undo_image(uint32_t parameter, std::span<uint8_t> bytes)
+{
+    const std::size_t row = row_bytes_of(parameter);
+    const std::size_t pixel = pixel_bytes_of(parameter);
+    for (std::size_t i = 0; i < bytes.size(); ++i)
+    {
+        bytes[i] = static_cast<uint8_t>(bytes[i] + predict(bytes, i, row, pixel));
+    }
+}
+
 double entropy(const std::array<uint32_t, 256>& counts, std::size_t total)
 {
     double bits = 0;
@@ -100,10 +156,61 @@ double delta_entropy(std::span<const uint8_t> sample, uint32_t stride)
     return entropy(counts, sample.size());
 }
 
+double image_entropy(std::span<const uint8_t> sample, uint32_t parameter)
+{
+    std::array<uint32_t, 256> counts{};
+    const std::size_t row = row_bytes_of(parameter);
+    const std::size_t pixel = pixel_bytes_of(parameter);
+    for (std::size_t i = 0; i < sample.size(); ++i)
+    {
+        ++counts[static_cast<uint8_t>(sample[i] - predict(sample, i, row, pixel))];
+    }
+    return entropy(counts, sample.size());
+}
+
+// The distance at which bytes repeat best in the second half of the sample, from 16 bytes to a
+// third of the sample: an image's row length.
+std::size_t find_row_bytes(std::span<const uint8_t> sample)
+{
+    constexpr std::size_t min_row = 16;
+    constexpr std::size_t probes = 1024;
+    const std::size_t max_row = sample.size() / 3;
+    const std::size_t from = sample.size() / 2;
+    const std::size_t step = std::max<std::size_t>(1, (sample.size() - from) / probes);
+    std::size_t best_row = 0;
+    uint64_t best_cost = std::numeric_limits<uint64_t>::max();
+    for (std::size_t row = min_row; row <= max_row; ++row)
+    {
+        uint64_t cost = 0;
+        for (std::size_t at = from; at < sample.size() && cost < best_cost; at += step)
+        {
+            const auto difference = static_cast<uint8_t>(sample[at] - sample[at - row]);
+            cost += std::min<unsigned>(difference, 256U - difference);
+        }
+        if (cost < best_cost)
+        {
+            best_cost = cost;
+            best_row = row;
+        }
+    }
+    return best_row;
+}
+
 } // namespace
+
+uint32_t image_parameter(uint32_t row_bytes, uint32_t pixel_bytes)
+{
+    return (pixel_bytes << 24U) | row_bytes;
+}
 
 std::optional<Transform> parse_transform(uint8_t id, uint32_t parameter)
 {
+    const uint32_t pixel = pixel_bytes_of(parameter);
+    if (id == static_cast<uint8_t>(TransformId::med) && pixel >= 1 && pixel <= max_pixel_bytes &&
+        row_bytes_of(parameter) > pixel)
+    {
+        return Transform{.id = TransformId::med, .parameter = parameter};
+    }
     if (id == static_cast<uint8_t>(TransformId::delta) && parameter >= 1 &&
         parameter <= max_delta_stride)
     {
@@ -135,6 +242,9 @@ void apply_transform(const Transform& transform, std::span<uint8_t> bytes)
     case TransformId::x86_branch:
         x86_branches(bytes, true);
         break;
+    case TransformId::med:
+        apply_image(transform.parameter, bytes);
+        break;
     }
 }
 
@@ -154,6 +264,9 @@ void undo_transform(const Transform& transform, std::span<uint8_t> bytes)
     case TransformId::x86_branch:
         x86_branches(bytes, false);
         break;
+    case TransformId::med:
+        undo_image(transform.parameter, bytes);
+        break;
     }
 }
 
@@ -165,7 +278,7 @@ std::vector<Transform> choose_transforms(std::span<const uint8_t> bytes, bool th
         return {};
     }
     const std::size_t looser = thorough ? 2 : 1;
-    std::vector<Transform> chosen;
+    std::vector<Transform> branches;
 
     // Machine code: BL is about 1 in 15 ARM64 instructions in typical code, E8 about 1 in 100
     // x86 bytes; text and media stay far below either.
@@ -183,11 +296,11 @@ std::vector<Transform> choose_transforms(std::span<const uint8_t> bytes, bool th
     }
     if (calls * 40 * looser > words)
     {
-        chosen.push_back({.id = TransformId::arm64_branch, .parameter = 0});
+        branches.push_back({.id = TransformId::arm64_branch, .parameter = 0});
     }
     if (e8 * 150 * looser > sample.size())
     {
-        chosen.push_back({.id = TransformId::x86_branch, .parameter = 0});
+        branches.push_back({.id = TransformId::x86_branch, .parameter = 0});
     }
 
     std::array<uint32_t, 256> counts{};
@@ -197,19 +310,52 @@ std::vector<Transform> choose_transforms(std::span<const uint8_t> bytes, bool th
     }
     const double raw = entropy(counts, sample.size());
     const double limit = raw * (thorough ? 0.95 : worthwhile_gain);
-    std::vector<std::pair<double, uint32_t>> strides;
+    std::vector<std::pair<double, Transform>> predictors;
     for (const uint32_t stride : candidate_strides)
     {
         const double bits = delta_entropy(sample, stride);
         if (bits < limit)
         {
-            strides.emplace_back(bits, stride);
+            predictors.emplace_back(bits, Transform{.id = TransformId::delta, .parameter = stride});
         }
     }
-    std::ranges::sort(strides);
-    for (const auto& [bits, stride] : strides)
+    const auto by_bits = [](const auto& a, const auto& b) {
+        return a.first < b.first;
+    };
+    std::ranges::stable_sort(predictors, by_bits);
+    // Samples a pixel apart predict each other: perhaps an image, whose rows predict too.
+    if (!predictors.empty() && predictors.front().second.parameter <= max_pixel_bytes)
     {
-        chosen.push_back({.id = TransformId::delta, .parameter = stride});
+        const auto pixel = predictors.front().second.parameter;
+        const std::size_t found = find_row_bytes(sample);
+        // The best distance may be a diagonal neighbour of the row above.
+        std::pair<double, uint32_t> best{predictors.front().first, 0};
+        for (std::size_t row = found > pixel ? found - pixel : 0; found > 0 && row <= found + pixel;
+             ++row)
+        {
+            if (row > pixel)
+            {
+                const uint32_t parameter = image_parameter(static_cast<uint32_t>(row), pixel);
+                best = std::min(best, {image_entropy(sample, parameter), parameter});
+            }
+        }
+        if (best.second != 0)
+        {
+            predictors.emplace_back(best.first,
+                                    Transform{.id = TransformId::med, .parameter = best.second});
+            std::ranges::stable_sort(predictors, by_bits);
+        }
+    }
+    // Images can look like dense calls; a predictor that clearly helps says they are media.
+    const bool media = !predictors.empty() && predictors.front().first < raw * worthwhile_gain;
+    std::vector<Transform> chosen = media ? std::vector<Transform>{} : branches;
+    for (const auto& [bits, transform] : predictors)
+    {
+        chosen.push_back(transform);
+    }
+    if (media)
+    {
+        chosen.insert(chosen.end(), branches.begin(), branches.end());
     }
     if (!thorough && chosen.size() > 1)
     {
