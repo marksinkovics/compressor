@@ -63,12 +63,19 @@ std::expected<ArchiveCounts, Error> count_entries(std::istream& in)
         return std::unexpected(info.error());
     }
     ArchiveCounts counts;
+    uint64_t stored_end = 0;
     for (const Entry& entry : info->index.entries)
     {
         switch (entry.type)
         {
         case EntryType::file:
             ++counts.files;
+            if (entry.size > 0 && entry.offset < stored_end)
+            {
+                ++counts.duplicates;
+                counts.duplicate_bytes += entry.size;
+            }
+            stored_end = std::max(stored_end, entry.offset + entry.size);
             break;
         case EntryType::directory:
             ++counts.directories;
@@ -204,6 +211,12 @@ void print_stats(const Stats& stats, const StatsReport& report, std::ostream& ou
                            plural(stats.archive->files, "file", "files"),
                            plural(stats.archive->directories, "directory", "directories"),
                            plural(stats.archive->symlinks, "symlink", "symlinks"));
+        if (stats.archive->duplicates > 0)
+        {
+            kind += std::format("; {} of {} stored once",
+                                plural(stats.archive->duplicates, "duplicate", "duplicates"),
+                                plural(stats.archive->duplicate_bytes, "byte", "bytes"));
+        }
     }
     else if (stats.ingot)
     {

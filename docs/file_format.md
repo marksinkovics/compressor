@@ -33,7 +33,7 @@ Empty input is the frame header followed directly by the end block, 17 bytes in 
 
 ## Archive
 
-A folder archive is the container above with flag bit 0 set. Its decoded data is the contents of every regular file, back to back in entry order, so blocks span file boundaries and small files share blocks. The end block is followed by the index and a fixed-size trailer. Implemented in `compressor/src/compressor/archive/`.
+A folder archive is the container above with flag bit 0 set. Its decoded data is the contents of every regular file, back to back in entry order, so blocks span file boundaries and small files share blocks. A file identical to an earlier one is stored once: its entry points at the earlier file's data. The end block is followed by the index and a fixed-size trailer. Implemented in `compressor/src/compressor/archive/`.
 
 | Part | Size | Contents |
 |---|---:|---|
@@ -63,13 +63,13 @@ Rules, checked before anything is extracted (`corrupt_index` otherwise):
 
 - A path is relative and `/`-separated, with no empty, `.` or `..` component and no NUL byte. Paths are unique.
 - An entry's parent directory is an earlier directory entry, or the archive root. So no entry sits under a file or a symlink, and extraction never writes through a symlink.
-- Files' offsets run back to back from 0 in entry order, and their sizes add up to the end block's total.
+- Files' offsets run back to back from 0 in entry order, and their sizes add up to the end block's total, except for duplicates: a non-empty file whose offset, size and CRC32 are exactly those of an earlier file that is not itself a duplicate. Duplicates add nothing to the total.
 
-The encoder writes each directory before its contents, siblings in byte order of their names. Owners, hard links, devices, pipes and sockets aren't stored; the encoder skips special files with a warning.
+The encoder writes each directory before its contents, siblings in byte order of their names. It finds duplicates among files of the same size by CRC32 and then byte by byte, and fails if an original changes between that comparison and the archiving. Owners, hard links, devices, pipes and sockets aren't stored; the encoder skips special files with a warning.
 
 ### Extracting
 
-`compressor_app decode` extracts into a new directory: it builds a temporary directory next to the output and renames it into place on success, and refuses an output that already exists or is standard output. It creates the directories, then decodes the data into the files in order (checking each file's CRC32), then creates the symlinks, then sets permissions and times, directories last. Archives can't be decoded from standard input yet, as the index is at the end.
+`compressor_app decode` extracts into a new directory: it builds a temporary directory next to the output and renames it into place on success, and refuses an output that already exists or is standard output. It creates the directories, then decodes the data into the files in order (checking each file's CRC32; a duplicate is copied from the first file written with the same data), then creates the symlinks, then sets permissions and times, directories last. Archives can't be decoded from standard input yet, as the index is at the end.
 
 `list`, `extract`, `cat` and `verify` read the index first. `extract` and `cat` decode only the blocks the block table gives for the selected files' byte range, checking that each block ends where the next one starts.
 

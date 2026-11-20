@@ -336,7 +336,7 @@ Layout decided under "Decisions" (solid blocks plus an index); format in [file_f
   - `ICompressor::stats(input, StatsOptions)`; `--graph -` writes the Graphviz to the standard output instead of the report, otherwise a file through the temp-file `write_output`. Standard input is rejected (one pass can't tell an ingot file first).
   - Tests: `StatsTests` (entropy and Huffman sizes, raw and ingot input, archive counts, damaged input, the exact report, the graph), `CompressorArchiveCommandTests.Stats_*`, `CLITests.Stats_*`. 250/250 pass.
   - Also: `gtest_discover_tests` gets `DISCOVERY_TIMEOUT 60`, since macOS's first-launch scan of a relinked test binary took 14 s and failed ctest's 5 s discovery.
-- [ ] **Deduplication:** store identical files only once. The index already stores each file's offset; dedup would let a file point back at earlier data, which relaxes the "back to back" rule and makes extraction copy from an earlier file.
+- [x] **Deduplication (done, autonomous run item 3):** `find_duplicates()` in `archive.cpp` groups files by scanned size, then CRC32, then compares bytes; `write_archive()` streams only the first copy and points the others at its offset, size and CRC, failing if an original changed after the comparison (that race has no test). `validate_index()` accepts a non-empty file that repeats an earlier stored file exactly. Extraction merges targets that share data (`group_shared()`): decoded once, written to the first path and `fs::copy_file`d to the rest, so a subtree whose duplicate's original is outside it still decodes its own range. `stats` reports duplicates and the bytes stored once. Tests: `ArchiveIndexTests.A_duplicate_shares_all_of_an_earlier_file`, `ArchiveTests.Identical_files_*`, `A_duplicate_extracts_without_its_original`, `A_damaged_shared_file_fails_for_every_copy`, `StatsTests.Duplicates_are_counted_and_reported`; the fuzz seeds gained a duplicate. Two copies of `compressor_example/samples/raw` archive to 877 KB instead of 1753 KB.
 
 ### Well-known output formats
 
@@ -395,7 +395,7 @@ Existing examples: macOS compressed memory, Linux zram and zswap, Windows memory
 1. Container format with streaming and blocks (steps 1–3, done).
 2. Hardware CRC32 (known issue "CRC32 caps stored blocks", done).
 3. Multithreaded blocks (container format, done).
-4. Folder support: steps 1–3 done; deduplication next.
+4. Folder support: done (steps 1–3 and deduplication).
 5. An LZ77 pipeline next to Huffman (from "Algorithms": the pluggable pipeline, transforms such as RLE, MTF and BWT, LZ77/LZW, other entropy coders, an auto mode, pre-trained dictionaries).
 6. A Deflate encoder, so the output is valid `.gz` and `.zip`.
 7. Search inside compressed data: jumping to the right block through the block index, zgrep-style search, search without decompressing, an FM-index. The macFUSE mount is skipped for now.
@@ -415,7 +415,7 @@ Decisions taken for the pipeline (Claude's defaults, accepted): each block recor
 - [ ] 0. Branch, commit the clang-tidy hook change and this plan.
 - [x] 1. (done) `stats` (folder compression step 3): size, ratio, entropy, byte histogram, stored/Huffman split per block; `--graph` writes the Huffman tree as Graphviz.
 - [x] 2. (done) Fuzzing the decoder: libFuzzer targets (Homebrew llvm) for the container reader, the archive index and extraction, seeded from the samples, with a short run under ctest; every crash fixed with a regression test.
-- [ ] 3. Deduplication: identical files stored once and pointing back at the first copy's data; index rules, docs and extraction updated.
+- [x] 3. (done) Deduplication: identical files stored once and pointing back at the first copy's data; index rules, docs and extraction updated.
 - [ ] 4. zgrep-style search: `grep PATTERN INPUT [PATH...]` over a plain file or an archive, streaming, matches across block boundaries, `path:line:text`, `-c`, `-l`, `-b`; fixed strings first.
 - [ ] 5. Block index search: with paths, decode only their blocks; search blocks in parallel with an overlap of pattern length - 1 at the edges; benchmarked.
 - [ ] 6. Search without decompressing (experiment): match the Huffman-encoded pattern in the bit stream, resynchronising at code boundaries; checked against item 4, kept as a command only if it is faster.

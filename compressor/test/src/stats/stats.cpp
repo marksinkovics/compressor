@@ -149,7 +149,37 @@ TEST(StatsTests, A_folder_archive_counts_its_entries)
     EXPECT_EQ(stats->archive->files, 2U);
     EXPECT_EQ(stats->archive->directories, 1U);
     EXPECT_EQ(stats->archive->symlinks, 1U);
+    EXPECT_EQ(stats->archive->duplicates, 0U);
     EXPECT_EQ(stats->content_bytes, 9U);
+}
+
+TEST(StatsTests, Duplicates_are_counted_and_reported)
+{
+    const fs::path root = fs::temp_directory_path() / "compressor_stats_duplicates";
+    fs::remove_all(root);
+    fs::create_directories(root);
+    for (const char* name : {"a", "b", "c"})
+    {
+        std::ofstream(root / name) << "same contents";
+    }
+    std::ostringstream warnings;
+    auto entries = compressor::scan_tree(root, {}, warnings);
+    ASSERT_TRUE(entries);
+    compressor::BlockEncoder encoder;
+    std::ostringstream out;
+    ASSERT_TRUE(compressor::write_archive(encoder, root, *entries, out));
+    std::error_code error;
+    fs::remove_all(root, error);
+
+    const auto stats = stats_of(out.str());
+    ASSERT_TRUE(stats);
+    ASSERT_TRUE(stats->archive);
+    EXPECT_EQ(stats->archive->duplicates, 2U);
+    EXPECT_EQ(stats->archive->duplicate_bytes, 26U);
+    EXPECT_EQ(stats->content_bytes, 13U);
+    std::ostringstream report;
+    compressor::print_stats(*stats, {}, report);
+    EXPECT_THAT(report.str(), HasSubstr("; 2 duplicates of 26 bytes stored once\n"));
 }
 
 TEST(StatsTests, A_damaged_ingot_file_fails)

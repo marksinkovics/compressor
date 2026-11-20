@@ -83,6 +83,7 @@ std::string archive(const fs::path& scratch)
     write(scratch / "docs" / "b.bin", noise(5000));
     write(scratch / "docs" / "deep" / "c.txt", text(100));
     write(scratch / "docs" / "zero", "");
+    write(scratch / "docs" / "copy.txt", text(3000)); // a duplicate of a.txt
     fs::create_symlink("a.txt", scratch / "link");
     // Fixed times, so the seeds come out the same on every run.
     for (const auto& entry : fs::recursive_directory_iterator(scratch))

@@ -26,6 +26,8 @@ struct ArchiveCounts
     uint64_t files = 0;
     uint64_t directories = 0;
     uint64_t symlinks = 0;
+    uint64_t duplicates = 0;      // files sharing an earlier file's data
+    uint64_t duplicate_bytes = 0; // their sizes, stored once
 };
 
 struct Stats

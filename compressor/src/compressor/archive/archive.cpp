@@ -14,6 +14,7 @@
 #include <ios>
 #include <istream>
 #include <iterator>
+#include <map>
 #include <optional>
 #include <ostream>
 #include <ranges>
@@ -22,6 +23,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -169,11 +171,37 @@ struct Target
     uint64_t size = 0;
     uint32_t crc = 0;
     fs::path path; // where to write it with Sink::files; names it in errors
+    // Sink::files: duplicates sharing these bytes, copied from `path` once it is complete.
+    std::vector<fs::path> copies;
 };
 
 Target target(const Entry& file, fs::path path)
 {
-    return {.offset = file.offset, .size = file.size, .crc = file.crc, .path = std::move(path)};
+    return {.offset = file.offset,
+            .size = file.size,
+            .crc = file.crc,
+            .path = std::move(path),
+            .copies = {}};
+}
+
+// In offset order, with the targets that share their data (deduplicated files) merged into one.
+std::vector<Target> group_shared(std::vector<Target> targets)
+{
+    std::ranges::stable_sort(targets, [](const Target& a, const Target& b) {
+        return std::tie(a.offset, a.size) < std::tie(b.offset, b.size);
+    });
+    std::vector<Target> groups;
+    for (Target& next : targets)
+    {
+        if (!groups.empty() && next.size > 0 && groups.back().offset == next.offset &&
+            groups.back().size == next.size)
+        {
+            groups.back().copies.push_back(std::move(next.path));
+            continue;
+        }
+        groups.push_back(std::move(next));
+    }
+    return groups;
 }
 
 enum class Sink : uint8_t
@@ -315,10 +343,21 @@ private:
         if (sink_ == Sink::files && file_.close() == nullptr)
         {
             failure_ = file_failure(target.path, {errno, std::generic_category()});
+            return;
         }
-        else if (crc_ != target.crc)
+        if (crc_ != target.crc)
         {
             failure_ = Failure{.error = Error::checksum_mismatch, .detail = target.path.string()};
+            return;
+        }
+        for (const fs::path& copy : target.copies)
+        {
+            std::error_code error;
+            if (sink_ == Sink::files && !fs::copy_file(target.path, copy, error))
+            {
+                failure_ = file_failure(copy, error);
+                return;
+            }
         }
     }
 
@@ -339,6 +378,7 @@ std::expected<void, Failure> decode_targets(IBlockDecoder& decoder, std::istream
                                             const ArchiveInfo& info, std::vector<Target> targets,
                                             Sink sink, std::streambuf* stream = nullptr)
 {
+    targets = group_shared(std::move(targets));
     const uint8_t log2 = info.block_size_log2;
     const std::vector<uint64_t>& table = info.index.block_offsets;
     uint64_t start = targets.empty() ? 0 : targets.front().offset;
@@ -451,6 +491,116 @@ std::expected<void, Failure> push_children(std::vector<Pending>& stack, const fs
     return {};
 }
 
+struct Digest
+{
+    uint64_t size = 0;
+    uint32_t crc = 0;
+
+    bool operator==(const Digest&) const = default;
+};
+
+std::expected<Digest, Failure> digest_of(const fs::path& path)
+{
+    std::ifstream file(path, std::ios::in | std::ios::binary);
+    std::array<char, std::size_t{1} << 16U> buffer{};
+    Digest digest;
+    while (file)
+    {
+        file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+        digest.crc = crc32(as_bytes(buffer.data(), file.gcount()), digest.crc);
+        digest.size += static_cast<uint64_t>(file.gcount());
+    }
+    if (file.bad() || !file.eof())
+    {
+        return std::unexpected(file_failure(path, {errno, std::generic_category()}));
+    }
+    return digest;
+}
+
+std::expected<bool, Failure> same_contents(const fs::path& a, const fs::path& b)
+{
+    std::ifstream first(a, std::ios::in | std::ios::binary);
+    std::ifstream second(b, std::ios::in | std::ios::binary);
+    std::array<char, std::size_t{1} << 16U> left{};
+    std::array<char, std::size_t{1} << 16U> right{};
+    while (first && second)
+    {
+        first.read(left.data(), static_cast<std::streamsize>(left.size()));
+        second.read(right.data(), static_cast<std::streamsize>(right.size()));
+        if (first.gcount() != second.gcount() ||
+            !std::equal(left.begin(), left.begin() + first.gcount(), right.begin()))
+        {
+            return false;
+        }
+    }
+    if (first.bad() || second.bad())
+    {
+        return std::unexpected(file_failure(first.bad() ? a : b, {errno, std::generic_category()}));
+    }
+    return first.eof() && second.eof();
+}
+
+struct Duplicates
+{
+    std::vector<std::optional<std::size_t>> original; // per entry: an earlier identical file
+    std::vector<Digest> digests;                      // per entry, of the files compared
+};
+
+// Files of the same scanned size are compared by CRC, then byte by byte; empty files never are.
+std::expected<Duplicates, Failure> find_duplicates(const fs::path& root,
+                                                   const std::vector<Entry>& entries)
+{
+    Duplicates found{.original = std::vector<std::optional<std::size_t>>(entries.size()),
+                     .digests = std::vector<Digest>(entries.size())};
+    std::map<uint64_t, std::vector<std::size_t>> by_size;
+    for (std::size_t i = 0; i < entries.size(); ++i)
+    {
+        if (entries[i].type == EntryType::file && entries[i].size > 0)
+        {
+            by_size[entries[i].size].push_back(i);
+        }
+    }
+    for (const auto& [size, same_size] : by_size)
+    {
+        if (same_size.size() < 2)
+        {
+            continue;
+        }
+        std::vector<std::size_t> distinct;
+        for (const std::size_t i : same_size)
+        {
+            auto digest = digest_of(root / entries[i].path);
+            if (!digest)
+            {
+                return std::unexpected(digest.error());
+            }
+            found.digests[i] = *digest;
+            for (const std::size_t earlier : distinct)
+            {
+                if (found.digests[earlier] != *digest)
+                {
+                    continue;
+                }
+                auto same = same_contents(root / entries[earlier].path, root / entries[i].path);
+                if (!same)
+                {
+                    return std::unexpected(same.error());
+                }
+                if (*same)
+                {
+                    found.original[i] = earlier;
+                    break;
+                }
+            }
+            if (!found.original[i])
+            {
+                distinct.push_back(i);
+            }
+        }
+    }
+    return found;
+}
+
 } // namespace
 
 std::expected<std::vector<Entry>, Failure> scan_tree(const fs::path& root, const fs::path& exclude,
@@ -522,14 +672,23 @@ std::expected<std::vector<Entry>, Failure> scan_tree(const fs::path& root, const
 std::expected<void, Failure> write_archive(IBlockEncoder& encoder, const fs::path& root,
                                            std::vector<Entry> entries, std::ostream& out)
 {
-    auto files = entries | std::views::filter([](const Entry& entry) {
-        return entry.type == EntryType::file;
-    });
-    std::vector<fs::path> paths;
-    for (const Entry& entry : files)
+    const auto duplicates = find_duplicates(root, entries);
+    if (!duplicates)
     {
-        paths.push_back(root / entry.path);
+        return std::unexpected(duplicates.error());
     }
+    const auto stored = [&](std::size_t i) {
+        return entries[i].type == EntryType::file && !duplicates->original[i];
+    };
+    std::vector<fs::path> paths;
+    for (std::size_t i = 0; i < entries.size(); ++i)
+    {
+        if (stored(i))
+        {
+            paths.push_back(root / entries[i].path);
+        }
+    }
+    const std::size_t stored_count = paths.size();
 
     ConcatInputBuf concat(std::move(paths));
     std::istream in(&concat);
@@ -542,20 +701,40 @@ std::expected<void, Failure> write_archive(IBlockEncoder& encoder, const fs::pat
     {
         return std::unexpected(Failure{.error = layout.error(), .detail = {}});
     }
-    if (concat.reads().size() != static_cast<std::size_t>(std::ranges::distance(files)))
+    if (concat.reads().size() != stored_count)
     {
         return std::unexpected(Failure{.error = Error::read_failed, .detail = {}});
     }
 
     uint64_t offset = 0;
     auto read = concat.reads().begin();
-    for (Entry& entry : files)
+    for (std::size_t i = 0; i < entries.size(); ++i)
     {
-        entry.offset = offset;
-        entry.size = read->size;
-        entry.crc = read->crc;
-        offset += read->size;
-        ++read;
+        if (stored(i))
+        {
+            entries[i].offset = offset;
+            entries[i].size = read->size;
+            entries[i].crc = read->crc;
+            offset += read->size;
+            ++read;
+        }
+    }
+    for (std::size_t i = 0; i < entries.size(); ++i)
+    {
+        if (const auto original = duplicates->original[i])
+        {
+            Entry& copy = entries[i];
+            const Entry& source = entries[*original];
+            // The copy matched the original as compared; the original must still be that.
+            if (Digest{.size = source.size, .crc = source.crc} != duplicates->digests[*original])
+            {
+                return std::unexpected(
+                    file_failure(root / source.path, "changed while it was being archived"));
+            }
+            copy.offset = source.offset;
+            copy.size = source.size;
+            copy.crc = source.crc;
+        }
     }
     write_index(out,
                 {.block_offsets = std::move(layout->block_offsets), .entries = std::move(entries)},

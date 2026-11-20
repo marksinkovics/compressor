@@ -207,6 +207,22 @@ TEST(ArchiveIndexTests, Files_cover_the_data_in_order)
     EXPECT_EQ((entry_error({file_entry("a", 0, "abcdef")}, 5)), Error::corrupt_index);
 }
 
+TEST(ArchiveIndexTests, A_duplicate_shares_all_of_an_earlier_file)
+{
+    const Entry a = file_entry("a", 0, "abc");
+    const Entry b = file_entry("b", 3, "de");
+    EXPECT_EQ((entry_error({a, b, file_entry("c", 0, "abc")}, 5)), std::nullopt);
+    EXPECT_EQ((entry_error({a, b, file_entry("c", 3, "de"), file_entry("d", 5, "")}, 5)),
+              std::nullopt);
+
+    // Part of a file, another size or CRC, a later file, or an empty "duplicate".
+    EXPECT_EQ((entry_error({a, b, file_entry("c", 1, "bc")}, 5)), Error::corrupt_index);
+    EXPECT_EQ((entry_error({a, b, file_entry("c", 0, "ab")}, 5)), Error::corrupt_index);
+    EXPECT_EQ((entry_error({a, b, file_entry("c", 0, "abd")}, 5)), Error::corrupt_index);
+    EXPECT_EQ((entry_error({file_entry("c", 3, "de"), a, b}, 5)), Error::corrupt_index);
+    EXPECT_EQ((entry_error({a, file_entry("c", 0, ""), b}, 5)), Error::corrupt_index);
+}
+
 TEST(ArchiveIndexTests, Out_of_range_fields_are_rejected)
 {
     Entry mode = dir_entry("a");

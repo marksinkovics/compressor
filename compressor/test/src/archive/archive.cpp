@@ -523,3 +523,71 @@ TEST_F(ArchiveTests, Verify_accepts_an_empty_archive)
     ASSERT_TRUE(bytes);
     EXPECT_TRUE(verify(*bytes));
 }
+
+TEST_F(ArchiveTests, Identical_files_are_stored_once_and_extract_everywhere)
+{
+    const std::string shared = pattern((2 * block_size) + 3, 's');
+    fs::create_directories(root_ / "a");
+    fs::create_directories(root_ / "b");
+    write_file(root_ / "a" / "one", shared);
+    write_file(root_ / "a" / "other", pattern((2 * block_size) + 3, 't')); // same size only
+    write_file(root_ / "b" / "two", shared);
+    write_file(root_ / "b" / "three", shared);
+    ASSERT_FALSE(compressor::set_mode(root_ / "b" / "two", 0600));
+    const auto bytes = archive(root_);
+    ASSERT_TRUE(bytes);
+
+    const compressor::ArchiveInfo info = info_of(*bytes);
+    EXPECT_EQ(info.total_size, 2 * shared.size());
+    const auto entry = [&](const std::string& path) {
+        return *std::ranges::find(info.index.entries, path, &Entry::path);
+    };
+    EXPECT_EQ(entry("b/two").offset, entry("a/one").offset);
+    EXPECT_EQ(entry("b/three").offset, entry("a/one").offset);
+    EXPECT_NE(entry("a/other").offset, entry("a/one").offset);
+
+    ASSERT_TRUE(extract(*bytes));
+    for (const char* path : {"a/one", "b/two", "b/three"})
+    {
+        EXPECT_EQ(read_file(out_ / path), shared) << path;
+    }
+    EXPECT_EQ(read_file(out_ / "a" / "other"), read_file(root_ / "a" / "other"));
+    const auto two = compressor::read_metadata(out_ / "b" / "two");
+    ASSERT_TRUE(two);
+    EXPECT_EQ(two->mode, 0600);
+    EXPECT_TRUE(verify(*bytes));
+}
+
+TEST_F(ArchiveTests, A_duplicate_extracts_without_its_original)
+{
+    const std::string shared = pattern(block_size + 1, 's');
+    fs::create_directories(root_ / "a");
+    fs::create_directories(root_ / "b");
+    write_file(root_ / "a" / "one", shared);
+    write_file(root_ / "b" / "two", shared);
+    const auto bytes = archive(root_);
+    ASSERT_TRUE(bytes);
+    const compressor::ArchiveInfo info = info_of(*bytes);
+
+    EXPECT_EQ(extract_file(*bytes, "b/two"), shared);
+    const auto b = compressor::select_subtree(info.index.entries, "b");
+    ASSERT_TRUE(b);
+    compressor::BlockDecoder decoder(engines(), threads);
+    std::istringstream in(*bytes);
+    ASSERT_TRUE(compressor::extract_entries(decoder, in, info, *b, out_));
+    EXPECT_EQ(read_file(out_ / "two"), shared);
+}
+
+TEST_F(ArchiveTests, A_damaged_shared_file_fails_for_every_copy)
+{
+    write_file(root_ / "one", noise(block_size));
+    write_file(root_ / "two", noise(block_size));
+    auto bytes = archive(root_);
+    ASSERT_TRUE(bytes);
+    flip_payload_byte(*bytes, info_of(*bytes).index.block_offsets[0]);
+
+    const auto extracted = extract(*bytes);
+    ASSERT_FALSE(extracted);
+    EXPECT_EQ(extracted.error().error, Error::checksum_mismatch);
+    EXPECT_FALSE(fs::exists(out_ / "two"));
+}

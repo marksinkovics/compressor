@@ -11,6 +11,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -210,6 +211,7 @@ std::expected<void, Error> validate_index(const ArchiveIndex& index, uint8_t blo
     std::unordered_set<std::string_view> paths;
     std::unordered_set<std::string_view> directories;
     uint64_t offset = 0;
+    std::unordered_map<uint64_t, const Entry*> stored; // files with data, by offset
     for (const Entry& entry : index.entries)
     {
         if (entry.type > EntryType::symlink || entry.mode > max_mode || !valid_path(entry.path) ||
@@ -234,11 +236,22 @@ std::expected<void, Error> validate_index(const ArchiveIndex& index, uint8_t blo
             }
             break;
         case EntryType::file:
-            if (entry.offset != offset || entry.size > total_size - offset)
+            if (entry.offset == offset && entry.size <= total_size - offset)
+            {
+                if (entry.size > 0)
+                {
+                    stored.emplace(offset, &entry);
+                }
+                offset += entry.size;
+                break;
+            }
+            // Otherwise a duplicate, sharing all of an earlier file's data.
+            if (const auto original = stored.find(entry.offset);
+                entry.size == 0 || original == stored.end() ||
+                original->second->size != entry.size || original->second->crc != entry.crc)
             {
                 return std::unexpected(Error::corrupt_index);
             }
-            offset += entry.size;
             break;
         }
     }
