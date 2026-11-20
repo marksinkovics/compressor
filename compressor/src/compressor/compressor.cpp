@@ -19,6 +19,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <unordered_map>
 #include <utility>
 
 #include <compressor/archive/archive.h>
@@ -26,6 +27,7 @@
 #include <compressor/archive/metadata.h>
 #include <compressor/data/data.h>
 #include <compressor/deflate/deflate.h>
+#include <compressor/deflate/inflate.h>
 #include <compressor/deflate/zip.h>
 #include <compressor/engine/engine.h>
 #include <compressor/error.h>
@@ -341,6 +343,27 @@ bool extract_to_new_directory(IBlockDecoder& decoder, std::ostream& err, std::st
     return true;
 }
 
+// An ingot file, or a gzip file (first byte 1F; ingot files start with 89).
+std::expected<void, Error> decode_container(IBlockDecoder& decoder, std::istream& in,
+                                            std::ostream& out)
+{
+    constexpr int gzip_first_byte = 0x1F;
+    if (in.peek() == gzip_first_byte)
+    {
+        if (auto unzipped = gunzip(in, out); !unzipped)
+        {
+            return std::unexpected(unzipped.error());
+        }
+        out.flush();
+        if (!out)
+        {
+            return std::unexpected(Error::write_failed);
+        }
+        return {};
+    }
+    return decoder.decode(in, out);
+}
+
 class SearchVisitor : public FileVisitor
 {
 public:
@@ -401,6 +424,51 @@ protected:
 
 private:
     LineSearcher& searcher_;
+};
+
+// Every place `pattern` occurs in each file, found while decoding: the bytes of the pattern
+// length minus one before a piece are kept, so a match across pieces is found too.
+class OccurrenceVisitor : public FileVisitor
+{
+public:
+    explicit OccurrenceVisitor(std::string_view pattern)
+        : pattern_(pattern)
+    {
+    }
+
+    // Files come back to back in data order, so `position_` is the offset in the archive's data.
+    void begin(std::span<const fs::path> /*paths*/) override
+    {
+        tail_.clear();
+    }
+
+    void data(std::string_view bytes) override
+    {
+        std::string window = tail_;
+        window.append(bytes);
+        const uint64_t base = position_ - tail_.size();
+        for (std::size_t at = window.find(pattern_); at != std::string::npos;
+             at = window.find(pattern_, at + 1))
+        {
+            positions_.push_back(base + at);
+        }
+        position_ += bytes.size();
+        const std::size_t keep = std::min(window.size(), pattern_.size() - 1);
+        tail_.assign(window, window.size() - keep, keep);
+    }
+
+    void end() override {}
+
+    std::vector<uint64_t>& positions()
+    {
+        return positions_;
+    }
+
+private:
+    std::string_view pattern_;
+    std::string tail_; // reset per file, so no match spans two
+    uint64_t position_ = 0;
+    std::vector<uint64_t> positions_;
 };
 
 class DiscardBuf : public std::streambuf
@@ -479,7 +547,7 @@ bool Compressor::decode(const fs::path& input, const fs::path& output)
     }
     return transcode(streams_, "decode", input, output,
                      [this](std::istream& in, std::ostream& out) {
-        return decoder_->decode(in, out);
+        return decode_container(*decoder_, in, out);
     });
 }
 
@@ -671,9 +739,7 @@ bool Compressor::verify(const fs::path& input)
         if (result && archive->info.search_index)
         {
             const auto [section, end] = *archive->info.search_index;
-            if (auto read =
-                    read_search_index(archive->file, section, end, archive->info.total_size);
-                !read)
+            if (auto read = check_search_index(archive->file, section, end); !read)
             {
                 result = std::unexpected(Failure{.error = read.error(), .detail = "search index"});
             }
@@ -689,7 +755,7 @@ bool Compressor::verify(const fs::path& input)
         }
         DiscardBuf discard;
         std::ostream out(&discard);
-        if (auto decoded = decoder_->decode(*in, out); !decoded)
+        if (auto decoded = decode_container(*decoder_, *in, out); !decoded)
         {
             result = std::unexpected(Failure{.error = decoded.error(), .detail = {}});
         }
@@ -799,7 +865,7 @@ SearchResult Compressor::grep(const fs::path& input, const SearchOptions& option
         searcher.begin({display_name(input, "(standard input)")}, false);
         SearchBuf buffer(searcher);
         std::ostream out(&buffer);
-        if (auto decoded = decoder_->decode(*in, out); !decoded)
+        if (auto decoded = decode_container(*decoder_, *in, out); !decoded)
         {
             result = std::unexpected(Failure{.error = decoded.error(), .detail = {}});
         }
@@ -845,12 +911,37 @@ SearchResult Compressor::search(const fs::path& archive, const std::string& patt
         return SearchResult::failed;
     }
     const auto [section, end] = *info.search_index;
-    const auto index = read_search_index(opened->file, section, end, info.total_size);
-    const auto found = index ? fm_find(*index, pattern) : std::unexpected(index.error());
-    if (!found)
+    const auto index = map_search_index(archive, section, end, info.total_size);
+    // Locating a match walks up to 63 steps, so very common patterns are found faster by decoding
+    // the archive and scanning it; both give the same offsets.
+    constexpr uint64_t scan_above = 100'000;
+    const auto approximate = index ? fm_count(*index, pattern) : std::unexpected(index.error());
+    if (!approximate)
     {
-        report(err, "search", archive, {.error = found.error(), .detail = "search index"});
+        report(err, "search", archive, {.error = approximate.error(), .detail = "search index"});
         return SearchResult::failed;
+    }
+    std::vector<uint64_t> positions;
+    if (*approximate > scan_above)
+    {
+        OccurrenceVisitor visitor(pattern);
+        if (auto visited = visit_files(*decoder_, opened->file, info, info.index.entries, visitor);
+            !visited)
+        {
+            report(err, "search", archive, visited.error());
+            return SearchResult::failed;
+        }
+        positions = std::move(visitor.positions());
+    }
+    else
+    {
+        auto found = fm_find(*index, pattern);
+        if (!found)
+        {
+            report(err, "search", archive, {.error = found.error(), .detail = "search index"});
+            return SearchResult::failed;
+        }
+        positions = std::move(*found);
     }
 
     // Each stored file's data, with every path that shares it; files are back to back in order.
@@ -862,20 +953,19 @@ SearchResult Compressor::search(const fs::path& archive, const std::string& patt
         std::size_t matches = 0;
     };
     std::vector<Stored> stored;
+    std::unordered_map<uint64_t, std::size_t> by_offset;
     for (const Entry& entry : info.index.entries)
     {
         if (entry.type != EntryType::file || entry.size == 0)
         {
             continue;
         }
-        const auto same = std::ranges::find_if(stored, [&entry](const Stored& file) {
-            return file.offset == entry.offset;
-        });
-        if (same != stored.end())
+        if (const auto same = by_offset.find(entry.offset); same != by_offset.end())
         {
-            same->paths.push_back(entry.path);
+            stored[same->second].paths.push_back(entry.path);
             continue;
         }
+        by_offset.emplace(entry.offset, stored.size());
         stored.push_back(
             {.offset = entry.offset, .size = entry.size, .paths = {entry.path}, .matches = 0});
     }
@@ -883,7 +973,7 @@ SearchResult Compressor::search(const fs::path& archive, const std::string& patt
 
     std::ostream& out = streams_.out;
     bool matched = false;
-    for (const uint64_t position : *found)
+    for (const uint64_t position : positions)
     {
         auto file = std::ranges::upper_bound(stored, position, {}, &Stored::offset);
         if (file == stored.begin())

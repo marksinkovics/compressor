@@ -216,6 +216,12 @@ try
 
     write(dir / "container" / "text.ingot", plain);
     write(dir / "container" / "huffman.ingot", huffman);
+    {
+        std::istringstream in(words(3000));
+        std::ostringstream gzip;
+        (void)compressor::write_gzip(in, gzip, {.name = "seed.txt", .mtime = 1}).has_value();
+        write(dir / "container" / "seed.gz", gzip.str());
+    }
     write(dir / "container" / "samples.ingot", encode(samples(3000)));
     write(dir / "container" / "bwt.ingot", encode(words(6000), 9));
     write(dir / "container" / "walk.ingot", encode(random_walk(3000)));

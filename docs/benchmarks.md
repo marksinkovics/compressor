@@ -357,3 +357,23 @@ All of Silesia archived with and without `--search-index`, then `search -c` (FM-
 
 - Results are exact: per-file counts equal `grep -o | uniq -c` on Silesia, and offsets equal `grep -rbo` on `docs/`, duplicates included.
 - It is slower than grep: every query loads the whole index, decoding each chunk's stored BWT (rANS, move-to-front) and rebuilding its rank tables, which is O(data) like decoding the archive itself, and listing each match walks up to 63 LF steps. The index also stores sampled positions (1/16 of the data) and the overlaps. An FM-index pays off when it stays loaded across many queries, or with a layout searched in place: the BWT uncompressed with rank blocks or a wavelet tree, read with `mmap`, so a query touches O(pattern length) blocks. Encoding builds each chunk's suffix array on the reading thread, hence the 13×.
+
+## Search index in place (2026-11-20)
+
+The search index rewritten to be searched without loading it (section version 2: each chunk's BWT in a wavelet matrix with rank directories, read through `mmap`), built on the thread pool while archiving. All of Silesia, `encode -T 6`, then `search -c` against `grep -c`, hyperfine medians of 7 runs; load average about 9.
+
+| | Before | Now |
+| --- | --- | --- |
+| Archive with index | 164 962 837 | 346 360 375 (plain: 66 874 374) |
+| Encode with index | 16.70 s | 5.94 s (plain: 2.76 s) |
+
+| Pattern (matches) | `search -c` before | now | `grep -c` |
+| --- | --- | --- | --- |
+| Gutenberg (412) | 194 ms | 9.2 ms | 126 ms |
+| Copperfield | | 10.7 ms | 124 ms |
+| `<leqgeq>` | | 9.6 ms | 146 ms |
+| the (395 919) | | 141 ms | 143 ms |
+| e (5 566 720) | 734 ms | 171 ms | 135 ms |
+
+- A query costs time in the pattern's length and its matches: a selective pattern is found 12–15× faster than by decoding. Locating a match walks up to 63 rows back (about 0.7 µs each), so above 100 000 matches (counted first, which costs almost nothing) `search` decodes and scans instead, as fast as `grep`. Both give the same offsets: per-file counts equal `grep -o` on Silesia.
+- The index is now larger: the BWT is stored uncompressed (1 byte per byte, plus 1/16 for the rank directories) where version 1 stored it BWT-coded and decoded it per query. Counts per file must be scanned for `e` because the index only knows where matches are, not which file's.

@@ -1,6 +1,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <memory>
+#include <span>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -55,9 +57,10 @@ compressor::FmIndex build(std::string_view data, std::string* bytes = nullptr)
     {
         *bytes = section;
     }
-    std::istringstream in(section);
-    auto index = compressor::read_search_index(
-        in, 0, section.size() - compressor::search_trailer_bytes, data.size());
+    auto owned = std::make_shared<std::string>(section);
+    const std::span<const uint8_t> view(reinterpret_cast<const uint8_t*>(owned->data()),
+                                        owned->size() - compressor::search_trailer_bytes);
+    auto index = compressor::parse_search_index(view, data.size(), owned);
     EXPECT_TRUE(index);
     return index ? *index : compressor::FmIndex{};
 }
@@ -112,11 +115,32 @@ TEST(FmIndexTests, A_damaged_section_or_a_bad_pattern_is_rejected)
     (void)build(data, &section);
     section[20] = static_cast<char>(static_cast<uint8_t>(section[20]) ^ 1U);
     std::istringstream in(section);
-    EXPECT_EQ(compressor::read_search_index(
-                  in, 0, section.size() - compressor::search_trailer_bytes, data.size()),
-              std::unexpected(compressor::Error::corrupt_index));
+    EXPECT_EQ(
+        compressor::check_search_index(in, 0, section.size() - compressor::search_trailer_bytes),
+        std::unexpected(compressor::Error::corrupt_index));
 
     const compressor::FmIndex index = build(data);
     EXPECT_FALSE(compressor::fm_find(index, ""));
     EXPECT_FALSE(compressor::fm_find(index, std::string(compressor::fm_overlap + 1, 'a')));
+}
+
+TEST(FmIndexTests, Damaged_chunk_contents_fail_cleanly_without_the_crc)
+{
+    const std::string data = words(20'000, 5);
+    std::string section;
+    (void)build(data, &section);
+    // Every 37th byte of the section damaged in turn and searched, as search skips the CRC.
+    for (std::size_t at = 0; at + compressor::search_trailer_bytes < section.size(); at += 37)
+    {
+        auto damaged = std::make_shared<std::string>(section);
+        (*damaged)[at] = static_cast<char>(static_cast<uint8_t>((*damaged)[at]) ^ 0x5AU);
+        const std::span<const uint8_t> view(reinterpret_cast<const uint8_t*>(damaged->data()),
+                                            damaged->size() - compressor::search_trailer_bytes);
+        const auto index = compressor::parse_search_index(view, data.size(), damaged);
+        if (index)
+        {
+            const auto found = compressor::fm_find(*index, "rank sample", 1);
+            EXPECT_TRUE(found || found.error() == compressor::Error::corrupt_index) << at;
+        }
+    }
 }

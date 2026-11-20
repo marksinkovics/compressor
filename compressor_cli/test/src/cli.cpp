@@ -440,7 +440,8 @@ TEST_F(CLITests, Search_passes_the_pattern_archive_and_count)
 {
     EXPECT_CALL(*compressor_, search(fs::path(input_), "needle", true))
         .WillOnce(Return(compressor::SearchResult::not_matched));
-    EXPECT_EQ(run({"search", "-c", "needle", input_}), 1);
+    EXPECT_EQ(run({"search", "-c", "-T", "3", "needle", input_}), 1);
+    EXPECT_EQ(threads_, 3U);
 }
 
 TEST_F(CLITests, Encode_passes_the_search_index_flag)

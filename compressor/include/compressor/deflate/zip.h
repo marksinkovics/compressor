@@ -15,11 +15,12 @@ namespace compressor
 
 // A zip archive (PKWARE APPNOTE) of `entries` from scan_tree(root): files Deflate-compressed with
 // a data descriptor after each, so `out` needn't seek; directories and symlinks stored. Unix modes
-// and the symlink type go in the external attributes. No Zip64: files and offsets must stay under
-// 4 GiB and the count under 65 536.
+// and the symlink type go in the external attributes. Zip64 records appear where something doesn't
+// fit in 32 bits (a file of 4 GiB or more, offsets past 4 GiB) or there are more than 65 535
+// entries; `force_zip64` writes them everywhere, for testing.
 std::expected<void, Failure> write_zip(const std::filesystem::path& root,
                                        const std::vector<Entry>& entries, std::ostream& out,
-                                       const Lz77Options& options = {});
+                                       const Lz77Options& options = {}, bool force_zip64 = false);
 
 } // namespace compressor
 

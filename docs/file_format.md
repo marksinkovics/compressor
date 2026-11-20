@@ -114,18 +114,29 @@ The encoder writes each directory before its contents, siblings in byte order of
 
 ## Search index
 
-With flag bit 1, the archive's trailer is followed by an FM-index section and its own trailer, so a reader finds the archive trailer just before the section (`compressor/src/compressor/fmindex/fmindex.cpp`, written with `encode --search-index`, read by `search`):
+With flag bit 1, the archive's trailer is followed by an FM-index section and its own trailer, so a reader finds the archive trailer just before the section (`compressor/src/compressor/fmindex/fmindex.cpp`, written with `encode --search-index`, searched in place through `mmap` by `search`). All integers are little-endian.
 
 | Part | Size | Contents |
 |---|---:|---|
-| Section | varies | Version (1) = 1; chunk size (4) = 1 MiB; overlap (4) = 4096; sample rate (4) = 64; chunk count (4); then each chunk as its byte size (8) and bytes |
+| Section | varies | Version (1) = 2; chunk size (4) = 1 MiB; overlap (4) = 4096; sample rate (4) = 64; chunk count (4); a table of chunk offset (8, from the section start) and size (8) per chunk; the chunks |
 | Trailer | 16 | Section offset (8). Section CRC32 (4). Magic `89 46 4D 49` (`\x89FMI`) |
 
 The archive's decoded data is cut into chunks: while at least chunk size + overlap bytes are left, a chunk of exactly that many, the next starting chunk size later; the rest (at least the overlap) is the last chunk. So `full = total >= 1 MiB + 4096 ? (total − 4096) / 1 MiB : 0` and there are `full + 1` chunks. A match of up to 4096 bytes is in the chunk where it starts before the overlap, or in the last.
 
-Each chunk: its length (4), the length of a BWT payload (4) and the payload, the BWT coder's format (see "Pipeline blocks") of the chunk's own BWT; then one bit per row of the sorted rotations (`length + 1` rows, the end marker's first; bit `r` of byte `r / 8`, least significant first) marking the rows whose suffix starts at a multiple of 64, the count of marked rows (4), and their text positions (4 each) in row order.
+Each chunk of `n` bytes, over its sorted rotations with an end marker (`n + 1` rows, the marker's first):
 
-Search runs backward search over the last column with rank counts, then walks each found row back to a marked one. Decoding the archive ignores the section.
+| Size | Field |
+|---:|---|
+| 4 | `n` |
+| 4 | Primary: the row whose last column is the marker (1 to `n`) |
+| 256 × 4 | The first row starting with each byte value (1 + the count of smaller bytes) |
+| 8 × 4 | Zeros in each wavelet-matrix level |
+| 8 × (W × 8 + (W / 8 + 1) × 4) | The levels, `W = ceil(n / 64)` words each: level `l` holds bit `7 − l` of the last column (the marker's row left out), in the order the levels above sorted it (zeros first, each side in its previous order); then the ones before every 8th word |
+| S × 8 | `S = ceil((n + 1) / 64)` words marking the rows whose suffix starts at a multiple of 64 (bit `r % 64` of word `r / 64`) |
+| (S + 1) × 4 | The marked rows before each word |
+| 4 + 4 × count | The count of marked rows, then their text positions in row order |
+
+A query runs backward search with ranks from the wavelet matrix (eight bit ranks each) and walks each found row back to a marked one, touching only the pages it needs; `search` checks every value it reads instead of the CRC, which `verify` checks. Decoding the archive ignores the section.
 
 ## Choosing the method
 

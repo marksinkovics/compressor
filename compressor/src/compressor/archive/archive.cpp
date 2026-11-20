@@ -814,7 +814,11 @@ std::expected<void, Failure> write_archive(IBlockEncoder& encoder, const fs::pat
     out << index_bytes.str();
     if (search_index)
     {
-        builder.write(out, layout->size + index_bytes.str().size());
+        if (!builder.write(out, layout->size + index_bytes.str().size()))
+        {
+            return std::unexpected(
+                Failure{.error = Error::write_failed, .detail = "the search index's spool file"});
+        }
     }
     out.flush();
     if (!out)

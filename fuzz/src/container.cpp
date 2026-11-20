@@ -7,6 +7,7 @@
 #include <string>
 
 #include <compressor/data/data.h>
+#include <compressor/deflate/inflate.h>
 #include <compressor/engine/engine.h>
 #include <compressor/stream/decoder.h>
 
@@ -28,6 +29,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, std::size_t size)
         decoder.decode_frame(archive_in, out, compressor::archive_flag).has_value();
     std::istringstream in(bytes);
     const bool parsed = compressor::read_encoded(in).has_value();
+    std::istringstream gzip_in(bytes);
+    (void)compressor::gunzip(gzip_in, out).has_value();
     // A container that decodes also parses, and nothing is both a plain container and an archive.
     if ((decoded && !parsed) || (decoded && archive_decoded))
     {

@@ -205,6 +205,7 @@ int CLI::run(std::span<const char* const> args)
         ->required()
         ->check(::CLI::ExistingFile);
     search->add_flag("-c,--count", search_settings.count, "Print each file's number of matches");
+    add_threads(*search, search_settings);
 
     try
     {
@@ -269,7 +270,8 @@ int CLI::run(std::span<const char* const> args)
     }
     if (search->parsed())
     {
-        const auto compressor = make_compressor_({.threads = 1, .level = default_level});
+        const auto compressor =
+            make_compressor_({.threads = search_settings.threads, .level = default_level});
         switch (compressor->search(search_settings.input, search_settings.search.pattern,
                                    search_settings.count))
         {

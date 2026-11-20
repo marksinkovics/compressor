@@ -646,3 +646,56 @@ TEST_F(CompressorArchiveCommandTests, A_damaged_search_index_fails_verify)
     EXPECT_FALSE(make_compressor().verify(indexed));
     EXPECT_THAT(err_.str(), HasSubstr("search index"));
 }
+
+TEST_F(CompressorArchiveCommandTests, Gzip_files_decode_verify_and_search)
+{
+    using compressor::OutputFormat;
+    const fs::path gz = dir_ / "b.txt.gz";
+    ASSERT_TRUE(make_compressor().encode_as(folder_ / "sub" / "b.txt", gz, OutputFormat::gzip));
+    const fs::path decoded = dir_ / "b.txt";
+    ASSERT_TRUE(make_compressor().decode(gz, decoded)) << err_.str();
+    EXPECT_EQ(read_file(decoded), std::string(10'000, 'b'));
+
+    in_.str(read_file(gz));
+    ASSERT_TRUE(make_compressor().decode("-", "-")) << err_.str();
+    EXPECT_EQ(out_.str(), std::string(10'000, 'b'));
+
+    out_.str("");
+    EXPECT_TRUE(make_compressor().verify(gz)) << err_.str();
+    const compressor::SearchOptions count{
+        .pattern = "bb", .output = compressor::SearchOutput::count, .byte_offsets = false};
+    EXPECT_EQ(make_compressor().grep(gz, count, {}), compressor::SearchResult::matched);
+    EXPECT_EQ(out_.str(), gz.string() + ": OK\n1\n");
+}
+
+TEST_F(CompressorArchiveCommandTests, A_damaged_gzip_file_fails_and_leaves_no_output)
+{
+    const fs::path gz = dir_ / "a.gz";
+    ASSERT_TRUE(make_compressor().encode_as(folder_ / "a.txt", gz, compressor::OutputFormat::gzip));
+    std::string bytes = read_file(gz);
+    bytes[bytes.size() - 6] = static_cast<char>(static_cast<uint8_t>(bytes[bytes.size() - 6]) ^ 1U);
+    write_file(gz, bytes);
+
+    EXPECT_FALSE(make_compressor().decode(gz, dir_ / "a.out"));
+    EXPECT_THAT(err_.str(), HasSubstr("checksum"));
+    EXPECT_FALSE(fs::exists(dir_ / "a.out"));
+}
+
+TEST_F(CompressorArchiveCommandTests, A_very_common_pattern_is_counted_by_scanning)
+{
+    // Over 100 000 matches: search decodes and scans instead of locating each one.
+    const std::string many(150'000, 'z');
+    write_file(folder_ / "many.txt", many);
+    write_file(folder_ / "same.txt", many);
+    write_file(folder_ / "edge.txt", "zz");
+    const fs::path indexed = dir_ / "indexed.ingot";
+    compressor::Compressor writer(std::make_unique<compressor::BlockEncoder>(),
+                                  std::make_unique<compressor::BlockDecoder>(),
+                                  {.in = in_, .out = out_, .err = err_}, true);
+    ASSERT_TRUE(writer.encode(folder_, indexed)) << err_.str();
+
+    ASSERT_EQ(make_compressor().search(indexed, "zz", true), compressor::SearchResult::matched)
+        << err_.str();
+    // Matches never span two files, though their data runs together.
+    EXPECT_EQ(out_.str(), "edge.txt:1\nmany.txt:149999\nsame.txt:149999\n");
+}

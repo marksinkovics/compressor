@@ -40,7 +40,12 @@ constexpr uint32_t regular_type = 0100000;
 constexpr uint32_t directory_type = 0040000;
 constexpr uint32_t symlink_type = 0120000;
 constexpr uint32_t dos_directory = 0x10;
-constexpr uint64_t max_32 = 0xFFFFFFFFU;
+constexpr uint32_t zip64_end_signature = 0x06064B50;
+constexpr uint32_t zip64_locator_signature = 0x07064B50;
+constexpr uint16_t zip64_extra_id = 0x0001;
+constexpr uint16_t version_zip64 = 45;
+constexpr uint16_t version_made_by_zip64 = (3U << 8U) | 45U;
+constexpr uint64_t max_32 = 0xFFFFFFFFU; // also the "see the Zip64 field" marker
 constexpr std::size_t max_entries = 0xFFFF;
 
 class Bytes
@@ -56,6 +61,12 @@ public:
     {
         u16(static_cast<uint32_t>(value & 0xFFFFU));
         u16(static_cast<uint32_t>((value >> 16U) & 0xFFFFU));
+    }
+
+    void u64(uint64_t value)
+    {
+        u32(value & 0xFFFFFFFFU);
+        u32(value >> 32U);
     }
 
     void text(std::string_view value)
@@ -98,6 +109,7 @@ DosTime dos_time(int64_t mtime_ns)
 
 struct Central
 {
+    bool zip64 = false; // the local header and data descriptor use Zip64
     std::string name;
     uint16_t flags = 0;
     uint16_t method = stored;
@@ -109,22 +121,12 @@ struct Central
     uint64_t offset = 0;
 };
 
-Failure too_large(const fs::path& path)
-{
-    return {.error = Error::file_failed,
-            .detail = path.string() + ": too large for a zip archive without Zip64"};
-}
-
 } // namespace
 
 std::expected<void, Failure> write_zip(const fs::path& root, const std::vector<Entry>& entries,
-                                       std::ostream& out, const Lz77Options& options)
+                                       std::ostream& out, const Lz77Options& options,
+                                       bool force_zip64)
 {
-    if (entries.size() > max_entries)
-    {
-        return std::unexpected(
-            Failure{.error = Error::file_failed, .detail = "more than 65535 entries need Zip64"});
-    }
     std::vector<Central> central;
     uint64_t offset = 0;
     const auto emit = [&](const Bytes& bytes) {
@@ -134,7 +136,8 @@ std::expected<void, Failure> write_zip(const fs::path& root, const std::vector<E
 
     for (const Entry& entry : entries)
     {
-        Central record{.name = entry.path,
+        Central record{.zip64 = false,
+                       .name = entry.path,
                        .flags = utf8_flag,
                        .method = stored,
                        .time = dos_time(entry.mtime_ns),
@@ -158,6 +161,9 @@ std::expected<void, Failure> write_zip(const fs::path& root, const std::vector<E
             record.flags |= descriptor_flag;
             record.method = deflated;
             record.external = (regular_type | entry.mode) << 16U;
+            // The size isn't known until the data is written, so decide from the scan; a file
+            // that grows past 4 GiB after it fails below.
+            record.zip64 = force_zip64 || entry.size >= max_32;
             break;
         }
         if (entry.type != EntryType::file)
@@ -166,24 +172,28 @@ std::expected<void, Failure> write_zip(const fs::path& root, const std::vector<E
             record.compressed = content.size();
             record.size = content.size();
         }
-        if (offset > max_32)
-        {
-            return std::unexpected(too_large(root / entry.path));
-        }
 
         Bytes local;
         local.u32(local_header_signature);
-        local.u16(version_needed);
+        local.u16(record.zip64 ? version_zip64 : version_needed);
         local.u16(record.flags);
         local.u16(record.method);
         local.u16(record.time.time);
         local.u16(record.time.date);
         local.u32(record.crc);
-        local.u32(record.compressed);
-        local.u32(record.size);
+        local.u32(record.zip64 ? max_32 : record.compressed);
+        local.u32(record.zip64 ? max_32 : record.size);
         local.u16(static_cast<uint32_t>(record.name.size()));
-        local.u16(0);
+        local.u16(record.zip64 ? 20 : 0);
         local.text(record.name);
+        if (record.zip64)
+        {
+            // Sizes follow in the data descriptor; these say the descriptor's are 8 bytes.
+            local.u16(zip64_extra_id);
+            local.u16(16);
+            local.u64(0);
+            local.u64(0);
+        }
         local.text(content);
         emit(local);
 
@@ -201,9 +211,11 @@ std::expected<void, Failure> write_zip(const fs::path& root, const std::vector<E
             {
                 return std::unexpected(Failure{.error = result.error(), .detail = path.string()});
             }
-            if (result->input_bytes > max_32 || result->output_bytes > max_32)
+            if (!record.zip64 && (result->input_bytes >= max_32 || result->output_bytes >= max_32))
             {
-                return std::unexpected(too_large(path));
+                return std::unexpected(
+                    Failure{.error = Error::file_failed,
+                            .detail = path.string() + ": grew past 4 GiB while being archived"});
             }
             offset += result->output_bytes;
             record.crc = result->crc;
@@ -212,8 +224,16 @@ std::expected<void, Failure> write_zip(const fs::path& root, const std::vector<E
             Bytes descriptor;
             descriptor.u32(descriptor_signature);
             descriptor.u32(record.crc);
-            descriptor.u32(record.compressed);
-            descriptor.u32(record.size);
+            if (record.zip64)
+            {
+                descriptor.u64(record.compressed);
+                descriptor.u64(record.size);
+            }
+            else
+            {
+                descriptor.u32(record.compressed);
+                descriptor.u32(record.size);
+            }
             emit(descriptor);
         }
         central.push_back(std::move(record));
@@ -222,40 +242,83 @@ std::expected<void, Failure> write_zip(const fs::path& root, const std::vector<E
     const uint64_t central_offset = offset;
     for (const Central& record : central)
     {
+        // Fields that don't fit say 0xFFFFFFFF and go into a Zip64 extra field, in this order.
+        Bytes extra;
+        const auto field = [&](uint64_t value) -> uint32_t {
+            if (value >= max_32 || force_zip64)
+            {
+                extra.u64(value);
+                return static_cast<uint32_t>(max_32);
+            }
+            return static_cast<uint32_t>(value);
+        };
+        const uint32_t size = field(record.size);
+        const uint32_t compressed = field(record.compressed);
+        const uint32_t local_offset = field(record.offset);
+        const bool zip64 = !extra.str().empty();
+
         Bytes header;
         header.u32(central_header_signature);
-        header.u16(version_made_by);
-        header.u16(version_needed);
+        header.u16(zip64 ? version_made_by_zip64 : version_made_by);
+        header.u16(zip64 ? version_zip64 : version_needed);
         header.u16(record.flags);
         header.u16(record.method);
         header.u16(record.time.time);
         header.u16(record.time.date);
         header.u32(record.crc);
-        header.u32(record.compressed);
-        header.u32(record.size);
+        header.u32(compressed);
+        header.u32(size);
         header.u16(static_cast<uint32_t>(record.name.size()));
-        header.u16(0); // extra
+        header.u16(zip64 ? static_cast<uint32_t>(4 + extra.str().size()) : 0);
         header.u16(0); // comment
         header.u16(0); // disk
         header.u16(0); // internal attributes
         header.u32(record.external);
-        header.u32(record.offset);
+        header.u32(local_offset);
         header.text(record.name);
+        if (zip64)
+        {
+            header.u16(zip64_extra_id);
+            header.u16(static_cast<uint32_t>(extra.str().size()));
+            header.text(extra.str());
+        }
         emit(header);
     }
-    if (offset > max_32)
+
+    const uint64_t central_size = offset - central_offset;
+    const bool zip64_end = force_zip64 || central.size() > max_entries || central_size >= max_32 ||
+                           central_offset >= max_32;
+    if (zip64_end)
     {
-        return std::unexpected(Failure{.error = Error::file_failed,
-                                       .detail = "the archive is too large without Zip64"});
+        const uint64_t record_offset = offset;
+        Bytes end64;
+        end64.u32(zip64_end_signature);
+        end64.u64(44); // the record's size after this field
+        end64.u16(version_made_by_zip64);
+        end64.u16(version_zip64);
+        end64.u32(0); // this disk
+        end64.u32(0); // the disk with the central directory
+        end64.u64(central.size());
+        end64.u64(central.size());
+        end64.u64(central_size);
+        end64.u64(central_offset);
+        end64.u32(zip64_locator_signature);
+        end64.u32(0);
+        end64.u64(record_offset);
+        end64.u32(1); // disks
+        emit(end64);
     }
+    const auto clamp = [zip64_end](uint64_t value, uint64_t limit) {
+        return zip64_end && value >= limit ? limit : value;
+    };
     Bytes end;
     end.u32(end_signature);
     end.u16(0);
     end.u16(0);
-    end.u16(static_cast<uint32_t>(central.size()));
-    end.u16(static_cast<uint32_t>(central.size()));
-    end.u32(offset - central_offset);
-    end.u32(central_offset);
+    end.u16(static_cast<uint32_t>(zip64_end ? max_entries : central.size()));
+    end.u16(static_cast<uint32_t>(zip64_end ? max_entries : central.size()));
+    end.u32(zip64_end ? max_32 : clamp(central_size, max_32));
+    end.u32(zip64_end ? max_32 : clamp(central_offset, max_32));
     end.u16(0);
     emit(end);
     out.flush();

@@ -118,7 +118,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, std::size_t size)
     if (info->search_index)
     {
         const auto [section, end] = *info->search_index;
-        const auto index = compressor::read_search_index(in, section, end, info->total_size);
+        const auto index = compressor::parse_search_index(
+            std::span<const uint8_t>(data, size).subspan(section, end - section), info->total_size,
+            nullptr);
         if (index)
         {
             (void)compressor::fm_find(*index, "a", 1).has_value();

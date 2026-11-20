@@ -22,7 +22,10 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
   - archives: `stats`, deduplication, `grep` (only the given paths' blocks), `search` through an opt-in FM-index (exact but slower than `grep`), file I/O through stdio (folder extraction 54× faster);
   - formats: `encode -f gzip|zip` with our own Deflate; ingot format version 2 with pipeline blocks: per-block transforms (delta, ARM64/x86 branch filters) and coders LZ77 + Huffman (inflate is ours), BWT + rANS, order-0 rANS, LZR (LZMA-style); `encode -L 1..9`, default 6;
   - quality: libFuzzer targets and the `fuzz` preset, ARM CRC32 at 23.5 GB/s, clang 23 clean.
-- **Next:** pick from the roadmap's open items; the run left follow-ups ("Compressed-domain prefilter", "Search index in place", Zip64, our own `.gz` decoding, a CM coder with a match model).
+- `decode`, `verify` and `grep` read `.gz` files with our own streaming inflater; 343/343 pass.
+- The search index is searched in place (wavelet matrix through `mmap`): rare patterns 12–15× faster than `grep`, common ones as fast; 345/345 pass.
+- Zip64 is done: zip archives with files over 4 GiB or more than 65 535 entries; 347/347 pass.
+- **Next:** pick from the roadmap's open items: "Compressed-domain prefilter", a CM coder with a match model, CI.
 
 ## Commands
 
