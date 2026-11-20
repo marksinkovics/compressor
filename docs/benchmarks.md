@@ -508,3 +508,21 @@ On Silesia, encoding took 309 instead of 202 CPU seconds and decoding 50.5 inste
 | ooffice | 4,996,090 | 5,000,690 (+0.09%) | 152 MiB/s | 394 MiB/s |
 
 (Measured under heavy load from other work; the ratios held across runs.) Encoding is 10–20% faster too. tANS loses precision on very skewed bytes (2.3% at p = 0.99, `TansTests`). The engine tries both wherever it tried rANS (after a transform) and keeps rANS only when it is more than 0.5% smaller. Not done: tANS as the BWT coder's last stage (a new coder id for a few percent of decode speed of a coder that BWT + CM now mostly replaces), and LZ77 + tANS in the style of zstd.
+
+## Dictionaries (2026-11-20)
+
+Autonomous run 3, item 4. Many small similar files, each compressed on its own: the `vcpkg.json` and `portfile.cmake` of every vcpkg port, alternately into a training half (1401 files) and a test half (1400 files); dictionaries of 112,640 bytes (zstd's default) trained on the first half, totals over the second (`ingot encode -T 1 -i FILE -o -` per file).
+
+| Test half | `vcpkg.json` (965,548 bytes) | `portfile.cmake` (2,027,107 bytes) |
+| --- | ---: | ---: |
+| gzip -9 | 445,004 | 975,194 |
+| ingot -L 6 | 443,545 | 971,759 |
+| ingot -L 6 -D (ours) | 232,583 (−47.6%) | 582,426 (−40.1%) |
+| ingot -L 6 -D (zstd's dictionary) | 233,999 | 570,482 |
+| ingot -L 9 -D (ours) | 214,478 | 553,260 |
+| zstd -19 | 421,700 | 959,105 |
+| zstd -19 -D (`zstd --train`) | 172,630 | 448,945 |
+
+- The dictionary halves ingot's output on these files, and our trainer's dictionary is as good as zstd's for ingot (within 0.6% and 2.1%).
+- zstd with its dictionary is still 20–25% smaller. Part of it is per-file overhead: an ingot file has at least 36 bytes of container (frame header, block header, pipeline descriptor, dictionary id, end block) against zstd's ~12, which is 34 KB of the 60 KB gap on `vcpkg.json` (average 690 bytes per file). The rest is that a zstd dictionary also holds entropy tables and repeat offsets, while every Deflate block here pays for its own Huffman code.
+- Not done: entropy tables in the dictionary, and priming the CM coder with it (level 9's CM runs at about 1–2 MB/s, so reading a 110 KB dictionary would cost ~0.1 s per block).

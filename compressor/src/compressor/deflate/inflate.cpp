@@ -16,6 +16,7 @@
 
 #include <compressor/checksum/crc32.h>
 #include <compressor/error.h>
+#include <compressor/lz77/lz77.h>
 
 namespace compressor
 {
@@ -170,10 +171,12 @@ private:
 class VectorSink
 {
 public:
-    VectorSink(std::vector<uint8_t>& out, std::size_t size)
+    // `history`: bytes before the output's start (a dictionary) that matches may reach.
+    VectorSink(std::vector<uint8_t>& out, std::size_t size, std::size_t history = 0)
         : out_(out)
         , start_(out.size())
         , end_(start_ + size)
+        , history_(history)
     {
         out_.reserve(end_);
     }
@@ -181,6 +184,11 @@ public:
     uint64_t produced() const
     {
         return out_.size() - start_;
+    }
+
+    uint64_t reachable() const
+    {
+        return produced() + history_;
     }
 
     std::size_t room() const
@@ -217,6 +225,7 @@ private:
     std::vector<uint8_t>& out_;
     std::size_t start_;
     std::size_t end_;
+    std::size_t history_;
 };
 
 // Output of unknown size: keeps the last 32 KiB for matches and writes the rest to a stream.
@@ -231,6 +240,11 @@ public:
     uint64_t produced() const
     {
         return written_ + buffer_.size();
+    }
+
+    uint64_t reachable() const
+    {
+        return produced();
     }
 
     static std::size_t room()
@@ -525,7 +539,7 @@ bool inflate_codes(BitReader& bits, const Table& literals, const Table& distance
             return false;
         }
         const std::size_t distance = distance_base[distance_symbol] + extra;
-        if (distance > out.produced() || length > out.room())
+        if (distance > out.reachable() || length > out.room())
         {
             return false;
         }
@@ -585,14 +599,28 @@ template <class Sink> bool inflate_blocks(BitReader& bits, Sink& out)
 } // namespace
 
 std::expected<void, Error> inflate_bytes(std::span<const uint8_t> in, std::vector<uint8_t>& out,
-                                         std::size_t size)
+                                         std::size_t size, std::span<const uint8_t> dictionary)
 {
     BitReader bits(in);
-    VectorSink sink(out, size);
+    if (dictionary.empty())
+    {
+        VectorSink sink(out, size);
+        if (!inflate_blocks(bits, sink) || !sink.complete() || bits.bytes_left() != 0)
+        {
+            return corrupt();
+        }
+        return {};
+    }
+    // Decoded after the dictionary's last 32 KiB, then moved to `out`.
+    const std::span<const uint8_t> history =
+        dictionary.last(std::min(dictionary.size(), lz77_window));
+    std::vector<uint8_t> work(history.begin(), history.end());
+    VectorSink sink(work, size, history.size());
     if (!inflate_blocks(bits, sink) || !sink.complete() || bits.bytes_left() != 0)
     {
         return corrupt();
     }
+    out.insert(out.end(), work.begin() + static_cast<std::ptrdiff_t>(history.size()), work.end());
     return {};
 }
 

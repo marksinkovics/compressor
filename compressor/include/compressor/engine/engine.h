@@ -11,6 +11,7 @@
 #include <vector>
 
 #include <compressor/data/data.h>
+#include <compressor/dictionary/dictionary.h>
 #include <compressor/error.h>
 #include <compressor/huffman/huffman.h>
 
@@ -58,7 +59,10 @@ public:
     // Level 1 chooses between stored and Huffman; from 2 on, an LZ77 + Huffman pipeline block
     // competes too, with longer match searches the higher the level: without a transform and with
     // the one choose_transforms() picks, or from auto_level on with each of its candidates.
-    explicit Engine(uint8_t block_size_log2 = default_block_size_log2, unsigned level = 1);
+    // With a `dictionary`, the LZ77 + Huffman and LZR coders match into it (coders 9 and 10),
+    // and blocks coded with it can be decoded.
+    explicit Engine(uint8_t block_size_log2 = default_block_size_log2, unsigned level = 1,
+                    std::shared_ptr<const Dictionary> dictionary = nullptr);
 
     // Graphviz dot of the code tree of the last block encoded or decoded, rebuilt from the codes.
     void print_graph() const override;
@@ -74,13 +78,17 @@ public:
 
 private:
     std::expected<void, Error> decode_huffman(const EncodedBlock& block, std::vector<uint8_t>& out);
-    static std::expected<void, Error> decode_pipeline(const EncodedBlock& block,
-                                                      std::vector<uint8_t>& out);
+    std::expected<void, Error> decode_pipeline(const EncodedBlock& block,
+                                               std::vector<uint8_t>& out) const;
+    // The dictionary a coder 9 or 10 payload names, checked against ours.
+    std::expected<std::span<const uint8_t>, Error>
+    dictionary_for(std::span<const uint8_t> payload) const;
 
     void set_codes(const CodeLengths& lengths);
 
     uint8_t block_size_log2_;
     unsigned level_;
+    std::shared_ptr<const Dictionary> dictionary_;
     Frequencies frequencies_{}; // zero after decode: the format stores no frequencies
     Codes codes_{};
 };

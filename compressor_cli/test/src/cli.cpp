@@ -14,6 +14,7 @@
 #include <compressor/test/mock/compressor.h>
 
 #include <compressor/cli.h>
+#include <compressor/dictionary/dictionary.h>
 
 namespace fs = std::filesystem;
 using ::testing::HasSubstr;
@@ -52,6 +53,7 @@ protected:
         compressor::CLI cli([this](const compressor::CompressorSettings& settings) {
             threads_ = settings.threads;
             level_ = settings.level;
+            dictionary_ = settings.dictionary;
             return std::move(compressor_);
         }, out_, err_);
         return cli.run(argv);
@@ -63,6 +65,7 @@ protected:
     std::unique_ptr<MockICompressor> compressor_ = std::make_unique<MockICompressor>();
     std::optional<unsigned> threads_;
     std::optional<unsigned> level_;
+    std::shared_ptr<const compressor::Dictionary> dictionary_;
     std::ostringstream out_;
     std::ostringstream err_;
 };
@@ -458,4 +461,52 @@ TEST_F(CLITests, Encode_passes_the_search_index_flag)
                                         input_.c_str(), "-o",     output_.c_str()};
     EXPECT_EQ(cli.run(args), EXIT_SUCCESS);
     EXPECT_EQ(search_index, true);
+}
+
+TEST_F(CLITests, A_dictionary_is_read_and_passed_to_every_decoding_command)
+{
+    const std::string dictionary = (dir_ / "dict").string();
+    std::ofstream(dictionary) << "shared";
+    EXPECT_CALL(*compressor_, encode(::testing::_, ::testing::_)).WillOnce(Return(true));
+    EXPECT_EQ(run({"encode", "-D", dictionary, "-i", input_, "-o", output_}), EXIT_SUCCESS);
+    ASSERT_NE(dictionary_, nullptr);
+    EXPECT_EQ(dictionary_->bytes, std::vector<uint8_t>({'s', 'h', 'a', 'r', 'e', 'd'}));
+
+    for (const std::string command : {"decode", "verify"})
+    {
+        compressor_ = std::make_unique<MockICompressor>();
+        dictionary_ = nullptr;
+        if (command == "decode")
+        {
+            EXPECT_CALL(*compressor_, decode(::testing::_, ::testing::_)).WillOnce(Return(true));
+        }
+        else
+        {
+            EXPECT_CALL(*compressor_, verify(::testing::_)).WillOnce(Return(true));
+        }
+        EXPECT_EQ(run({command, "--dictionary", dictionary, "-i", input_}), EXIT_SUCCESS)
+            << command;
+        EXPECT_NE(dictionary_, nullptr) << command;
+    }
+}
+
+TEST_F(CLITests, An_empty_dictionary_file_is_refused_before_encoding)
+{
+    const std::string dictionary = (dir_ / "empty").string();
+    std::ofstream(dictionary).close();
+    EXPECT_CALL(*compressor_, encode(::testing::_, ::testing::_)).Times(0);
+    EXPECT_EQ(run({"encode", "-D", dictionary, "-i", input_, "-o", output_}), EXIT_FAILURE);
+    EXPECT_THAT(err_.str(), HasSubstr("Cannot read the dictionary"));
+    EXPECT_NE(run({"encode", "-D", (dir_ / "missing").string(), "-i", input_}), EXIT_SUCCESS);
+}
+
+TEST_F(CLITests, Train_passes_the_samples_output_and_size)
+{
+    EXPECT_CALL(*compressor_,
+                train(std::vector<fs::path>{input_, dir_}, fs::path(output_), std::size_t{4096}))
+        .WillOnce(Return(true));
+    EXPECT_EQ(run({"train", input_, dir_.string(), "-o", output_, "--size", "4096"}), EXIT_SUCCESS);
+    compressor_ = std::make_unique<MockICompressor>();
+    EXPECT_NE(run({"train", input_}), EXIT_SUCCESS); // no output
+    EXPECT_NE(run({"train", input_, "-o", output_, "--size", "10"}), EXIT_SUCCESS);
 }

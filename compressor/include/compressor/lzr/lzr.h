@@ -17,11 +17,14 @@ namespace compressor
 // LZMA's model and adaptive binary range coder: literals in the context of the previous byte and,
 // after a match, of the byte at the last distance; the last distance repeated cheaply; distance
 // slots and LZMA's three-tier lengths. A pipeline coder (docs/file_format.md, "LZR").
-std::vector<uint8_t> lzr_encode(std::span<const uint8_t> bytes, const Lz77Options& options);
-// Appends exactly `size` bytes; corrupt_payload on a distance before the block, a stream that
-// ends early or leaves bytes over.
+// With a `dictionary`, matches and the literal model's previous and match bytes may reach into it
+// as if it came just before the block.
+std::vector<uint8_t> lzr_encode(std::span<const uint8_t> block, const Lz77Options& options,
+                                std::span<const uint8_t> dictionary = {});
+// Appends exactly `size` bytes; corrupt_payload on a distance before the block (and dictionary),
+// a stream that ends early or leaves bytes over.
 std::expected<void, Error> lzr_decode(std::span<const uint8_t> payload, std::vector<uint8_t>& out,
-                                      std::size_t size);
+                                      std::size_t size, std::span<const uint8_t> dictionary = {});
 
 } // namespace compressor
 

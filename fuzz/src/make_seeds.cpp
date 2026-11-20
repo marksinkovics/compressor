@@ -12,6 +12,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 #include <compressor/archive/archive.h>
@@ -24,7 +25,11 @@
 #include <compressor/engine/engine.h>
 #include <compressor/entropy/rans.h>
 #include <compressor/entropy/tans.h>
+#include <compressor/lz77/lz77.h>
+#include <compressor/lzr/lzr.h>
 #include <compressor/stream/encoder.h>
+
+#include "dictionary.h"
 
 namespace
 {
@@ -35,10 +40,12 @@ namespace fs = std::filesystem;
 constexpr uint8_t block_size_log2 = compressor::min_block_size_log2;
 
 // Level 6 gives LZ77 + Huffman pipeline blocks; level 1 only stored and Huffman ones.
-compressor::BlockEncoder make_encoder(unsigned level = 6)
+compressor::BlockEncoder
+make_encoder(unsigned level = 6,
+             const std::shared_ptr<const compressor::Dictionary>& dictionary = {})
 {
-    return {[level] {
-        return std::make_unique<compressor::Engine>(block_size_log2, level);
+    return {[level, dictionary] {
+        return std::make_unique<compressor::Engine>(block_size_log2, level, dictionary);
     }, block_size_log2, 1};
 }
 
@@ -163,9 +170,10 @@ void write(const fs::path& path, const std::string& bytes)
     std::ofstream(path, std::ios::out | std::ios::binary | std::ios::trunc) << bytes;
 }
 
-std::string encode(const std::string& input, unsigned level = 6)
+std::string encode(const std::string& input, unsigned level = 6,
+                   const std::shared_ptr<const compressor::Dictionary>& dictionary = {})
 {
-    auto encoder = make_encoder(level);
+    auto encoder = make_encoder(level, dictionary);
     std::istringstream in(input);
     std::ostringstream out;
     if (!encoder.encode(in, out))
@@ -208,6 +216,18 @@ std::string with_coder(const std::string& input, compressor::Coder coder)
         case compressor::Coder::bwt_cm:
             coded = compressor::bwt_cm_encode(bytes);
             break;
+        case compressor::Coder::lzr_dictionary:
+        {
+            const auto dictionary = fuzz::dictionary();
+            for (unsigned shift = 0; shift < 32; shift += 8)
+            {
+                coded.push_back(static_cast<uint8_t>(dictionary->id >> shift));
+            }
+            const std::vector<uint8_t> stream = compressor::lzr_encode(
+                bytes, compressor::lz77_options_for_level(7), dictionary->bytes);
+            coded.insert(coded.end(), stream.begin(), stream.end());
+            break;
+        }
         default:
             std::cerr << "no seed builder for this coder\n";
             std::exit(1);
@@ -299,6 +319,9 @@ try
     write(dir / "container" / "coder4.ingot", with_coder(text(6000), compressor::Coder::rans));
     write(dir / "container" / "coder7.ingot", with_coder(words(6000), compressor::Coder::bwt_cm));
     write(dir / "container" / "coder8.ingot", with_coder(text(6000), compressor::Coder::tans));
+    write(dir / "container" / "coder9.ingot", encode(words(3000), 6, fuzz::dictionary()));
+    write(dir / "container" / "coder10.ingot",
+          with_coder(words(3000), compressor::Coder::lzr_dictionary));
     write(dir / "container" / "image.ingot", encode(image(40)));
     write(dir / "container" / "records.ingot", encode(records(400), 8));
     write(dir / "inflate" / "text.deflate", deflate_seed(words(5000)));

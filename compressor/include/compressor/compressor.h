@@ -1,6 +1,7 @@
 #ifndef Compressor_h
 #define Compressor_h
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <iosfwd>
@@ -9,6 +10,7 @@
 #include <string_view>
 #include <vector>
 
+#include <compressor/dictionary/dictionary.h>
 #include <compressor/search/search.h>
 #include <compressor/stats/stats.h>
 #include <compressor/stream/decoder.h>
@@ -35,6 +37,8 @@ struct CompressorSettings
     unsigned threads = 0; // 0: default_thread_count()
     unsigned level = default_level;
     bool search_index = false; // folder archives get an FM-index for search()
+    // Encoding primes the LZ77 and LZR coders with it; decoding needs it for blocks coded so.
+    std::shared_ptr<const Dictionary> dictionary;
 };
 
 // stdin and stdout through StdioInputBuf and StdioOutputBuf, and std::cerr.
@@ -85,6 +89,10 @@ public:
     // `count` each file's number of occurrences, from the archive's search index without decoding.
     virtual SearchResult search(const std::filesystem::path& archive, const std::string& pattern,
                                 bool count) = 0;
+    // Trains a dictionary of at most `size` bytes on the files given, and those under the folders
+    // given, each file one sample, and writes it to `output`.
+    virtual bool train(const std::vector<std::filesystem::path>& inputs,
+                       const std::filesystem::path& output, std::size_t size) = 0;
 };
 
 // Writes a regular output through a temporary file next to it and renames that on success, so a
@@ -115,6 +123,8 @@ public:
                       const std::vector<std::string>& paths) override;
     SearchResult search(const std::filesystem::path& archive, const std::string& pattern,
                         bool count) override;
+    bool train(const std::vector<std::filesystem::path>& inputs,
+               const std::filesystem::path& output, std::size_t size) override;
 
 private:
     bool encode_folder(const std::filesystem::path& input, const std::filesystem::path& output);

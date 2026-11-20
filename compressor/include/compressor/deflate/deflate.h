@@ -32,8 +32,10 @@ std::expected<DeflateResult, Error> deflate_stream(std::istream& in, std::ostrea
                                                    const Lz77Options& options = {},
                                                    ThreadPool* pool = nullptr);
 
-// One raw Deflate stream of bytes already in memory, without pieces.
-std::vector<uint8_t> deflate_bytes(std::span<const uint8_t> bytes, const Lz77Options& options = {});
+// One raw Deflate stream of bytes already in memory, without pieces. Matches may also reach into
+// the last 32 KiB of `dictionary`, as if it came just before `bytes`.
+std::vector<uint8_t> deflate_bytes(std::span<const uint8_t> bytes, const Lz77Options& options = {},
+                                   std::span<const uint8_t> dictionary = {});
 
 struct GzipHeader
 {

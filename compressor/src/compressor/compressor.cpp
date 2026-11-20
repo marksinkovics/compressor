@@ -9,6 +9,7 @@
 #include <ios>
 #include <iostream>
 #include <istream>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <ostream>
@@ -21,6 +22,7 @@
 #include <system_error>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include <compressor/archive/archive.h>
 #include <compressor/archive/index.h>
@@ -29,6 +31,7 @@
 #include <compressor/deflate/deflate.h>
 #include <compressor/deflate/inflate.h>
 #include <compressor/deflate/zip.h>
+#include <compressor/dictionary/dictionary.h>
 #include <compressor/engine/engine.h>
 #include <compressor/error.h>
 #include <compressor/fmindex/fmindex.h>
@@ -511,16 +514,17 @@ Compressor::Compressor()
 
 Compressor::Compressor(CompressorSettings settings)
     : Compressor(std::make_unique<BlockEncoder>(
-                     [level = settings.level] {
-                         return std::make_unique<Engine>(default_block_size_log2, level);
+                     [level = settings.level, dictionary = settings.dictionary] {
+                         return std::make_unique<Engine>(default_block_size_log2, level,
+                                                         dictionary);
                      }, default_block_size_log2, thread_count(settings.threads)),
                  std::make_unique<BlockDecoder>(
-                     [] {
-                         return std::make_unique<Engine>();
+                     [dictionary = settings.dictionary] {
+                         return std::make_unique<Engine>(default_block_size_log2, 1, dictionary);
                      }, thread_count(settings.threads)),
                  process_streams(), settings.search_index)
 {
-    settings_ = settings;
+    settings_ = std::move(settings);
 }
 
 Compressor::Compressor(std::unique_ptr<IBlockEncoder> encoder,
@@ -566,6 +570,12 @@ bool Compressor::encode_as(const fs::path& input, const fs::path& output, Output
     std::ostream& err = streams_.err;
     std::error_code error;
     const bool folder = !is_standard(input) && fs::is_directory(input, error);
+    if (format != OutputFormat::ingot && settings_.dictionary != nullptr)
+    {
+        err << "Cannot encode " << display_name(input, "standard input")
+            << " with a dictionary: only the ingot format takes one\n";
+        return false;
+    }
     switch (format)
     {
     case OutputFormat::ingot:
@@ -1029,6 +1039,75 @@ SearchResult Compressor::search(const fs::path& archive, const std::string& patt
         return SearchResult::failed;
     }
     return matched ? SearchResult::matched : SearchResult::not_matched;
+}
+
+bool Compressor::train(const std::vector<fs::path>& inputs, const fs::path& output,
+                       std::size_t size)
+{
+    std::ostream& err = streams_.err;
+    std::vector<fs::path> files;
+    for (const fs::path& input : inputs)
+    {
+        std::error_code error;
+        if (fs::is_directory(input, error))
+        {
+            std::vector<fs::path> found;
+            for (const auto& entry : fs::recursive_directory_iterator(input, error))
+            {
+                if (entry.is_regular_file(error))
+                {
+                    found.push_back(entry.path());
+                }
+            }
+            std::ranges::sort(found);
+            files.insert(files.end(), found.begin(), found.end());
+        }
+        else
+        {
+            files.push_back(input);
+        }
+    }
+    std::vector<std::vector<uint8_t>> samples;
+    uint64_t total = 0;
+    for (const fs::path& file : files)
+    {
+        std::ifstream in(file, std::ios::in | std::ios::binary);
+        std::vector<uint8_t> bytes{std::istreambuf_iterator<char>(in),
+                                   std::istreambuf_iterator<char>()};
+        if (!in && !in.eof())
+        {
+            err << "Cannot train on " << file.string() << ": " << describe(Error::read_failed)
+                << '\n';
+            return false;
+        }
+        if (!bytes.empty())
+        {
+            total += bytes.size();
+            samples.push_back(std::move(bytes));
+        }
+    }
+    if (samples.empty())
+    {
+        err << "Cannot train a dictionary: no non-empty files given\n";
+        return false;
+    }
+    const std::vector<uint8_t> dictionary = train_dictionary(samples, size);
+    if (dictionary.empty())
+    {
+        err << "Cannot train a dictionary: the samples share nothing\n";
+        return false;
+    }
+    std::ofstream out(output, std::ios::out | std::ios::binary | std::ios::trunc);
+    out.write(reinterpret_cast<const char*>(dictionary.data()),
+              static_cast<std::streamsize>(dictionary.size()));
+    if (!out.flush())
+    {
+        err << "Cannot write " << output.string() << ": " << describe(Error::write_failed) << '\n';
+        return false;
+    }
+    streams_.out << output.string() << ": " << dictionary.size() << " bytes from " << samples.size()
+                 << " samples of " << total << " bytes\n";
+    return true;
 }
 
 } // namespace compressor

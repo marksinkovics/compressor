@@ -20,6 +20,8 @@ enum class Error : std::uint8_t
     unexpected_archive,
     corrupt_index,
     file_failed,
+    dictionary_missing,
+    dictionary_mismatch,
 };
 
 std::string_view describe(Error error);

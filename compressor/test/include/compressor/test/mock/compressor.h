@@ -1,6 +1,7 @@
 #ifndef MockICompressor_h
 #define MockICompressor_h
 
+#include <cstddef>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -32,6 +33,10 @@ public:
     MOCK_METHOD(compressor::SearchResult, search,
                 (const std::filesystem::path&, const std::string&, bool), (override));
     MOCK_METHOD(bool, stats, (const std::filesystem::path&, const compressor::StatsOptions&),
+                (override));
+    MOCK_METHOD(bool, train,
+                (const std::vector<std::filesystem::path>&, const std::filesystem::path&,
+                 std::size_t),
                 (override));
 };
 

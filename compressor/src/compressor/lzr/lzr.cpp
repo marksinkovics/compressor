@@ -409,12 +409,27 @@ std::size_t literal_base(uint8_t previous)
 
 } // namespace
 
-std::vector<uint8_t> lzr_encode(std::span<const uint8_t> bytes, const Lz77Options& options)
+std::vector<uint8_t> lzr_encode(std::span<const uint8_t> block, const Lz77Options& options,
+                                std::span<const uint8_t> dictionary)
 {
+    // The model sees the dictionary and the block as one history; positions count from the block.
+    std::vector<uint8_t> combined;
+    std::span<const uint8_t> history = block;
+    if (!dictionary.empty())
+    {
+        combined.assign(dictionary.begin(), dictionary.end());
+        combined.insert(combined.end(), block.begin(), block.end());
+        history = combined;
+    }
+    const std::size_t before = dictionary.size();
     Lz77Options window_options = options;
-    window_options.window = std::max<std::size_t>(lz77_window, bytes.size());
+    window_options.window = std::max<std::size_t>(lz77_window, history.size());
     Lz77MatchFinder finder(window_options);
-    finder.add(bytes);
+    if (!dictionary.empty())
+    {
+        finder.prime(dictionary);
+    }
+    finder.add(block);
     std::vector<Lz77Token> tokens;
     finder.tokenize(tokens, true);
 
@@ -430,16 +445,17 @@ std::vector<uint8_t> lzr_encode(std::span<const uint8_t> bytes, const Lz77Option
         if (token.distance == 0)
         {
             coder.bit(model.is_match[state][pos_state], 0);
-            const uint8_t previous = position > 0 ? bytes[position - 1] : 0;
+            const std::size_t at = before + position;
+            const uint8_t previous = at > 0 ? history[at - 1] : 0;
             std::span<Probability> probabilities =
                 std::span(model.literals).subspan(literal_base(previous), 0x300);
             const uint32_t symbol = token.length_or_literal;
-            if (state >= 7 && position >= last_distance)
+            if (state >= 7 && at >= last_distance)
             {
                 // A literal right after a match: the byte at the last distance predicts it.
                 // Mirrors the decoder: while the bits so far agree with the match byte, its next
                 // bit selects one of two probability sets; after the first difference, neither.
-                uint32_t match_byte = bytes[position - last_distance];
+                uint32_t match_byte = history[at - last_distance];
                 uint32_t offset = 0x100;
                 uint32_t node = 1;
                 for (unsigned i = 8; i-- > 0;)
@@ -487,8 +503,13 @@ std::vector<uint8_t> lzr_encode(std::span<const uint8_t> bytes, const Lz77Option
     return out;
 }
 
-std::expected<void, Error> lzr_decode(std::span<const uint8_t> payload, std::vector<uint8_t>& out,
-                                      std::size_t size)
+namespace
+{
+
+// Decodes into `out` after `before` bytes that matches may reach (a dictionary).
+std::expected<void, Error> lzr_decode_after(std::span<const uint8_t> payload,
+                                            std::vector<uint8_t>& out, std::size_t size,
+                                            std::size_t before)
 {
     const std::size_t start = out.size();
     const std::size_t end = start + size;
@@ -507,11 +528,11 @@ std::expected<void, Error> lzr_decode(std::span<const uint8_t> payload, std::vec
         const unsigned pos_state = position & (position_states - 1);
         if (coder.bit(model.is_match[state][pos_state]) == 0)
         {
-            const uint8_t previous = position > 0 ? out.back() : 0;
+            const uint8_t previous = position + before > 0 ? out.back() : 0;
             std::span<Probability> probabilities =
                 std::span(model.literals).subspan(literal_base(previous), 0x300);
             uint32_t node = 1;
-            if (state >= 7 && position >= last_distance)
+            if (state >= 7 && position + before >= last_distance)
             {
                 uint32_t match_byte = out[out.size() - last_distance];
                 uint32_t offset = 0x100;
@@ -548,7 +569,7 @@ std::expected<void, Error> lzr_decode(std::span<const uint8_t> payload, std::vec
             state = after_match(state);
         }
         // Distance 0 is what a wrapped 32-bit distance decodes to.
-        if (last_distance == 0 || last_distance > position || length > end - out.size())
+        if (last_distance == 0 || last_distance > position + before || length > end - out.size())
         {
             return std::unexpected(Error::corrupt_payload);
         }
@@ -562,6 +583,25 @@ std::expected<void, Error> lzr_decode(std::span<const uint8_t> payload, std::vec
         return std::unexpected(Error::corrupt_payload);
     }
     return {};
+}
+
+} // namespace
+
+std::expected<void, Error> lzr_decode(std::span<const uint8_t> payload, std::vector<uint8_t>& out,
+                                      std::size_t size, std::span<const uint8_t> dictionary)
+{
+    if (dictionary.empty())
+    {
+        return lzr_decode_after(payload, out, size, 0);
+    }
+    std::vector<uint8_t> work(dictionary.begin(), dictionary.end());
+    auto decoded = lzr_decode_after(payload, work, size, dictionary.size());
+    if (decoded)
+    {
+        out.insert(out.end(), work.begin() + static_cast<std::ptrdiff_t>(dictionary.size()),
+                   work.end());
+    }
+    return decoded;
 }
 
 } // namespace compressor

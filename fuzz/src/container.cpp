@@ -11,13 +11,15 @@
 #include <compressor/engine/engine.h>
 #include <compressor/stream/decoder.h>
 
+#include "dictionary.h"
 #include "discard.h"
 
 // NOLINTNEXTLINE(readability-identifier-naming): libFuzzer's entry point
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, std::size_t size)
 {
     static compressor::BlockDecoder decoder([] {
-        return std::make_unique<compressor::Engine>();
+        return std::make_unique<compressor::Engine>(compressor::default_block_size_log2, 1,
+                                                    fuzz::dictionary());
     }, 2);
     const std::string bytes(reinterpret_cast<const char*>(data), size);
     fuzz::DiscardBuf discard;

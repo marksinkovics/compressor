@@ -533,9 +533,14 @@ std::vector<uint8_t> deflate_piece(const Piece& previous, const Piece& piece, bo
 
 } // namespace
 
-std::vector<uint8_t> deflate_bytes(std::span<const uint8_t> bytes, const Lz77Options& options)
+std::vector<uint8_t> deflate_bytes(std::span<const uint8_t> bytes, const Lz77Options& options,
+                                   std::span<const uint8_t> dictionary)
 {
     DeflateWriter writer(options);
+    if (!dictionary.empty())
+    {
+        writer.prime(dictionary.last(std::min(dictionary.size(), lz77_window)));
+    }
     writer.add(bytes, Flush::final);
     return std::move(writer.encoded());
 }

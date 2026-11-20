@@ -205,9 +205,11 @@ std::vector<std::unique_ptr<IEngine>> make_engines(const EngineFactory& make_eng
     return engines;
 }
 
-Engine::Engine(uint8_t block_size_log2, unsigned level)
+Engine::Engine(uint8_t block_size_log2, unsigned level,
+               std::shared_ptr<const Dictionary> dictionary)
     : block_size_log2_(block_size_log2)
     , level_(level)
+    , dictionary_(std::move(dictionary))
 {
 }
 
@@ -347,32 +349,51 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
                 input = transformed;
             }
             std::vector<uint8_t> coded;
+            // With a dictionary, its id first; the coders that match into it get their own ids.
+            const std::span<const uint8_t> dictionary =
+                dictionary_ != nullptr ? std::span<const uint8_t>(dictionary_->bytes)
+                                       : std::span<const uint8_t>{};
+            Coder written = coder;
+            if (dictionary_ != nullptr && (coder == Coder::lz77_huffman || coder == Coder::lzr))
+            {
+                written = coder == Coder::lz77_huffman ? Coder::lz77_huffman_dictionary
+                                                       : Coder::lzr_dictionary;
+                for (unsigned shift = 0; shift < 32; shift += 8)
+                {
+                    coded.push_back(static_cast<uint8_t>(dictionary_->id >> shift));
+                }
+            }
+            std::vector<uint8_t> stream;
             switch (coder)
             {
             case Coder::lz77_huffman:
-                coded = deflate_bytes(input, lz77_options_for_level(level_));
+                stream = deflate_bytes(input, lz77_options_for_level(level_), dictionary);
                 break;
             case Coder::bwt:
-                coded = bwt_encode(input);
+                stream = bwt_encode(input);
                 break;
             case Coder::rans:
-                rans_encode(std::vector<uint16_t>(input.begin(), input.end()), 256, coded);
+                rans_encode(std::vector<uint16_t>(input.begin(), input.end()), 256, stream);
                 break;
             case Coder::lzr:
                 // Its 1 MiB window makes long chains slow: level 9's took 17 s per MiB of a photo
                 // and gained nothing on Silesia, so every level searches like level 7.
-                coded = lzr_encode(input, lz77_options_for_level(auto_level));
+                stream = lzr_encode(input, lz77_options_for_level(auto_level), dictionary);
                 break;
             case Coder::cm:
-                coded = cm_encode(input);
+                stream = cm_encode(input);
                 break;
             case Coder::bwt_cm:
-                coded = bwt_cm_encode(input);
+                stream = bwt_cm_encode(input);
                 break;
             case Coder::tans:
-                tans_encode(input, coded);
+                tans_encode(input, stream);
                 break;
+            case Coder::lz77_huffman_dictionary:
+            case Coder::lzr_dictionary:
+                break; // chosen above from lz77_huffman and lzr
             }
+            coded.insert(coded.end(), stream.begin(), stream.end());
             std::vector<uint8_t> payload{static_cast<uint8_t>(transforms.size())};
             for (const Transform& transform : transforms)
             {
@@ -382,7 +403,7 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
                     payload.push_back(static_cast<uint8_t>(transform.parameter >> shift));
                 }
             }
-            payload.push_back(static_cast<uint8_t>(coder));
+            payload.push_back(static_cast<uint8_t>(written));
             payload.insert(payload.end(), coded.begin(), coded.end());
             return payload;
         };
@@ -518,8 +539,31 @@ std::expected<void, Error> Engine::decode_block(const EncodedBlock& block,
     return {};
 }
 
+std::expected<std::span<const uint8_t>, Error>
+Engine::dictionary_for(std::span<const uint8_t> payload) const
+{
+    if (payload.size() < 4)
+    {
+        return std::unexpected(Error::corrupt_payload);
+    }
+    uint32_t id = 0;
+    for (unsigned i = 0; i < 4; ++i)
+    {
+        id |= uint32_t{payload[i]} << (8 * i);
+    }
+    if (dictionary_ == nullptr)
+    {
+        return std::unexpected(Error::dictionary_missing);
+    }
+    if (dictionary_->id != id)
+    {
+        return std::unexpected(Error::dictionary_mismatch);
+    }
+    return std::span<const uint8_t>(dictionary_->bytes);
+}
+
 std::expected<void, Error> Engine::decode_pipeline(const EncodedBlock& block,
-                                                   std::vector<uint8_t>& out)
+                                                   std::vector<uint8_t>& out) const
 {
     std::span<const uint8_t> payload = block.payload_;
     if (payload.empty() || payload[0] > max_pipeline_transforms)
@@ -573,6 +617,18 @@ std::expected<void, Error> Engine::decode_pipeline(const EncodedBlock& block,
     else if (payload[0] == static_cast<uint8_t>(Coder::tans))
     {
         decoded = tans_decode(payload.subspan(1), block.size_, out);
+    }
+    else if (payload[0] == static_cast<uint8_t>(Coder::lz77_huffman_dictionary) ||
+             payload[0] == static_cast<uint8_t>(Coder::lzr_dictionary))
+    {
+        const auto dictionary = dictionary_for(payload.subspan(1));
+        if (!dictionary)
+        {
+            return std::unexpected(dictionary.error());
+        }
+        decoded = payload[0] == static_cast<uint8_t>(Coder::lzr_dictionary)
+                      ? lzr_decode(payload.subspan(5), out, block.size_, *dictionary)
+                      : inflate_bytes(payload.subspan(5), out, block.size_, *dictionary);
     }
     else if (payload[0] == static_cast<uint8_t>(Coder::rans))
     {

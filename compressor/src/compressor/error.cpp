@@ -31,6 +31,10 @@ std::string_view describe(Error error)
         return "the archive index is corrupt";
     case Error::file_failed:
         return "a file could not be read or written";
+    case Error::dictionary_missing:
+        return "it was encoded with a dictionary; give it with -D";
+    case Error::dictionary_mismatch:
+        return "it was encoded with a different dictionary";
     }
     return "unknown error";
 }
