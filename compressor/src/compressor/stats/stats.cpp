@@ -9,9 +9,11 @@
 #include <format>
 #include <ios>
 #include <istream>
+#include <memory>
 #include <numeric>
 #include <ostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <compressor/archive/index.h>
@@ -120,7 +122,8 @@ uint64_t bits_to_bytes(double bits)
 
 } // namespace
 
-std::expected<Stats, Error> collect_stats(std::istream& in)
+std::expected<Stats, Error> collect_stats(std::istream& in,
+                                          std::shared_ptr<const Dictionary> dictionary)
 {
     Stats stats;
     in.seekg(0, std::ios::end);
@@ -149,7 +152,7 @@ std::expected<Stats, Error> collect_stats(std::istream& in)
 
     stats.ingot = true;
     stats.block_size_log2 = *header;
-    Engine engine(*header);
+    Engine engine(*header, 1, std::move(dictionary));
     EncodedBlock block;
     std::vector<uint8_t> bytes;
     while (true)

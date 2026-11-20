@@ -41,7 +41,10 @@ class BlockEncoder : public IBlockEncoder
 public:
     // Engine, the default block size and default_thread_count() threads.
     BlockEncoder();
-    BlockEncoder(const EngineFactory& make_engine, uint8_t block_size_log2, unsigned threads);
+    // `single_block`: encode() writes an input that fits one block as a single-block frame
+    // (write_single_block_frame()); it reads one byte past the block to know.
+    BlockEncoder(const EngineFactory& make_engine, uint8_t block_size_log2, unsigned threads,
+                 bool single_block = false);
     // One thread.
     explicit BlockEncoder(std::unique_ptr<IEngine> engine,
                           uint8_t block_size_log2 = default_block_size_log2);
@@ -58,6 +61,7 @@ public:
 private:
     std::vector<std::unique_ptr<IEngine>> engines_; // one per worker
     uint8_t block_size_log2_;
+    bool single_block_ = false;
     ThreadPool pool_; // after engines_, so it finishes its tasks before they are destroyed
 };
 

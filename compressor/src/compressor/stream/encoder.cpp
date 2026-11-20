@@ -5,6 +5,7 @@
 #include <deque>
 #include <expected>
 #include <future>
+#include <ios>
 #include <istream>
 #include <memory>
 #include <ostream>
@@ -49,9 +50,10 @@ BlockEncoder::BlockEncoder()
 }
 
 BlockEncoder::BlockEncoder(const EngineFactory& make_engine, uint8_t block_size_log2,
-                           unsigned threads)
+                           unsigned threads, bool single_block)
     : engines_(make_engines(make_engine, threads))
     , block_size_log2_(block_size_log2)
+    , single_block_(single_block)
     , pool_(static_cast<unsigned>(engines_.size()))
 {
 }
@@ -77,6 +79,36 @@ std::expected<FrameLayout, Error> BlockEncoder::encode_frame(std::istream& in, s
 {
     const std::size_t block_size = std::size_t{1} << block_size_log2_;
     const std::size_t max_in_flight = 2 * pool_.size();
+
+    // An input that fits one block gets the single-block frame, when asked for.
+    std::vector<uint8_t> first;
+    bool have_first = false;
+    if (single_block_ && flags == 0)
+    {
+        first.resize(block_size);
+        in.read(reinterpret_cast<char*>(first.data()), static_cast<std::streamsize>(first.size()));
+        if (in.bad())
+        {
+            return std::unexpected(Error::read_failed);
+        }
+        first.resize(static_cast<std::size_t>(in.gcount()));
+        const bool ended =
+            first.size() < block_size || in.peek() == std::istream::traits_type::eof();
+        if (!first.empty() && ended)
+        {
+            const EncodedBlock block = engines_.front()->encode_block(first);
+            const uint64_t size = write_single_block_frame(out, block_size_log2_, block);
+            out.flush();
+            if (!out)
+            {
+                return std::unexpected(Error::write_failed);
+            }
+            return FrameLayout{
+                .block_offsets = {frame_header_bytes}, .total_size = first.size(), .size = size};
+        }
+        in.clear(in.rdstate() & ~std::ios::eofbit);
+        have_first = true;
+    }
     write_frame_header(out, block_size_log2_, flags);
     FrameLayout layout{.block_offsets = {}, .total_size = 0, .size = frame_header_bytes};
 
@@ -106,10 +138,17 @@ std::expected<FrameLayout, Error> BlockEncoder::encode_frame(std::istream& in, s
             buffer = std::move(spare_buffers.back());
             spare_buffers.pop_back();
         }
-        buffer.resize(block_size);
         std::size_t got = 0;
+        if (have_first)
+        {
+            buffer = std::exchange(first, {});
+            got = buffer.size();
+            have_first = false;
+        }
+        else
         {
             PROFILE_SCOPE("Read")
+            buffer.resize(block_size);
             in.read(reinterpret_cast<char*>(buffer.data()),
                     static_cast<std::streamsize>(buffer.size()));
             got = static_cast<std::size_t>(in.gcount());

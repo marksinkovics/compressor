@@ -1,6 +1,7 @@
 #ifndef Deflate_h
 #define Deflate_h
 
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <iosfwd>
@@ -36,6 +37,29 @@ std::expected<DeflateResult, Error> deflate_stream(std::istream& in, std::ostrea
 // the last 32 KiB of `dictionary`, as if it came just before `bytes`.
 std::vector<uint8_t> deflate_bytes(std::span<const uint8_t> bytes, const Lz77Options& options = {},
                                    std::span<const uint8_t> dictionary = {});
+
+// Code lengths for Deflate's 286 literal/length and 30 distance symbols, from a dictionary.
+struct DeflateCodeLengths
+{
+    std::vector<uint8_t> literals;
+    std::vector<uint8_t> distances;
+};
+inline constexpr std::size_t deflate_literal_symbols = 286;
+inline constexpr std::size_t deflate_distance_symbols = 30;
+
+// Adds how often `bytes`, matched against the last 32 KiB of `history`, uses each literal/length
+// and distance symbol (the end-of-block symbol once) to the counts.
+void count_deflate_symbols(std::span<const uint8_t> bytes, std::span<const uint8_t> history,
+                           const Lz77Options& options, std::span<uint64_t> literals,
+                           std::span<uint64_t> distances);
+// One Huffman-coded token stream as in a Deflate block, but with the given codes instead of a
+// block header: no BFINAL/BTYPE bits and no code lengths, ending with the end-of-block code and
+// zero bits to a byte. Matches may reach into the last 32 KiB of `history`. Empty when a token
+// has no code.
+std::vector<uint8_t> deflate_with_codes(std::span<const uint8_t> bytes,
+                                        std::span<const uint8_t> history,
+                                        const Lz77Options& options,
+                                        const DeflateCodeLengths& codes);
 
 struct GzipHeader
 {

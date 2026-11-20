@@ -624,6 +624,33 @@ std::expected<void, Error> inflate_bytes(std::span<const uint8_t> in, std::vecto
     return {};
 }
 
+std::expected<void, Error> inflate_with_codes(std::span<const uint8_t> in,
+                                              std::vector<uint8_t>& out, std::size_t size,
+                                              std::span<const uint8_t> history,
+                                              std::span<const uint8_t> literal_lengths,
+                                              std::span<const uint8_t> distance_lengths)
+{
+    Table literals;
+    Table distances;
+    if (literal_lengths.size() > 286 || distance_lengths.size() > 30 ||
+        literal_lengths.size() <= 256 || literal_lengths[256] == 0 ||
+        !literals.build(literal_lengths) || !distances.build(distance_lengths))
+    {
+        return corrupt();
+    }
+    const std::span<const uint8_t> window = history.last(std::min(history.size(), lz77_window));
+    std::vector<uint8_t> work(window.begin(), window.end());
+    VectorSink sink(work, size, window.size());
+    BitReader bits(in);
+    if (!inflate_codes(bits, literals, distances, sink) || !sink.complete() ||
+        bits.bytes_left() != 0)
+    {
+        return corrupt();
+    }
+    out.insert(out.end(), work.begin() + static_cast<std::ptrdiff_t>(window.size()), work.end());
+    return {};
+}
+
 namespace
 {
 

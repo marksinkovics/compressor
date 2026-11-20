@@ -176,6 +176,35 @@ uint64_t written_size(const EncodedBlock& block)
     return block_header_bytes + encoded_size(block);
 }
 
+uint64_t write_single_block_frame(std::ostream& ostream, uint8_t block_size_log2,
+                                  const EncodedBlock& block)
+{
+    write_frame_header(ostream, block_size_log2, single_block_flag);
+    std::string header;
+    header.push_back(static_cast<char>(block.method_));
+    for (uint32_t size = block.size_;; size >>= 7U)
+    {
+        header.push_back(static_cast<char>((size & 0x7FU) | (size >= 0x80 ? 0x80U : 0U)));
+        if (size < 0x80)
+        {
+            break;
+        }
+    }
+    put_le<4>(header, block.crc_);
+    if (block.method_ == Method::huffman)
+    {
+        for (std::size_t i = 0; i < code_lengths_bytes; ++i)
+        {
+            const auto low = static_cast<unsigned>(block.code_lengths_[2 * i] & 0x0FU);
+            const auto high = static_cast<unsigned>(block.code_lengths_[(2 * i) + 1] & 0x0FU);
+            header.push_back(static_cast<char>(low | (high << 4U)));
+        }
+    }
+    ostream.write(header.data(), static_cast<std::streamsize>(header.size()));
+    write_bytes(ostream, block.payload_);
+    return frame_header_bytes + header.size() + block.payload_.size();
+}
+
 std::ostream& operator<<(std::ostream& ostream, const EncodedData& data)
 {
     write_frame_header(ostream, data.block_size_log2_);
@@ -296,12 +325,15 @@ std::expected<uint8_t, Error> FrameReader::read_header()
     const uint8_t block_size_log2 = header[5];
     const auto flags = static_cast<uint16_t>(get_le<2>(std::span(header).subspan(6)));
     if (block_size_log2 < min_block_size_log2 || block_size_log2 > max_block_size_log2 ||
-        (flags & ~unsigned{archive_flag | search_index_flag}) != 0U ||
-        ((flags & search_index_flag) != 0 && (flags & archive_flag) == 0))
+        (flags & ~(unsigned{archive_flag} | search_index_flag | single_block_flag)) != 0U ||
+        ((flags & search_index_flag) != 0 && (flags & archive_flag) == 0) ||
+        ((flags & single_block_flag) != 0 && (flags & archive_flag) != 0) ||
+        ((flags & single_block_flag) != 0 && header[4] < 2))
     {
         return std::unexpected(Error::corrupt_header);
     }
     flags_ = flags;
+    single_done_ = false;
     block_size_ = uint64_t{1} << block_size_log2;
     total_ = 0;
     last_size_.reset();
@@ -317,8 +349,101 @@ void FrameReader::start_blocks(uint8_t block_size_log2)
     last_size_.reset();
 }
 
+std::expected<bool, Error> FrameReader::read_single_block(EncodedBlock& block)
+{
+    if (single_done_)
+    {
+        return false;
+    }
+    std::array<unsigned char, 1> method{};
+    if (auto read = read_exactly(istream_, method); !read)
+    {
+        return std::unexpected(read.error());
+    }
+    if (method[0] > static_cast<unsigned char>(Method::pipeline))
+    {
+        return std::unexpected(Error::corrupt_header);
+    }
+    block.method_ = static_cast<Method>(method[0]);
+    uint64_t size = 0;
+    for (unsigned shift = 0;; shift += 7)
+    {
+        std::array<unsigned char, 1> byte{};
+        if (auto read = read_exactly(istream_, byte); !read)
+        {
+            return std::unexpected(read.error());
+        }
+        if (shift > 28)
+        {
+            return std::unexpected(Error::corrupt_header);
+        }
+        size |= uint64_t{byte[0] & 0x7FU} << shift;
+        if ((byte[0] & 0x80U) == 0)
+        {
+            break;
+        }
+    }
+    std::array<unsigned char, 4> crc{};
+    if (auto read = read_exactly(istream_, crc); !read)
+    {
+        return std::unexpected(read.error());
+    }
+    if (size == 0 || size > block_size_)
+    {
+        return std::unexpected(Error::corrupt_header);
+    }
+    block.size_ = static_cast<uint32_t>(size);
+    block.crc_ = static_cast<uint32_t>(get_le<4>(crc));
+    block.code_lengths_ = {};
+    uint64_t limit = block.size_;
+    if (block.method_ == Method::huffman)
+    {
+        std::array<unsigned char, code_lengths_bytes> lengths{};
+        if (auto read = read_exactly(istream_, lengths); !read)
+        {
+            return std::unexpected(read.error());
+        }
+        for (std::size_t i = 0; i < code_lengths_bytes; ++i)
+        {
+            block.code_lengths_[2 * i] = lengths[i] & 0x0FU;
+            block.code_lengths_[(2 * i) + 1] = lengths[i] >> 4U;
+        }
+        if (!valid_code_lengths(block.code_lengths_) || block.code_lengths_ == CodeLengths{})
+        {
+            return std::unexpected(Error::corrupt_header);
+        }
+        limit = max_huffman_payload(block.size_);
+    }
+    else if (block.method_ == Method::pipeline)
+    {
+        limit = max_pipeline_payload(block.size_);
+    }
+    // The payload is the rest of the stream, one byte more than allowed to see that it ends.
+    block.payload_.resize(static_cast<std::size_t>(limit + 1));
+    istream_.read(reinterpret_cast<char*>(block.payload_.data()),
+                  static_cast<std::streamsize>(block.payload_.size()));
+    if (istream_.bad())
+    {
+        return std::unexpected(Error::read_failed);
+    }
+    const auto got = static_cast<uint64_t>(istream_.gcount());
+    block.payload_.resize(static_cast<std::size_t>(got));
+    if (got > limit || (block.method_ == Method::stored && got != block.size_) ||
+        (block.method_ == Method::pipeline && got < pipeline_descriptor_bytes))
+    {
+        return std::unexpected(Error::corrupt_header);
+    }
+    single_done_ = true;
+    total_ = block.size_;
+    return true;
+}
+
 std::expected<bool, Error> FrameReader::read_block(EncodedBlock& block)
 {
+    if ((flags_ & single_block_flag) != 0)
+    {
+        return read_single_block(block);
+    }
     std::array<unsigned char, 1> method{};
     if (auto read = read_exactly(istream_, method); !read)
     {
@@ -381,7 +506,7 @@ std::expected<EncodedData, Error> read_encoded(std::istream& istream)
     {
         return std::unexpected(block_size_log2.error());
     }
-    if (reader.flags() != 0)
+    if ((reader.flags() & archive_flag) != 0)
     {
         return std::unexpected(Error::unexpected_archive);
     }

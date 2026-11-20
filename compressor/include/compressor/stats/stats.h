@@ -4,10 +4,12 @@
 #include <cstdint>
 #include <expected>
 #include <iosfwd>
+#include <memory>
 #include <optional>
 #include <vector>
 
 #include <compressor/data/data.h>
+#include <compressor/dictionary/dictionary.h>
 #include <compressor/error.h>
 #include <compressor/huffman/huffman.h>
 
@@ -41,9 +43,11 @@ struct Stats
     Frequencies frequencies{};  // of the content
 };
 
-// Reads all of `in`, which must be able to seek. An ingot file is decoded block by block, and its
-// blocks and any archive index are checked as when decoding.
-std::expected<Stats, Error> collect_stats(std::istream& in);
+// Reads all of `in`, which must be able to seek. An ingot file is decoded block by block (with
+// `dictionary` for blocks coded with one), and its blocks and any archive index are checked as
+// when decoding.
+std::expected<Stats, Error> collect_stats(std::istream& in,
+                                          std::shared_ptr<const Dictionary> dictionary = nullptr);
 
 // Order-0 entropy in bits per byte; 0 for no content.
 double entropy_bits_per_byte(const Frequencies& frequencies);

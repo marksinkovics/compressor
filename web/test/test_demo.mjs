@@ -49,7 +49,7 @@ const tests = {
   // build runs the same models: every coder has a seed (coder<N>.ingot, cm.ingot, image.ingot).
   nativeFilesDecode() {
     // Not the archive, nor the seeds that need fuzz/src/dictionary.h's dictionary.
-    const skip = new Set(["archive.ingot", "coder9.ingot", "coder10.ingot", "coder11.ingot"]);
+    const skip = new Set(["archive.ingot", "coder9.ingot", "coder10.ingot", "coder11.ingot", "coder12.ingot", "single.ingot"]);
     const names = readdirSync(corpus).filter((n) => n.endsWith(".ingot") && !skip.has(n));
     assert.ok(names.length >= 14);
     for (const name of names) {

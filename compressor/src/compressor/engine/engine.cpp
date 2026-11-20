@@ -354,6 +354,13 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
                 dictionary_ != nullptr ? std::span<const uint8_t>(dictionary_->bytes)
                                        : std::span<const uint8_t>{};
             Coder written = coder;
+            if (coder == Coder::lz77_dictionary_codes)
+            {
+                for (unsigned shift = 0; shift < 32; shift += 8)
+                {
+                    coded.push_back(static_cast<uint8_t>(dictionary_->id >> shift));
+                }
+            }
             if (dictionary_ != nullptr &&
                 (coder == Coder::lz77_huffman || coder == Coder::lzr || coder == Coder::cm))
             {
@@ -391,6 +398,14 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
             case Coder::tans:
                 tans_encode(input, stream);
                 break;
+            case Coder::lz77_dictionary_codes:
+                stream = deflate_with_codes(input, dictionary, lz77_options_for_level(level_),
+                                            *dictionary_->codes);
+                if (stream.empty())
+                {
+                    return std::vector<uint8_t>{}; // a token without a code: not a candidate
+                }
+                break;
             case Coder::lz77_huffman_dictionary:
             case Coder::lzr_dictionary:
             case Coder::cm_dictionary:
@@ -412,6 +427,10 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
         };
         // A transform must beat coding the block without it; a tie keeps none, and LZ77.
         std::vector<Coder> coders{Coder::lz77_huffman};
+        if (dictionary_ != nullptr && dictionary_->codes)
+        {
+            coders.push_back(Coder::lz77_dictionary_codes);
+        }
         if (level_ >= bwt_level)
         {
             coders.push_back(Coder::bwt);
@@ -430,7 +449,7 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
             std::vector<uint8_t> candidate = transform != nullptr
                                                  ? pipeline(std::span(transform, 1), coder)
                                                  : pipeline({}, coder);
-            if (candidate.size() < best_pipeline.size())
+            if (!candidate.empty() && candidate.size() < best_pipeline.size())
             {
                 best_pipeline = std::move(candidate);
                 best_transform = transform;
@@ -623,7 +642,8 @@ std::expected<void, Error> Engine::decode_pipeline(const EncodedBlock& block,
     }
     else if (payload[0] == static_cast<uint8_t>(Coder::lz77_huffman_dictionary) ||
              payload[0] == static_cast<uint8_t>(Coder::lzr_dictionary) ||
-             payload[0] == static_cast<uint8_t>(Coder::cm_dictionary))
+             payload[0] == static_cast<uint8_t>(Coder::cm_dictionary) ||
+             payload[0] == static_cast<uint8_t>(Coder::lz77_dictionary_codes))
     {
         const auto dictionary = dictionary_for(payload.subspan(1));
         if (!dictionary)
@@ -638,6 +658,15 @@ std::expected<void, Error> Engine::decode_pipeline(const EncodedBlock& block,
             break;
         case Coder::cm_dictionary:
             decoded = cm_decode(stream, out, block.size_, *dictionary);
+            break;
+        case Coder::lz77_dictionary_codes:
+            if (!dictionary_->codes)
+            {
+                return std::unexpected(Error::corrupt_payload);
+            }
+            decoded =
+                inflate_with_codes(stream, out, block.size_, *dictionary,
+                                   dictionary_->codes->literals, dictionary_->codes->distances);
             break;
         default:
             decoded = inflate_bytes(stream, out, block.size_, *dictionary);

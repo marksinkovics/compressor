@@ -40,12 +40,12 @@ std::shared_ptr<const compressor::Dictionary> to_dictionary(const std::optional<
         return nullptr;
     }
     const std::string_view view(*bytes);
-    if (view.empty() || view.size() > compressor::max_dictionary_bytes)
+    auto dictionary = compressor::parse_dictionary(std::vector<uint8_t>(view.begin(), view.end()));
+    if (!dictionary)
     {
-        throw IngotError("a dictionary must be 1 byte to 1 MiB");
+        throw IngotError("a dictionary must be 1 byte to 1 MiB of content");
     }
-    return std::make_shared<const compressor::Dictionary>(
-        compressor::make_dictionary(std::vector<uint8_t>(view.begin(), view.end())));
+    return std::make_shared<const compressor::Dictionary>(std::move(*dictionary));
 }
 
 void check_level(unsigned level)
@@ -69,7 +69,7 @@ py::bytes compress(const py::bytes& data, unsigned level, unsigned threads,
         compressor::BlockEncoder encoder([level, shared] {
             return std::make_unique<compressor::Engine>(compressor::default_block_size_log2, level,
                                                         shared);
-        }, compressor::default_block_size_log2, threads);
+        }, compressor::default_block_size_log2, threads, shared != nullptr);
         if (auto result = encoder.encode(in, out); !result)
         {
             error = result.error();
@@ -170,7 +170,7 @@ py::bytes train_dictionary(const std::vector<py::bytes>& samples, std::size_t si
     std::vector<uint8_t> dictionary;
     {
         py::gil_scoped_release release;
-        dictionary = compressor::train_dictionary(copies, size);
+        dictionary = compressor::train_dictionary_file(copies, size);
     }
     return {reinterpret_cast<const char*>(dictionary.data()), dictionary.size()};
 }

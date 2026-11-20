@@ -49,6 +49,7 @@ std::string coder_name(uint8_t coder)
     case compressor::Coder::lz77_huffman_dictionary:
     case compressor::Coder::lzr_dictionary:
     case compressor::Coder::cm_dictionary:
+    case compressor::Coder::lz77_dictionary_codes:
         break;
     }
     return "coder " + std::to_string(coder);

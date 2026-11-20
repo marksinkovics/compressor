@@ -194,6 +194,7 @@ int CLI::run(std::span<const char* const> args)
                     "One line per block of an ingot file");
     stats->add_flag("--histogram", stats_settings.stats.report.histogram,
                     "One line per byte value, most frequent first");
+    add_dictionary(*stats, stats_settings);
     stats->add_option("--graph", stats_settings.graph,
                       "Write the Huffman code tree as Graphviz to this file; -: standard output, "
                       "instead of the report");
@@ -394,7 +395,12 @@ int CLI::run(std::span<const char* const> args)
     if (stats->parsed())
     {
         stats_settings.stats.graph = stats_settings.graph;
-        const auto compressor = make_compressor_({.threads = 1, .level = default_level});
+        const auto settings = settings_for(stats_settings, 1, default_level);
+        if (!settings)
+        {
+            return EXIT_FAILURE;
+        }
+        const auto compressor = make_compressor_(*settings);
         return finish(compressor->stats(stats_settings.input, stats_settings.stats),
                       "Analysing " + stats_settings.input);
     }

@@ -517,7 +517,9 @@ Compressor::Compressor(CompressorSettings settings)
                      [level = settings.level, dictionary = settings.dictionary] {
                          return std::make_unique<Engine>(default_block_size_log2, level,
                                                          dictionary);
-                     }, default_block_size_log2, thread_count(settings.threads)),
+                     }, default_block_size_log2, thread_count(settings.threads),
+                     // Dictionaries are for small files, where every header byte counts.
+                     settings.dictionary != nullptr),
                  std::make_unique<BlockDecoder>(
                      [dictionary = settings.dictionary] {
                          return std::make_unique<Engine>(default_block_size_log2, 1, dictionary);
@@ -808,7 +810,7 @@ bool Compressor::stats(const fs::path& input, const StatsOptions& options)
         err << "Cannot open input file: " << input.string() << '\n';
         return false;
     }
-    const auto collected = collect_stats(file);
+    const auto collected = collect_stats(file, settings_.dictionary);
     if (!collected)
     {
         report(err, "analyse", input, {.error = collected.error(), .detail = {}});
@@ -1091,7 +1093,7 @@ bool Compressor::train(const std::vector<fs::path>& inputs, const fs::path& outp
         err << "Cannot train a dictionary: no non-empty files given\n";
         return false;
     }
-    const std::vector<uint8_t> dictionary = train_dictionary(samples, size);
+    const std::vector<uint8_t> dictionary = train_dictionary_file(samples, size);
     if (dictionary.empty())
     {
         err << "Cannot train a dictionary: the samples share nothing\n";

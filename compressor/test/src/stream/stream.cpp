@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <streambuf>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -498,3 +499,96 @@ TEST_P(DecodeBlocksTests, A_range_past_the_last_block_is_rejected)
 }
 
 INSTANTIATE_TEST_SUITE_P(Threads, DecodeBlocksTests, ::testing::Values(1U, 3U));
+
+namespace
+{
+
+compressor::BlockEncoder single_block_encoder(uint8_t block_size_log2 = 12)
+{
+    return {[] {
+        return std::make_unique<compressor::Engine>(12, 6);
+    }, block_size_log2, 2, true};
+}
+
+std::string encode_with(compressor::BlockEncoder& encoder, const std::string& input)
+{
+    std::istringstream in(input);
+    std::ostringstream out;
+    EXPECT_TRUE(encoder.encode(in, out));
+    return out.str();
+}
+
+std::expected<std::string, compressor::Error> decode_string(const std::string& encoded)
+{
+    compressor::BlockDecoder decoder([] {
+        return std::make_unique<compressor::Engine>();
+    }, 2);
+    std::istringstream in(encoded);
+    std::ostringstream out;
+    if (auto decoded = decoder.decode(in, out); !decoded)
+    {
+        return std::unexpected(decoded.error());
+    }
+    return out.str();
+}
+
+} // namespace
+
+TEST(BlockStreamTests, An_input_that_fits_one_block_takes_the_single_block_frame)
+{
+    auto encoder = single_block_encoder();
+    for (const std::string& input :
+         {std::string("a"), std::string(300, 'x'), std::string("abc") + std::string(4093, 'q')})
+    {
+        const std::string encoded = encode_with(encoder, input);
+        ASSERT_GE(encoded.size(), compressor::frame_header_bytes);
+        EXPECT_EQ(static_cast<uint8_t>(encoded[6]), compressor::single_block_flag) << input.size();
+        EXPECT_EQ(decode_string(encoded), input);
+        std::istringstream in(encoded);
+        const auto data = compressor::read_encoded(in);
+        ASSERT_TRUE(data);
+        EXPECT_EQ(data->blocks_.size(), 1U);
+    }
+    // A stored block: frame header, method, 1-byte size, CRC32, the bytes.
+    compressor::BlockEncoder level1([] {
+        return std::make_unique<compressor::Engine>(12, 1);
+    }, 12, 1, true);
+    const std::string noise_like = "\x01\x7f\x33\xc4\x90\x02\xee\x5a";
+    EXPECT_EQ(encode_with(level1, noise_like).size(),
+              compressor::frame_header_bytes + 1 + 1 + 4 + noise_like.size());
+}
+
+TEST(BlockStreamTests, Larger_and_empty_inputs_keep_the_normal_frame)
+{
+    auto encoder = single_block_encoder();
+    for (const std::string& input : {std::string(), std::string(4097, 'y'), std::string(4096, 'z')})
+    {
+        const std::string encoded = encode_with(encoder, input);
+        const bool single = input.size() == 4096;
+        EXPECT_EQ(static_cast<uint8_t>(encoded[6]), single ? compressor::single_block_flag : 0)
+            << input.size();
+        EXPECT_EQ(decode_string(encoded), input);
+    }
+}
+
+TEST(BlockStreamTests, A_damaged_single_block_frame_is_rejected)
+{
+    auto encoder = single_block_encoder();
+    const std::string input =
+        "single block frames end with their payload. " + std::string(200, '!');
+    const std::string encoded = encode_with(encoder, input);
+    for (std::size_t cut = 0; cut < encoded.size(); ++cut)
+    {
+        EXPECT_FALSE(decode_string(encoded.substr(0, cut))) << cut;
+    }
+    EXPECT_FALSE(decode_string(encoded + "x"));
+    std::string zero_size = encoded;
+    zero_size[9] = 0; // the size varint: 0
+    EXPECT_FALSE(decode_string(zero_size));
+    std::string archive = encoded;
+    archive[6] = static_cast<char>(compressor::single_block_flag | compressor::archive_flag);
+    EXPECT_EQ(decode_string(archive), std::unexpected(compressor::Error::corrupt_header));
+    std::string bad_method = encoded;
+    bad_method[8] = 3;
+    EXPECT_EQ(decode_string(bad_method), std::unexpected(compressor::Error::corrupt_header));
+}

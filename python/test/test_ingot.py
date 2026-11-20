@@ -46,7 +46,7 @@ def test_errors_raise_ingot_error():
 
 def test_dictionary_shrinks_small_inputs():
     dictionary = ingot.train_dictionary([record(i) for i in range(300)], size=2048)
-    assert 0 < len(dictionary) <= 2048
+    assert 0 < len(dictionary) <= 2048 + 163  # the content, and a header with its codes
     sample = record(1000)
     plain = ingot.compress(sample)
     primed = ingot.compress(sample, dictionary=dictionary)

@@ -44,6 +44,9 @@ inline constexpr std::size_t end_block_bytes = 9;
 inline constexpr uint16_t archive_flag = 0x0001;
 // With archive_flag: an FM-index section follows the archive's trailer (fmindex/fmindex.h).
 inline constexpr uint16_t search_index_flag = 0x0002;
+// Not with archive_flag: one block in a shorter form, its payload running to the end of the file
+// and no end block (write_single_block_frame()); for small files.
+inline constexpr uint16_t single_block_flag = 0x0004;
 
 // The values are stored in the file; 0xFF marks the end block, the rest are reserved.
 enum class Method : uint8_t
@@ -69,6 +72,9 @@ enum class Coder : uint8_t
     lz77_huffman_dictionary = 9,
     lzr_dictionary = 10,
     cm_dictionary = 11, // as cm, the model first run over the dictionary
+    // The dictionary's id, then Deflate tokens coded with the dictionary's codes, no block header
+    // (deflate_with_codes()).
+    lz77_dictionary_codes = 12,
 };
 inline constexpr std::size_t pipeline_descriptor_bytes = 2; // with no transforms
 inline constexpr std::size_t pipeline_transform_bytes = 5;  // id, then a 4-byte parameter
@@ -100,6 +106,11 @@ void write_block(std::ostream& ostream, const EncodedBlock& block);
 void write_end_block(std::ostream& ostream, uint64_t total_size);
 // The bytes write_block() writes.
 uint64_t written_size(const EncodedBlock& block);
+// A whole container of one block of 1 to 2^block_size_log2 bytes with single_block_flag: the frame
+// header, the method, the size as a LEB128 varint, the CRC32, the code lengths for Huffman, the
+// payload. Returns the bytes written.
+uint64_t write_single_block_frame(std::ostream& ostream, uint8_t block_size_log2,
+                                  const EncodedBlock& block);
 
 // Reads a container one block at a time, checking every rule that needs no decoding.
 class FrameReader
@@ -120,9 +131,12 @@ public:
     uint64_t total_size() const;
 
 private:
+    std::expected<bool, Error> read_single_block(EncodedBlock& block);
+
     std::istream& istream_;
     uint8_t version_ = format_version;
     uint16_t flags_ = 0;
+    bool single_done_ = false;
     uint64_t block_size_ = 0;
     uint64_t total_ = 0;
     std::optional<uint32_t> last_size_;

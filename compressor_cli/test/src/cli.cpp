@@ -472,7 +472,7 @@ TEST_F(CLITests, A_dictionary_is_read_and_passed_to_every_decoding_command)
     ASSERT_NE(dictionary_, nullptr);
     EXPECT_EQ(dictionary_->bytes, std::vector<uint8_t>({'s', 'h', 'a', 'r', 'e', 'd'}));
 
-    for (const std::string command : {"decode", "verify"})
+    for (const std::string command : {"decode", "verify", "stats"})
     {
         compressor_ = std::make_unique<MockICompressor>();
         dictionary_ = nullptr;
@@ -480,9 +480,13 @@ TEST_F(CLITests, A_dictionary_is_read_and_passed_to_every_decoding_command)
         {
             EXPECT_CALL(*compressor_, decode(::testing::_, ::testing::_)).WillOnce(Return(true));
         }
-        else
+        else if (command == "verify")
         {
             EXPECT_CALL(*compressor_, verify(::testing::_)).WillOnce(Return(true));
+        }
+        else
+        {
+            EXPECT_CALL(*compressor_, stats(::testing::_, ::testing::_)).WillOnce(Return(true));
         }
         EXPECT_EQ(run({command, "--dictionary", dictionary, "-i", input_}), EXIT_SUCCESS)
             << command;

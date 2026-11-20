@@ -537,3 +537,16 @@ Level 9 now runs the CM coder's model over the dictionary before coding (coder 1
 | `portfile.cmake` | 553,260 | 389,448 (−29.6%) | 448,945 |
 
 Level 9 with a dictionary is now 6% and 13% smaller than zstd's best with its own dictionary. Priming costs about 58 ms per file on both sides (110 KB at the CM coder's speed): 1400 files took 81 s to encode one by one.
+
+### Codes in the dictionary and the single-block frame (autonomous run 4, item 1)
+
+`ingot train` now writes Deflate codes into the dictionary (coder 12 codes with them and sends no block header), and `encode -D` writes a file that fits one block as a single-block frame (about 15 bytes less per file). Same test halves, dictionaries retrained (`ingot train`, 112,640 bytes of content):
+
+| Test half | run 3 | + CM primed | + codes, single-block frame | zstd -19 -D |
+| --- | ---: | ---: | ---: | ---: |
+| `vcpkg.json`, level 6 | 232,583 | 232,583 | 191,406 (−17.7%) | 172,630 |
+| `vcpkg.json`, level 9 | 214,478 | 162,218 | 141,213 (−34.2%) | 172,630 |
+| `portfile.cmake`, level 6 | 582,426 | 582,426 | 520,161 (−10.7%) | 448,945 |
+| `portfile.cmake`, level 9 | 553,260 | 389,448 | 368,429 (−33.4%) | 448,945 |
+
+With these, the codes alone took `vcpkg.json` at level 6 from 232,583 to 212,410 and the frame the rest. Level 9 with a dictionary is 18% below `zstd -19 -D` on both; level 6, which decodes about as fast as zstd, is 11% and 16% above it.

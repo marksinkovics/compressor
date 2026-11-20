@@ -545,6 +545,82 @@ std::vector<uint8_t> deflate_bytes(std::span<const uint8_t> bytes, const Lz77Opt
     return std::move(writer.encoded());
 }
 
+namespace
+{
+
+std::vector<Lz77Token> tokenize_after(std::span<const uint8_t> bytes,
+                                      std::span<const uint8_t> history, const Lz77Options& options)
+{
+    Lz77MatchFinder finder(options);
+    if (!history.empty())
+    {
+        finder.prime(history.last(std::min(history.size(), lz77_window)));
+    }
+    finder.add(bytes);
+    std::vector<Lz77Token> tokens;
+    finder.tokenize(tokens, true);
+    return tokens;
+}
+
+} // namespace
+
+void count_deflate_symbols(std::span<const uint8_t> bytes, std::span<const uint8_t> history,
+                           const Lz77Options& options, std::span<uint64_t> literals,
+                           std::span<uint64_t> distances)
+{
+    for (const Lz77Token& token : tokenize_after(bytes, history, options))
+    {
+        if (token.distance == 0)
+        {
+            ++literals[token.length_or_literal];
+            continue;
+        }
+        ++literals[257 + length_codes[token.length_or_literal]];
+        ++distances[distance_code(token.distance)];
+    }
+    ++literals[end_of_block];
+}
+
+std::vector<uint8_t> deflate_with_codes(std::span<const uint8_t> bytes,
+                                        std::span<const uint8_t> history,
+                                        const Lz77Options& options, const DeflateCodeLengths& codes)
+{
+    const std::vector<Code> literals = reversed_codes(codes.literals);
+    const std::vector<Code> distances = reversed_codes(codes.distances);
+    std::vector<uint8_t> out;
+    BitWriter bits(out);
+    for (const Lz77Token& token : tokenize_after(bytes, history, options))
+    {
+        if (token.distance == 0)
+        {
+            const Code& code = literals[token.length_or_literal];
+            if (code.length == 0)
+            {
+                return {};
+            }
+            bits.put_reversed(code);
+            continue;
+        }
+        const uint8_t length = length_codes[token.length_or_literal];
+        const uint8_t distance = distance_code(token.distance);
+        if (literals[257 + length].length == 0 || distances[distance].length == 0)
+        {
+            return {};
+        }
+        bits.put_reversed(literals[257 + length]);
+        bits.put(token.length_or_literal - length_base[length], length_extra[length]);
+        bits.put_reversed(distances[distance]);
+        bits.put(token.distance - distance_base[distance], distance_extra[distance]);
+    }
+    if (literals[end_of_block].length == 0)
+    {
+        return {};
+    }
+    bits.put_reversed(literals[end_of_block]);
+    bits.align();
+    return out;
+}
+
 std::expected<DeflateResult, Error> deflate_stream(std::istream& in, std::ostream& out,
                                                    const Lz77Options& options, ThreadPool* pool)
 {

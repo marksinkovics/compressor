@@ -262,3 +262,66 @@ TEST(DictionaryTests, Training_encoding_and_decoding_files)
     EXPECT_FALSE(trainer.train({dir / "nothing"}, dir / "none", 2048));
     fs::remove_all(dir, error);
 }
+
+TEST(DictionaryTests, A_trained_file_holds_codes_and_reads_back)
+{
+    const std::vector<Bytes> samples = records(300, 1);
+    const Bytes file = compressor::train_dictionary_file(samples, 4096);
+    ASSERT_GT(file.size(), compressor::dictionary_header_bytes);
+    const auto dictionary = compressor::parse_dictionary(file);
+    ASSERT_TRUE(dictionary);
+    ASSERT_TRUE(dictionary->codes);
+    EXPECT_EQ(dictionary->bytes, compressor::train_dictionary(samples, 4096));
+    EXPECT_EQ(dictionary->id, compressor::crc32(file));
+    EXPECT_EQ(dictionary->codes->literals.size(), compressor::deflate_literal_symbols);
+    for (const uint8_t length : dictionary->codes->literals)
+    {
+        EXPECT_GT(length, 0); // every symbol has a code
+    }
+    EXPECT_EQ(compressor::write_dictionary_file(dictionary->bytes, *dictionary->codes), file);
+
+    // Damaged codes make it raw content, not a different structured dictionary.
+    Bytes damaged = file;
+    damaged[10] = 0xFF;
+    const auto raw = compressor::parse_dictionary(damaged);
+    ASSERT_TRUE(raw);
+    EXPECT_FALSE(raw->codes);
+    EXPECT_EQ(raw->bytes, damaged);
+}
+
+TEST(DictionaryTests, The_dictionarys_codes_replace_a_block_header)
+{
+    const std::vector<Bytes> samples = records(300, 1);
+    auto dictionary = std::make_shared<const compressor::Dictionary>(
+        *compressor::parse_dictionary(compressor::train_dictionary_file(samples, 4096)));
+    ASSERT_TRUE(dictionary->codes);
+    const compressor::DeflateCodeLengths& codes = dictionary->codes.value();
+    const Bytes input = bytes(record(8000));
+    const auto options = compressor::lz77_options_for_level(6);
+    const Bytes coded = compressor::deflate_with_codes(input, dictionary->bytes, options, codes);
+    ASSERT_FALSE(coded.empty());
+    EXPECT_LT(coded.size(), compressor::deflate_bytes(input, options, dictionary->bytes).size());
+    Bytes out{9};
+    ASSERT_TRUE(compressor::inflate_with_codes(coded, out, input.size(), dictionary->bytes,
+                                               codes.literals, codes.distances));
+    EXPECT_EQ(Bytes(out.begin() + 1, out.end()), input);
+    Bytes bad;
+    EXPECT_FALSE(compressor::inflate_with_codes(coded, bad, input.size() + 1, dictionary->bytes,
+                                                codes.literals, codes.distances));
+    Bytes extra = coded;
+    extra.push_back(0);
+    EXPECT_FALSE(compressor::inflate_with_codes(extra, bad, input.size(), dictionary->bytes,
+                                                codes.literals, codes.distances));
+    // A code with no end-of-block symbol can't code anything.
+    compressor::DeflateCodeLengths no_end = codes;
+    no_end.literals[256] = 0;
+    EXPECT_TRUE(compressor::deflate_with_codes(input, dictionary->bytes, options, no_end).empty());
+
+    compressor::Engine engine(compressor::default_block_size_log2, 6, dictionary);
+    const compressor::EncodedBlock block = engine.encode_block(input);
+    ASSERT_EQ(block.method_, compressor::Method::pipeline);
+    EXPECT_EQ(block.payload_[1], static_cast<uint8_t>(compressor::Coder::lz77_dictionary_codes));
+    Bytes decoded;
+    ASSERT_TRUE(engine.decode_block(block, decoded));
+    EXPECT_EQ(decoded, input);
+}

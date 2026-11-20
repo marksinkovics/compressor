@@ -27,6 +27,7 @@
 #include <compressor/entropy/tans.h>
 #include <compressor/lz77/lz77.h>
 #include <compressor/lzr/lzr.h>
+#include <compressor/stream/decoder.h>
 #include <compressor/stream/encoder.h>
 
 #include "dictionary.h"
@@ -218,14 +219,24 @@ std::string with_coder(const std::string& input, compressor::Coder coder)
             break;
         case compressor::Coder::lzr_dictionary:
         case compressor::Coder::cm_dictionary:
+        case compressor::Coder::lz77_dictionary_codes:
         {
             const auto dictionary = fuzz::dictionary();
+            if (!dictionary->codes)
+            {
+                std::cerr << "the fuzz dictionary has no codes\n";
+                std::exit(1);
+            }
             for (unsigned shift = 0; shift < 32; shift += 8)
             {
                 coded.push_back(static_cast<uint8_t>(dictionary->id >> shift));
             }
             const std::vector<uint8_t> stream =
-                coder == compressor::Coder::lzr_dictionary
+                coder == compressor::Coder::lz77_dictionary_codes
+                    ? compressor::deflate_with_codes(bytes, dictionary->bytes,
+                                                     compressor::lz77_options_for_level(6),
+                                                     *dictionary->codes)
+                : coder == compressor::Coder::lzr_dictionary
                     ? compressor::lzr_encode(bytes, compressor::lz77_options_for_level(7),
                                              dictionary->bytes)
                     : compressor::cm_encode(bytes, compressor::cm_min_table_log2,
@@ -293,6 +304,23 @@ std::string deflate_seed(const std::string& input)
 } // namespace
 
 // Writes the seed corpus for each fuzz target into `<dir>/<target>/`.
+// The seeds made with the fuzz dictionary must decode with it, or they would only reach the
+// decoders' error paths.
+void check_decodes_with_dictionary(const std::string& container, const std::string& name)
+{
+    compressor::BlockDecoder decoder([] {
+        return std::make_unique<compressor::Engine>(compressor::default_block_size_log2, 1,
+                                                    fuzz::dictionary());
+    }, 1);
+    std::istringstream in(container);
+    std::ostringstream out;
+    if (!decoder.decode(in, out))
+    {
+        std::cerr << name << " does not decode with the fuzz dictionary\n";
+        std::exit(1);
+    }
+}
+
 int main(int argc, char* argv[])
 try
 {
@@ -324,11 +352,27 @@ try
     write(dir / "container" / "coder4.ingot", with_coder(text(6000), compressor::Coder::rans));
     write(dir / "container" / "coder7.ingot", with_coder(words(6000), compressor::Coder::bwt_cm));
     write(dir / "container" / "coder8.ingot", with_coder(text(6000), compressor::Coder::tans));
-    write(dir / "container" / "coder9.ingot", encode(words(3000), 6, fuzz::dictionary()));
-    write(dir / "container" / "coder10.ingot",
-          with_coder(words(3000), compressor::Coder::lzr_dictionary));
-    write(dir / "container" / "coder11.ingot",
-          with_coder(words(1000), compressor::Coder::cm_dictionary));
+    {
+        // A single-block frame, as files encoded with a dictionary get.
+        compressor::BlockEncoder encoder([] {
+            return std::make_unique<compressor::Engine>(block_size_log2, 6, fuzz::dictionary());
+        }, block_size_log2, 1, true);
+        std::istringstream in(words(2000));
+        std::ostringstream out;
+        (void)encoder.encode(in, out).has_value();
+        const std::vector<std::pair<std::string, std::string>> with_dictionary{
+            {"coder9.ingot", encode(words(3000), 6, fuzz::dictionary())},
+            {"coder10.ingot", with_coder(words(3000), compressor::Coder::lzr_dictionary)},
+            {"coder11.ingot", with_coder(words(1000), compressor::Coder::cm_dictionary)},
+            {"coder12.ingot", with_coder(words(3000), compressor::Coder::lz77_dictionary_codes)},
+            {"single.ingot", out.str()},
+        };
+        for (const auto& [name, container] : with_dictionary)
+        {
+            check_decodes_with_dictionary(container, name);
+            write(dir / "container" / name, container);
+        }
+    }
     write(dir / "container" / "image.ingot", encode(image(40)));
     write(dir / "container" / "records.ingot", encode(records(400), 8));
     write(dir / "inflate" / "text.deflate", deflate_seed(words(5000)));
