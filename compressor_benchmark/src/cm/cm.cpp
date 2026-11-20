@@ -19,6 +19,7 @@
 #include <compressor/cm/cm.h>
 #include <compressor/lz77/lz77.h>
 #include <compressor/lzr/lzr.h>
+#include <compressor/ppm/ppm.h>
 
 namespace compressor::bench
 {
@@ -119,6 +120,47 @@ void bwt_cm_against_bwt(::benchmark::State& state, const fs::path& path, bool de
     state.counters["bwt"] = static_cast<double>(bwt);
 }
 
+// Per 1 MiB block: PPM's size and decoding time against BWT, BWT + CM and CM (sizes only).
+void ppm_against_others(::benchmark::State& state, const fs::path& path)
+{
+    const std::vector<uint8_t> data = read_file(path);
+    constexpr std::size_t block = std::size_t{1} << 20U;
+    std::vector<std::vector<uint8_t>> coded;
+    std::size_t ppm = 0;
+    std::size_t bwt = 0;
+    std::size_t bwt_cm = 0;
+    std::size_t cm = 0;
+    for (std::size_t at = 0; at < data.size(); at += block)
+    {
+        const std::span<const uint8_t> input(data.data() + at, std::min(data.size() - at, block));
+        coded.push_back(ppm_encode(input));
+        ppm += coded.back().size();
+        bwt += bwt_encode(input).size();
+        bwt_cm += bwt_cm_encode(input).size();
+        cm += cm_encode(input).size();
+        std::vector<uint8_t> decoded;
+        if (!ppm_decode(coded.back(), decoded, input.size()) || !std::ranges::equal(decoded, input))
+        {
+            state.SkipWithError("PPM did not decode to the input");
+            return;
+        }
+    }
+    for (auto _ : state)
+    {
+        for (std::size_t i = 0; i < coded.size(); ++i)
+        {
+            std::vector<uint8_t> decoded;
+            ::benchmark::DoNotOptimize(
+                ppm_decode(coded[i], decoded, std::min(data.size() - (i * block), block)));
+        }
+    }
+    state.SetBytesProcessed(state.iterations() * static_cast<int64_t>(data.size()));
+    state.counters["ppm"] = static_cast<double>(ppm);
+    state.counters["bwt"] = static_cast<double>(bwt);
+    state.counters["bwt_cm"] = static_cast<double>(bwt_cm);
+    state.counters["cm"] = static_cast<double>(cm);
+}
+
 } // namespace
 
 void register_cm_benchmarks()
@@ -135,6 +177,9 @@ void register_cm_benchmarks()
         }
         ::benchmark::RegisterBenchmark(std::string("ContextMixing/") + name, cm_against_others,
                                        path)
+            ->Unit(::benchmark::kMillisecond)
+            ->Iterations(1);
+        ::benchmark::RegisterBenchmark(std::string("Ppm/") + name, ppm_against_others, path)
             ->Unit(::benchmark::kMillisecond)
             ->Iterations(1);
         for (const bool decode : {false, true})
