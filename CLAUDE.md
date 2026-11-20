@@ -31,6 +31,7 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 - Transforms and auto mode are done: delta, ARM64 and x86 branch filters chosen per block by sampling, kept only when smaller (x-ray −14%, ooffice −9%); 314/314 pass.
 - The BWT coder is done (item 13, part 1): from level 8, bzip2-style blocks, Silesia text 24-41% smaller than level 7; 320/320 pass.
 - rANS is done (item 13, part 2): the BWT coder ends in rANS (0.3-1.1% smaller than Huffman), and coder 4 (order-0 rANS) wins on noisy samples after a delta (x-ray −3%); 324/324 pass.
+- LZR is done (item 13, part 3): LZ77 with LZMA's range-coded model from level 8, mozilla −13%, sao −8%; 328/328 pass. Item 13 has PPM/CM experiments left.
 - **Next:** the "Autonomous run" list at the end of `docs/roadmap.md`, on branch `feat/autonomous-run`: work through it in order, committing each item (no push, no co-author line).
 
 ## Commands

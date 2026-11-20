@@ -30,7 +30,7 @@ A pipeline block's payload starts with a descriptor naming what was done to the 
 |---:|---|
 | 1 | Transform count `n`, at most 4. Each transform turns bytes into bytes; decoding undoes them last to first |
 | 5 × n | Each transform: id, then a 4-byte parameter (see below) |
-| 1 | Coder: 2 = LZ77 + Huffman, 3 = BWT, 4 = rANS. Others are reserved |
+| 1 | Coder: 2 = LZ77 + Huffman, 3 = BWT, 4 = rANS, 5 = LZR. Others are reserved |
 | rest | The coder's output |
 
 Transforms (`compressor/include/compressor/transform/transform.h`); positions count from the start of the block:
@@ -41,7 +41,7 @@ Transforms (`compressor/include/compressor/transform/transform.h`); positions co
 | 3 | ARM64 branches | 0 | Every 4-byte-aligned little-endian word whose top 6 bits are `100101` (BL): its 26-bit word offset plus the word's index, mod 2^26 |
 | 4 | x86 branches | 0 | Scanning from the start, every `E8` or `E9` byte with 4 bytes after it: those 4 bytes as a little-endian number plus the position after them, mod 2^32; the scan then continues after them |
 
-Other ids and parameters are rejected. The encoder picks a transform by sampling the block's first 64 KiB (`choose_transforms()`): a delta stride from 1, 2, 3, 4, 6, 8 or 16 that lowers the order-0 entropy by a tenth, or a branch filter when BL words or `E8` bytes are dense enough to be machine code. It codes the block both with and without it and keeps the smaller; from level 7 on (`auto_level`) it tries up to three candidates found with looser thresholds, and from level 8 (`bwt_level`) every one of them with the BWT coder as well.
+Other ids and parameters are rejected. The encoder picks a transform by sampling the block's first 64 KiB (`choose_transforms()`): a delta stride from 1, 2, 3, 4, 6, 8 or 16 that lowers the order-0 entropy by a tenth, or a branch filter when BL words or `E8` bytes are dense enough to be machine code. It codes the block both with and without it and keeps the smaller; from level 7 on (`auto_level`) it tries up to three candidates found with looser thresholds, and from level 8 (`bwt_level`) every one of them with the BWT and LZR coders as well.
 
 BWT (coder 3, `compressor/src/compressor/bwt/bwt.cpp`), the bzip2 approach: the Burrows-Wheeler transform of the block with an end marker smaller than every byte, move-to-front, and rANS over the result.
 
@@ -52,6 +52,8 @@ BWT (coder 3, `compressor/src/compressor/bwt/bwt.cpp`), the bzip2 approach: the 
 | rest | The symbols, rANS-coded over an alphabet of 257 (see "rANS") |
 
 Symbols 0 (RUNA) and 1 (RUNB) write a run of zeros from move-to-front in bijective base 2, least significant digit first (RUNA is 1, RUNB 2: `run = Σ digit · 2^i`); symbol `k` from 2 to 256 is move-to-front index `k - 1`. The transformed bytes are the last column of the sorted rotations without the marker's row: row 0 (the marker's rotation) first, then the rest skipping the primary row. Decoding needs about five times the block size.
+
+LZR (coder 5, `compressor/src/compressor/lzr/lzr.cpp`) is LZ77 over the whole block coded with LZMA's model and range coder (as in the LZMA SDK, `lc=3 lp=0 pb=2`), with these differences: no header and no end marker (the block's size ends it); only the last distance is kept (`rep0`), so after `is_match` there is one `is_rep` bit and no `rep1`-`rep3` or short-rep; distances reach the start of the block. The stream is the range coder's bytes including its 5 flush bytes, and decoding must use them all. The encoder takes matches from the same hash-chain finder as Deflate with a window as large as the block, and competes from level 8 (level 8 searches like level 7; level 9 the longest).
 
 rANS (coder 4) is the transformed bytes themselves, rANS-coded over an alphabet of 256. The encoder only tries it after a transform; on its own it wins only on noisy samples such as Silesia's x-ray after a delta.
 

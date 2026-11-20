@@ -93,6 +93,32 @@ std::string random_walk(std::size_t count)
     return bytes;
 }
 
+// Binary records (a counter, a field from a few values, random bytes), which take the LZR coder.
+std::string records(std::size_t count)
+{
+    std::string bytes;
+    uint32_t state = 3;
+    for (std::size_t id = 0; id < count; ++id)
+    {
+        state = (state * 1103515245U) + 12345U;
+        for (unsigned i = 0; i < 4; ++i)
+        {
+            bytes.push_back(static_cast<char>(id >> (8 * i)));
+        }
+        const uint32_t kind = (state >> 16U) % 5;
+        for (unsigned i = 0; i < 12; ++i)
+        {
+            bytes.push_back(static_cast<char>((kind * 37) + i));
+        }
+        for (unsigned i = 0; i < 8; ++i)
+        {
+            state = (state * 1103515245U) + 12345U;
+            bytes.push_back(static_cast<char>(state >> 16U));
+        }
+    }
+    return bytes;
+}
+
 std::string noise(std::size_t size)
 {
     std::string bytes(size, '\0');
@@ -193,6 +219,7 @@ try
     write(dir / "container" / "samples.ingot", encode(samples(3000)));
     write(dir / "container" / "bwt.ingot", encode(words(6000), 9));
     write(dir / "container" / "walk.ingot", encode(random_walk(3000)));
+    write(dir / "container" / "records.ingot", encode(records(400), 9));
     write(dir / "inflate" / "text.deflate", deflate_seed(words(5000)));
     write(dir / "inflate" / "noise.deflate", deflate_seed(noise(700)));
     write(dir / "container" / "stored.ingot", stored);

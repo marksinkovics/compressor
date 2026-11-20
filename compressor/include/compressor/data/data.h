@@ -58,6 +58,7 @@ enum class Coder : uint8_t
     lz77_huffman = 2, // a raw Deflate stream (RFC 1951) of the transformed bytes
     bwt = 3,          // BWT, move-to-front, zero runs, rANS (bwt_encode())
     rans = 4,         // order-0 rANS of the transformed bytes (rans_encode())
+    lzr = 5,          // LZ77 over the block with LZMA's range-coded model (lzr_encode())
 };
 inline constexpr std::size_t pipeline_descriptor_bytes = 2; // with no transforms
 inline constexpr std::size_t pipeline_transform_bytes = 5;  // id, then a 4-byte parameter

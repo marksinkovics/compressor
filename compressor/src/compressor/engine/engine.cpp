@@ -23,6 +23,7 @@
 #include <compressor/error.h>
 #include <compressor/huffman/huffman.h>
 #include <compressor/lz77/lz77.h>
+#include <compressor/lzr/lzr.h>
 #include <compressor/transform/transform.h>
 #include <compressor/tree/binary/nodeiterator.h>
 #include <compressor/tree/binary/tree.h>
@@ -355,6 +356,11 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
             case Coder::rans:
                 rans_encode(std::vector<uint16_t>(input.begin(), input.end()), 256, coded);
                 break;
+            case Coder::lzr:
+                // Its 1 MiB window makes long chains slow; level 8 searches like level 7.
+                coded = lzr_encode(
+                    input, lz77_options_for_level(level_ >= max_level ? level_ : auto_level));
+                break;
             }
             std::vector<uint8_t> payload{static_cast<uint8_t>(transforms.size())};
             for (const Transform& transform : transforms)
@@ -374,6 +380,7 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
         if (level_ >= bwt_level)
         {
             coders.push_back(Coder::bwt);
+            coders.push_back(Coder::lzr);
         }
         const std::vector<Transform> transforms = choose_transforms(bytes, level_ >= auto_level);
         std::vector<uint8_t> best_pipeline = pipeline({}, Coder::lz77_huffman);
@@ -513,6 +520,10 @@ std::expected<void, Error> Engine::decode_pipeline(const EncodedBlock& block,
     else if (payload[0] == static_cast<uint8_t>(Coder::bwt))
     {
         decoded = bwt_decode(payload.subspan(1), out, block.size_);
+    }
+    else if (payload[0] == static_cast<uint8_t>(Coder::lzr))
+    {
+        decoded = lzr_decode(payload.subspan(1), out, block.size_);
     }
     else if (payload[0] == static_cast<uint8_t>(Coder::rans))
     {

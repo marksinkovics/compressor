@@ -80,7 +80,7 @@ constexpr std::array<uint8_t, 512> make_distance_codes()
 }
 constexpr std::array<uint8_t, 512> distance_codes = make_distance_codes();
 
-uint8_t distance_code(uint16_t distance)
+uint8_t distance_code(uint32_t distance)
 {
     return distance <= 256 ? distance_codes[distance - 1U]
                            : distance_codes[256 + ((distance - 1U) >> 7U)];

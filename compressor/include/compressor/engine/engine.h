@@ -39,7 +39,7 @@ void write_code_graph(std::ostream& out, const Codes& codes, const Frequencies& 
 
 // The level from which Engine tries every transform choose_transforms() finds plausible.
 inline constexpr unsigned auto_level = 7;
-// The level from which the BWT coder competes with LZ77 + Huffman.
+// The level from which the BWT and LZR coders compete with LZ77 + Huffman.
 inline constexpr unsigned bwt_level = 8;
 
 // Makes one engine per worker thread.

@@ -57,7 +57,7 @@ Lz77Options lz77_options_for_level(unsigned level)
 Lz77MatchFinder::Lz77MatchFinder(Lz77Options options)
     : options_(options)
     , head_(hash_size, -1)
-    , previous_(lz77_window, -1)
+    , previous_(options.window, -1)
 {
 }
 
@@ -79,7 +79,7 @@ std::span<const uint8_t> Lz77MatchFinder::history(uint64_t from) const
 
 void Lz77MatchFinder::drop_old(uint64_t keep_from)
 {
-    const uint64_t reachable = position_ > lz77_window ? position_ - lz77_window : 0;
+    const uint64_t reachable = position_ > options_.window ? position_ - options_.window : 0;
     const uint64_t new_base = std::min(keep_from, reachable);
     if (new_base <= base_)
     {
@@ -107,7 +107,7 @@ void Lz77MatchFinder::insert(uint64_t at)
         return;
     }
     const uint32_t hash = hash_at(at);
-    previous_[at % lz77_window] = head_[hash];
+    previous_[at % options_.window] = head_[hash];
     head_[hash] = static_cast<int64_t>(at);
 }
 
@@ -135,7 +135,7 @@ std::size_t common_length(const uint8_t* a, const uint8_t* b, std::size_t limit)
 }
 
 std::size_t Lz77MatchFinder::longest_match(uint64_t at, std::size_t limit, unsigned chain,
-                                           uint16_t& distance) const
+                                           uint32_t& distance) const
 {
     if (limit < lz77_min_match)
     {
@@ -147,7 +147,7 @@ std::size_t Lz77MatchFinder::longest_match(uint64_t at, std::size_t limit, unsig
     for (; chain > 0 && candidate >= 0; --chain)
     {
         const auto from = static_cast<uint64_t>(candidate);
-        if (at - from > lz77_window || from < base_)
+        if (at - from > options_.window || from < base_)
         {
             break;
         }
@@ -158,14 +158,14 @@ std::size_t Lz77MatchFinder::longest_match(uint64_t at, std::size_t limit, unsig
             if (length > best)
             {
                 best = length;
-                distance = static_cast<uint16_t>(at - from);
+                distance = static_cast<uint32_t>(at - from);
                 if (length >= options_.nice_length || length == limit)
                 {
                     break;
                 }
             }
         }
-        const int64_t next = previous_[from % lz77_window];
+        const int64_t next = previous_[from % options_.window];
         // A stale entry from a position that left the window, or one overwritten since.
         if (next >= candidate)
         {
@@ -186,7 +186,7 @@ void Lz77MatchFinder::tokenize(std::vector<Lz77Token>& tokens, bool final)
     };
     while (position_ < stop)
     {
-        uint16_t distance = 0;
+        uint32_t distance = 0;
         std::size_t length = 0;
         if (have_next_)
         {
@@ -209,7 +209,7 @@ void Lz77MatchFinder::tokenize(std::vector<Lz77Token>& tokens, bool final)
         {
             const unsigned chain =
                 length >= options_.good_length ? options_.max_chain / 4 : options_.max_chain;
-            uint16_t next_distance = 0;
+            uint32_t next_distance = 0;
             const std::size_t next = longest_match(position_ + 1, limit_at(position_ + 1),
                                                    std::max(chain, 1U), next_distance);
             if (next > length)

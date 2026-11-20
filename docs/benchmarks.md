@@ -309,3 +309,18 @@ One block at a time (1 MiB), single thread, per Silesia file: the BWT coder's la
 - **BWT + rANS against BWT + Huffman**: smaller on all 12 files, by 0.3% (osdb) to 1.1% (webster, dickens), and 10-20% faster to decode. The Huffman stage was dropped and coder 3 is BWT + rANS.
 - **rANS alone against LZ77**: larger on 11 files (dickens +48%, text up to 5×), smaller on every block of x-ray (−3.0%: noisy 12-bit samples after a delta, where LZ77 finds nothing to match and Huffman can't spend fractions of a bit). Kept as coder 4, tried only after a transform: level 6 on x-ray is now 4 962 127 bytes instead of 5 114 232.
 - The gains are small because both coders are order-0. Context modelling (item 13's LZMA-style coder, or adaptive models after the BWT as in bsc) is where the next larger gain is.
+
+## LZR coder (2026-11-20)
+
+`compressor_app encode -L 8` per Silesia file before (LZ77 and BWT, `docs/benchmarks/bwt.txt`) and after adding the LZR coder (LZ77 over the whole 1 MiB block with LZMA's range-coded model); 14 threads, one run, wall seconds. Every output decodes to the input. Raw output in `docs/benchmarks/lzr.txt` (encode times before LZR's search was capped at level 7's for level 8).
+
+| File | Level 8 before | Level 8 with LZR | Change |
+| --- | --- | --- | --- |
+| mozilla | 18 479 116 | 16 006 226 | −13.4% |
+| sao | 5 316 021 | 4 878 849 | −8.2% |
+| samba | 4 805 293 | 4 599 962 | −4.3% |
+| ooffice | 2 578 590 | 2 481 195 | −3.8% |
+| the 8 others | | | −0.3% to −1.3% (rANS after the BWT) |
+
+- Per 1 MiB block on one thread, LZR is 7.6–18% smaller than Deflate on every file and beats the BWT coder on the binaries above, the files where xz beats bzip2.
+- It encodes at about 5 MB/s per core. With the search capped at level 7's, level 8 takes 1.1 s for dickens and 4.9 s for x-ray (4 candidate transforms, 4 coders each), within 0.4% of the uncapped sizes; level 9 searches longest and took 19 s for x-ray. Decoding stays at 0.03–0.11 s per file.

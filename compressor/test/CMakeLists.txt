@@ -18,6 +18,7 @@ set(SRC_FILES
     "${SRC_DIR}/engine/engine.cpp"
     "${SRC_DIR}/entropy/rans.cpp"
     "${SRC_DIR}/huffman/huffman.cpp"
+    "${SRC_DIR}/lzr/lzr.cpp"
     "${SRC_DIR}/tree/binary/node.cpp"
     "${SRC_DIR}/tree/binary/tree.cpp"
     "${SRC_DIR}/tree/binary/nodeiterator.cpp"

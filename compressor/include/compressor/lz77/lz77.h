@@ -11,13 +11,13 @@ namespace compressor
 
 inline constexpr std::size_t lz77_min_match = 3;
 inline constexpr std::size_t lz77_max_match = 258;                 // Deflate's limits
-inline constexpr std::size_t lz77_window = std::size_t{32} * 1024; // the farthest a match reaches
+inline constexpr std::size_t lz77_window = std::size_t{32} * 1024; // Deflate's farthest match
 
 // A literal byte when `distance` is 0, otherwise a copy of `length` bytes from `distance` back.
 struct Lz77Token
 {
     uint16_t length_or_literal = 0;
-    uint16_t distance = 0;
+    uint32_t distance = 0;
 
     bool operator==(const Lz77Token&) const = default;
 };
@@ -30,6 +30,7 @@ struct Lz77Options
     bool lazy = true;              // emit a literal if the next position has a longer match
     std::size_t max_lazy = 16;     // only look at the next position for matches shorter than this
     std::size_t good_length = 8;   // and with a quarter of the chain from this length on
+    std::size_t window = lz77_window; // the farthest a match may reach back
 };
 
 // 1 means no LZ77 at all (Huffman only); 2-9 grow from greedy and short chains to zlib's level 9.
@@ -59,7 +60,7 @@ public:
 
 private:
     std::size_t longest_match(uint64_t at, std::size_t limit, unsigned chain,
-                              uint16_t& distance) const;
+                              uint32_t& distance) const;
     void insert(uint64_t at);
     uint32_t hash_at(uint64_t at) const;
     const uint8_t* at_ptr(uint64_t at) const;
@@ -74,7 +75,7 @@ private:
     // A match already found at position_ by the lazy look-ahead.
     bool have_next_ = false;
     std::size_t next_length_ = 0;
-    uint16_t next_distance_ = 0;
+    uint32_t next_distance_ = 0;
 };
 
 } // namespace compressor
