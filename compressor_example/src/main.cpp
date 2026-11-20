@@ -24,7 +24,9 @@ try
             "example", "encode", "--input", input_path.c_str(), "--output", "/dev/null",
         };
 
-        compressor::CLI cli(std::make_unique<compressor::Compressor>());
+        compressor::CLI cli([](unsigned threads) {
+            return std::make_unique<compressor::Compressor>(threads);
+        });
         cli.run(args);
     }
 

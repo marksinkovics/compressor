@@ -21,6 +21,7 @@ set(SRC_FILES
     "${SRC_DIR}/roundtrip/roundtrip.cpp"
     "${SRC_DIR}/stream/stream.cpp"
     "${SRC_DIR}/stream/stdio.cpp"
+    "${SRC_DIR}/thread/pool.cpp"
 )
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${INCLUDE_FILES})

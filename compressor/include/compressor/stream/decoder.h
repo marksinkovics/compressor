@@ -4,9 +4,11 @@
 #include <expected>
 #include <iosfwd>
 #include <memory>
+#include <vector>
 
 #include <compressor/engine/engine.h>
 #include <compressor/error.h>
+#include <compressor/thread/pool.h>
 
 namespace compressor
 {
@@ -15,22 +17,31 @@ class IBlockDecoder
 {
 public:
     virtual ~IBlockDecoder() = default;
-    // Writes each block as soon as it is verified, so on failure `out` may hold earlier blocks.
+    // Writes each block as soon as it and every block before it are verified, so on failure `out`
+    // holds exactly the blocks before the first bad one.
     virtual std::expected<void, Error> decode(std::istream& in, std::ostream& out) = 0;
 };
 
-// Holds one encoded block and one decoded block at a time.
+// Decodes up to 2 blocks per thread at once and writes them in order.
 class BlockDecoder : public IBlockDecoder
 {
 public:
+    // Engine and default_thread_count() threads.
     BlockDecoder();
+    BlockDecoder(const EngineFactory& make_engine, unsigned threads);
+    // One thread.
     explicit BlockDecoder(std::unique_ptr<IEngine> engine);
     ~BlockDecoder() override = default;
+    BlockDecoder(const BlockDecoder&) = delete;
+    BlockDecoder& operator=(const BlockDecoder&) = delete;
+    BlockDecoder(BlockDecoder&&) = delete;
+    BlockDecoder& operator=(BlockDecoder&&) = delete;
 
     std::expected<void, Error> decode(std::istream& in, std::ostream& out) override;
 
 private:
-    std::unique_ptr<IEngine> engine_;
+    std::vector<std::unique_ptr<IEngine>> engines_; // one per worker
+    ThreadPool pool_; // after engines_, so it finishes its tasks before they are destroyed
 };
 
 } // namespace compressor

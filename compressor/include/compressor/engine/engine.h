@@ -4,6 +4,8 @@
 #include <array>
 #include <cstdint>
 #include <expected>
+#include <functional>
+#include <memory>
 #include <span>
 #include <vector>
 
@@ -30,6 +32,13 @@ public:
     virtual std::expected<void, Error> decode_block(const EncodedBlock& block,
                                                     std::vector<uint8_t>& out) = 0;
 };
+
+// Makes one engine per worker thread.
+using EngineFactory = std::function<std::unique_ptr<IEngine>()>;
+
+// At least one.
+std::vector<std::unique_ptr<IEngine>> make_engines(const EngineFactory& make_engine,
+                                                   unsigned count);
 
 class Engine : public IEngine
 {

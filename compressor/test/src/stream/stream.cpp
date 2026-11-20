@@ -128,6 +128,40 @@ std::expected<std::string, compressor::Error> decode(const std::string& bytes)
     return out.str();
 }
 
+compressor::EngineFactory engine_factory(int* made = nullptr)
+{
+    return [made] {
+        if (made != nullptr)
+        {
+            ++*made;
+        }
+        return std::make_unique<compressor::Engine>(block_size_log2);
+    };
+}
+
+std::expected<std::string, compressor::Error> encode_with(unsigned threads, const std::string& text)
+{
+    compressor::BlockEncoder encoder(engine_factory(), block_size_log2, threads);
+    std::istringstream in(text);
+    std::ostringstream out;
+    if (auto result = encoder.encode(in, out); !result)
+    {
+        return std::unexpected(result.error());
+    }
+    return out.str();
+}
+
+// The decoded bytes, also when decoding fails.
+std::pair<std::expected<void, compressor::Error>, std::string> decode_with(unsigned threads,
+                                                                           const std::string& bytes)
+{
+    compressor::BlockDecoder decoder(engine_factory(), threads);
+    std::istringstream in(bytes);
+    std::ostringstream out;
+    auto result = decoder.decode(in, out);
+    return {result, out.str()};
+}
+
 std::string in_memory_encoding(const std::string& text)
 {
     compressor::DecodedData data;
@@ -209,8 +243,10 @@ TEST(BlockStreamTests, The_encoder_passes_one_block_at_a_time_to_the_engine)
 TEST(BlockStreamTests, The_decoder_stops_at_the_first_block_the_engine_rejects)
 {
     auto engine = std::make_unique<MockIEngine>();
+    // The next block may already be in flight when the first one fails.
     EXPECT_CALL(*engine, decode_block(_, _))
-        .WillOnce(Return(std::unexpected(compressor::Error::checksum_mismatch)));
+        .Times(testing::Between(1, 2))
+        .WillRepeatedly(Return(std::unexpected(compressor::Error::checksum_mismatch)));
     compressor::BlockDecoder decoder(std::move(engine));
     std::istringstream in(*encode(sample_text(3 * block_size)));
     std::ostringstream out;
@@ -268,4 +304,70 @@ TEST(BlockStreamTests, A_failing_output_is_a_write_error)
     compressor::BlockDecoder decoder;
     std::istringstream encoded_in(*encode(sample_text(10)));
     EXPECT_EQ(decoder.decode(encoded_in, out), std::unexpected(compressor::Error::write_failed));
+}
+
+class BlockStreamThreadTests : public testing::TestWithParam<unsigned>
+{
+};
+
+TEST_P(BlockStreamThreadTests, The_output_does_not_depend_on_the_thread_count)
+{
+    const std::string text = sample_text((37 * block_size) + 5);
+    const auto encoded = encode_with(GetParam(), text);
+    ASSERT_TRUE(encoded);
+    EXPECT_EQ(*encoded, in_memory_encoding(text));
+
+    const auto [result, decoded] = decode_with(GetParam(), *encoded);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(decoded, text);
+}
+
+TEST_P(BlockStreamThreadTests, A_bad_block_fails_after_writing_every_block_before_it)
+{
+    const std::string text = sample_text(20 * block_size);
+    const std::string encoded = *encode_with(1, text);
+    // Flip the last payload byte of block 11, just before block 12's header.
+    std::istringstream in(encoded);
+    const auto data = compressor::read_encoded(in);
+    ASSERT_TRUE(data);
+    std::size_t offset = compressor::frame_header_bytes;
+    for (std::size_t i = 0; i <= 11; ++i)
+    {
+        const compressor::EncodedBlock& block = data->blocks_[i];
+        offset +=
+            compressor::block_header_bytes + block.payload_.size() +
+            (block.method_ == compressor::Method::huffman ? compressor::code_lengths_bytes : 0);
+    }
+    std::string corrupt = encoded;
+    corrupt[offset - 1] = static_cast<char>(static_cast<uint8_t>(corrupt[offset - 1]) ^ 0x55U);
+
+    const auto [result, decoded] = decode_with(GetParam(), corrupt);
+    EXPECT_FALSE(result);
+    EXPECT_EQ(decoded, text.substr(0, 11 * block_size));
+}
+
+TEST_P(BlockStreamThreadTests, A_truncated_input_fails_after_writing_the_complete_blocks)
+{
+    const std::string text = sample_text(9 * block_size);
+    const std::string encoded = *encode_with(1, text);
+
+    const auto [result, decoded] = decode_with(GetParam(), encoded.substr(0, encoded.size() / 2));
+    EXPECT_EQ(result, std::unexpected(compressor::Error::truncated));
+    EXPECT_FALSE(decoded.empty());
+    EXPECT_EQ(decoded.size() % block_size, 0U);
+    EXPECT_EQ(decoded, text.substr(0, decoded.size()));
+}
+
+INSTANTIATE_TEST_SUITE_P(Threads, BlockStreamThreadTests, testing::Values(1U, 2U, 3U, 8U),
+                         [](const testing::TestParamInfo<unsigned>& info) {
+                             return "threads_" + std::to_string(info.param);
+                         });
+
+TEST(BlockStreamTests, The_coders_make_one_engine_per_thread)
+{
+    int made = 0;
+    const compressor::BlockEncoder encoder(engine_factory(&made), block_size_log2, 3);
+    EXPECT_EQ(made, 3);
+    const compressor::BlockDecoder decoder(engine_factory(&made), 0);
+    EXPECT_EQ(made, 4);
 }

@@ -166,3 +166,18 @@ After container step 2 ([roadmap.md](roadmap.md#container-format-and-streaming))
 
 - **Stored blocks** (`flower.png`, `lena.jpg`): decode about 2,100 → 7,600–8,000 MiB/s, now limited by one serial `crc32x` chain rather than the table lookups; encode 940–1,250 → 1,470–2,200 MiB/s.
 - **Huffman blocks:** decode geomean +13% on Canterbury, +9% on Silesia; encode +20% and +19%. This wins back most of the 10–15% that the CRC cost in container step 1.
+
+## Multithreaded blocks (2026-11-19)
+
+`compressor_app -T <n>` on all of Silesia joined into one 212 MB file (`cat corpus/silesia/*`), hyperfine, 5 runs, medians; Apple M3 Max (10 performance + 4 efficiency cores) with three QEMU VMs and syncthing using about 3–4 cores, load average 18–100. Results in `docs/benchmarks/multithreaded-blocks-cli.json`. The encoded file is byte-identical for every thread count.
+
+| Threads | Encode | Decode |
+| --- | --- | --- |
+| 1 | 484 ms (418 MiB/s) | 818 ms (247 MiB/s) |
+| 2 | 228 ms (2.1×) | 411 ms (2.0×) |
+| 4 | 212 ms (2.3×) | 282 ms (2.9×) |
+| 8 | 217 ms (2.2×) | 278 ms (2.9×) |
+| 14 | 214 ms (2.3×) | 300 ms (2.7×) |
+
+- **Output, not the coders, is the limit:** at 14 threads, writing to `/dev/null` takes 57 ms to encode (3.7 GB/s, 8.5×) and 81 ms to decode (2.6 GB/s, 10×). To a new file, the extra 150–200 ms is almost all system time; `dd bs=1m` writing the same 212 MB to a new file takes 48–304 ms here (14 ms to `/dev/null`). Known issue "File output limits the CLI's speed with threads".
+- **Memory:** peak RSS grows by about 4–5 MiB per thread (2 blocks in flight per thread, input and output): 14 MiB at 1 thread, 73 MiB at 14 for encode; 10 and 72 MiB for decode.

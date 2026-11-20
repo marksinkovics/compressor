@@ -16,6 +16,7 @@ set(INCLUDE_FILES
     "${COMPRESSOR_INCLUDE_DIR}/stream/encoder.h"
     "${COMPRESSOR_INCLUDE_DIR}/stream/decoder.h"
     "${COMPRESSOR_INCLUDE_DIR}/stream/stdio.h"
+    "${COMPRESSOR_INCLUDE_DIR}/thread/pool.h"
 )
 
 set(SRC_DIR ${PROJECT_SOURCE_DIR}/src)
@@ -34,6 +35,7 @@ set(SRC_FILES
     "${COMPRESSOR_SRC_DIR}/stream/encoder.cpp"
     "${COMPRESSOR_SRC_DIR}/stream/decoder.cpp"
     "${COMPRESSOR_SRC_DIR}/stream/stdio.cpp"
+    "${COMPRESSOR_SRC_DIR}/thread/pool.cpp"
 )
 
 add_library(${PROJECT_NAME} ${INCLUDE_FILES} ${SRC_FILES} )
@@ -50,9 +52,12 @@ target_include_directories(${PROJECT_NAME}
         ${SRC_DIR}
 )
 
+find_package(Threads REQUIRED)
+
 target_link_libraries(${PROJECT_NAME}
     PUBLIC
         instrumentor
+        Threads::Threads
 )
 
 add_subdirectory(test)

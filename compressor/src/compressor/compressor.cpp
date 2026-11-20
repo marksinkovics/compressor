@@ -17,10 +17,13 @@
 #include <system_error>
 #include <utility>
 
+#include <compressor/data/data.h>
+#include <compressor/engine/engine.h>
 #include <compressor/error.h>
 #include <compressor/stream/decoder.h>
 #include <compressor/stream/encoder.h>
 #include <compressor/stream/stdio.h>
+#include <compressor/thread/pool.h>
 
 #include <instrumentor/instrumentor.h>
 
@@ -31,6 +34,16 @@ namespace
 {
 
 namespace fs = std::filesystem;
+
+std::unique_ptr<IEngine> make_engine()
+{
+    return std::make_unique<Engine>();
+}
+
+unsigned thread_count(unsigned requested)
+{
+    return requested == 0 ? default_thread_count() : requested;
+}
 
 struct TempFile
 {
@@ -179,7 +192,14 @@ StandardStreams process_streams()
 }
 
 Compressor::Compressor()
-    : Compressor(std::make_unique<BlockEncoder>(), std::make_unique<BlockDecoder>())
+    : Compressor(0)
+{
+}
+
+Compressor::Compressor(unsigned threads)
+    : Compressor(std::make_unique<BlockEncoder>(make_engine, default_block_size_log2,
+                                                thread_count(threads)),
+                 std::make_unique<BlockDecoder>(make_engine, thread_count(threads)))
 {
 }
 

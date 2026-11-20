@@ -63,6 +63,15 @@ The round-trip tests (`RoundTripTests`) encode and decode every file in `compres
 
 `PipeRoundTrip.*` (in `compressor_app/CMakeLists.txt`) run the built `compressor_app` through `compressor_app/test/pipe_roundtrip.cmake`: stdin-to-stdout encoding must match file encoding, and `encode | decode` must give the input back. They cover an empty input, `lorem_50p.txt` and `flower.png`.
 
+ThreadSanitizer has no preset yet; an ad hoc build in `build/tsan` checks the thread pool and the block coders (gtest stays uninstrumented, which hasn't caused reports so far). It runs inside Claude's sandbox, unlike ASan:
+
+```bash
+cmake --preset debug -B build/tsan -DCMAKE_CXX_FLAGS="-fsanitize=thread -g" -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=thread
+cmake --build build/tsan --target compressor_test_app
+TSAN_OPTIONS=halt_on_error=1 build/tsan/compressor/test/compressor_test_app \
+  --gtest_filter='ThreadPool*:*BlockStreamThread*:BlockStreamTests.*' --gtest_repeat=30
+```
+
 Linux code paths (GCC, `getauxval`) can be checked on a Mac with Apple's `container` (`brew install container`, then `container system start`); add `--arch amd64` for x86-64 under Rosetta. The full build also needs CMake, Ninja and vcpkg in the image, so a quick check compiles single files:
 
 ```bash

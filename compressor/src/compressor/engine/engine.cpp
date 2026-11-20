@@ -183,6 +183,16 @@ private:
 
 } // namespace
 
+std::vector<std::unique_ptr<IEngine>> make_engines(const EngineFactory& make_engine, unsigned count)
+{
+    std::vector<std::unique_ptr<IEngine>> engines(std::max(1U, count));
+    for (auto& engine : engines)
+    {
+        engine = make_engine();
+    }
+    return engines;
+}
+
 Engine::Engine(uint8_t block_size_log2)
     : block_size_log2_(block_size_log2)
 {

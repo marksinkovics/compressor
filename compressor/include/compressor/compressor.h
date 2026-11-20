@@ -42,7 +42,10 @@ public:
 class Compressor : public ICompressor
 {
 public:
+    // Block coders with default_thread_count() threads.
     Compressor();
+    // 0 means default_thread_count().
+    explicit Compressor(unsigned threads);
     Compressor(std::unique_ptr<IBlockEncoder> encoder, std::unique_ptr<IBlockDecoder> decoder,
                StandardStreams streams = process_streams());
     ~Compressor() override = default;

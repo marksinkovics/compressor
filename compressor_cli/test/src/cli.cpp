@@ -3,6 +3,7 @@
 #include <fstream>
 #include <initializer_list>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -48,7 +49,10 @@ protected:
         for (const auto& arg : storage)
             argv.push_back(arg.c_str());
 
-        compressor::CLI cli(std::move(compressor_), out_, err_);
+        compressor::CLI cli([this](unsigned threads) {
+            threads_ = threads;
+            return std::move(compressor_);
+        }, out_, err_);
         return cli.run(argv);
     }
 
@@ -56,6 +60,7 @@ protected:
     std::string input_;
     std::string output_;
     std::unique_ptr<MockICompressor> compressor_ = std::make_unique<MockICompressor>();
+    std::optional<unsigned> threads_;
     std::ostringstream out_;
     std::ostringstream err_;
 };
@@ -209,4 +214,34 @@ TEST_F(CLITests, Unknown_option_fails)
     EXPECT_CALL(*compressor_, encode(::testing::_, ::testing::_)).Times(0);
 
     EXPECT_NE(run({"encode", "-i", input_, "-o", output_, "--level", "9"}), EXIT_SUCCESS);
+}
+
+TEST_F(CLITests, Threads_default_to_zero_meaning_all_cores)
+{
+    EXPECT_CALL(*compressor_, encode(::testing::_, ::testing::_)).WillOnce(Return(true));
+
+    EXPECT_EQ(run({"encode", "-i", input_, "-o", output_}), EXIT_SUCCESS);
+    EXPECT_EQ(threads_, 0U);
+}
+
+TEST_F(CLITests, Threads_are_passed_to_the_compressor)
+{
+    EXPECT_CALL(*compressor_, encode(::testing::_, ::testing::_)).WillOnce(Return(true));
+    EXPECT_EQ(run({"encode", "-T", "3", "-i", input_, "-o", output_}), EXIT_SUCCESS);
+    EXPECT_EQ(threads_, 3U);
+
+    compressor_ = std::make_unique<MockICompressor>();
+    EXPECT_CALL(*compressor_, decode(::testing::_, ::testing::_)).WillOnce(Return(true));
+    EXPECT_EQ(run({"decode", "--threads", "1", "-i", input_, "-o", output_}), EXIT_SUCCESS);
+    EXPECT_EQ(threads_, 1U);
+}
+
+TEST_F(CLITests, Invalid_thread_counts_fail)
+{
+    for (const char* threads : {"-1", "two", ""})
+    {
+        EXPECT_NE(run({"encode", "-T", threads, "-i", input_, "-o", output_}), EXIT_SUCCESS)
+            << threads;
+    }
+    EXPECT_FALSE(threads_);
 }
