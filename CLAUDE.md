@@ -19,6 +19,7 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 - Folder archives step 1 is done: solid blocks plus an index after the end block, flag bit 0 in the frame header; `encode -i <dir>` archives, `decode` extracts into a new directory (`compressor/archive/`, format in `docs/file_format.md`); 202/202 pass.
 - Folder archives step 2 is done: `list [-l]`, `extract ARCHIVE PATH [-o OUT]`, `cat`, `verify`; extraction decodes only the blocks a selection needs (`IBlockDecoder::decode_blocks`); 236/236 pass.
 - `stats` (folder compression step 3) is done; 250/250 pass.
+- Decoder fuzzing is done: `fuzz/` libFuzzer targets, corpus replay in every build, `fuzz` preset; no crashes found; 253/253 pass.
 - **Next:** the "Autonomous run" list at the end of `docs/roadmap.md`, on branch `feat/autonomous-run`: work through it in order, committing each item (no push, no co-author line).
 
 ## Commands
@@ -28,6 +29,7 @@ cmake --workflow --preset debug   # configure, build and test build/debug (also:
 cmake --build --preset debug
 ctest --preset debug -R EngineTests
 ./build/debug/compressor/test/compressor_test_app --gtest_filter='EngineTests.*'
+cmake --workflow --preset fuzz    # libFuzzer + ASan build, unit tests and short fuzz runs (docs/development.md, "Fuzzing")
 bash tools/quality.sh check       # clang-format, clang-tidy, shellcheck, shfmt (see docs/development.md)
 bash tools/bench.sh               # release benchmarks -> JSON; corpora via tools/fetch-corpus.sh (docs/benchmarks.md)
 bash tools/bench-cli.sh           # compressor_app end to end with hyperfine (python3 fallback)

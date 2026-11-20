@@ -30,6 +30,7 @@ Third-party libraries come only from vcpkg in manifest mode: `vcpkg.json` lists 
 | `release` | Ninja | Release, for benchmarks |
 | `asan` | Ninja | Debug with `COMPRESSOR_ASAN=ON` and the `arm64-osx-asan` triplet (macOS only) |
 | `xcode` | Xcode | Debug for the build and test presets (macOS only) |
+| `fuzz` | Ninja | RelWithDebInfo with `COMPRESSOR_FUZZ=ON`, built by Homebrew's clang (`$HOMEBREW_PREFIX/opt/llvm/bin/clang++`; macOS only). See "Fuzzing". |
 
 ```bash
 cmake --workflow --preset debug   # configure, build and test in one go
@@ -47,8 +48,9 @@ Local variations (another generator, extra cache variables) go into `CMakeUserPr
 | `CMAKE_COMPILE_WARNING_AS_ERROR` | `OFF` | CMake's own option: warnings are errors (`-Werror`, `/WX` on MSVC). The presets turn it on; configuring with `--compile-no-warning-as-error` overrides it. |
 | `COMPRESSOR_ASAN` | `OFF` | AddressSanitizer for our code. Needs an ASan triplet from `triplets/` (`-DVCPKG_TARGET_TRIPLET=arm64-osx-asan` or `x64-linux-asan`), so gtest and benchmark are instrumented too; configure fails without one. Use with `CMAKE_BUILD_TYPE=Debug`. On Linux it also finds leaks; Apple Clang has no LeakSanitizer on arm64. |
 | `COMPRESSOR_PROFILING` | `OFF` | The `PROFILE_*` macros write `result.json` (Chrome trace format) to the working directory. |
+| `COMPRESSOR_FUZZ` | `OFF` | Coverage instrumentation and ASan for our code, and libFuzzer for the `fuzz/` targets. Needs a clang that ships libFuzzer (Apple Clang doesn't); vcpkg's ports stay uninstrumented. |
 
-Every target gets `-Wall -Wextra -Wpedantic` (`/W4` on MSVC) from the root `add_compile_options`; every target built in this tree is ours, and vcpkg headers are included as system headers. Optimization comes from the build type only (Release: `-O3 -DNDEBUG`). Tests are discovered when `ctest` runs (`DISCOVERY_MODE PRE_TEST`), not at build time.
+Every target gets `-Wall -Wextra -Wpedantic` (`/W4` on MSVC) from the root `add_compile_options`, minus `-Wmissing-designated-field-initializers` where the compiler has it (clang 23 puts it in `-Wextra`; designated initializers that leave fields at their defaults are intended); every target built in this tree is ours, and vcpkg headers are included as system headers. Optimization comes from the build type only (Release: `-O3 -DNDEBUG`). Tests are discovered when `ctest` runs (`DISCOVERY_MODE PRE_TEST`), not at build time.
 
 ## Run tests
 
@@ -78,6 +80,15 @@ Linux code paths (GCC, `getauxval`) can be checked on a Mac with Apple's `contai
 container run --rm -v "$PWD":/src -w /src docker.io/library/gcc:14 \
   g++ -std=c++23 -Icompressor/include -c compressor/src/compressor/checksum/crc32.cpp
 ```
+
+### Fuzzing
+
+`fuzz/` has one libFuzzer target per kind of untrusted input: `fuzz_container` (`decode_frame` with and without the archive flag, `read_encoded`), `fuzz_archive` (`read_archive_index`, then a check that every accepted path stays inside the extraction directory, `list_archive`, `verify_archive`, `extract_file` of every file, `select_subtree` of every other entry) and `fuzz_stats` (`collect_stats`, the report and the graph). Nothing is written to disk: a path bug found by extracting for real could write anywhere.
+
+- In normal builds each target links `fuzz/src/replay_main.cpp` instead and replays its corpus in `fuzz/corpus/<target>/` once (`FuzzCorpus.*` tests). A crashing input found by fuzzing goes into that directory with the fix, so it stays a regression test.
+- `cmake --workflow --preset fuzz` builds with libFuzzer and ASan and runs every test, plus 50 000 runs per target (`Fuzz.*`). New corpus entries go to `build/fuzz/fuzz/corpus/<target>/`.
+- A longer run: `build/fuzz/fuzz/fuzz_archive -max_total_time=600 -max_len=65536 -artifact_prefix=build/fuzz/artifacts/archive- build/fuzz/fuzz/corpus/archive fuzz/corpus/archive`.
+- `fuzz_make_seeds <dir>` regenerates the seeds (4 KiB blocks, fixed times, so the output is the same every run): `build/debug/fuzz/fuzz_make_seeds fuzz/corpus`.
 
 Tests for known bugs are added with a `DISABLED_` prefix until the fix lands. Run one with `--gtest_also_run_disabled_tests --gtest_filter=<Suite>.DISABLED_<name>`; some of them crash or hang before their fix, so run them one at a time.
 

@@ -22,6 +22,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(COMPRESSOR_ASAN "Build our code with AddressSanitizer (needs an -asan triplet)." OFF)
 option(COMPRESSOR_PROFILING "Make the PROFILE_* macros write result.json." OFF)
+option(COMPRESSOR_FUZZ "Build the fuzz targets with libFuzzer and ASan (needs a clang with libFuzzer)." OFF)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(VcpkgPins)
@@ -54,6 +55,13 @@ if(COMPRESSOR_ASAN)
     add_link_options(-fsanitize=address)
 endif()
 
+# Coverage instrumentation everywhere, so libFuzzer sees inside the library; only the fuzz targets
+# link the fuzzer itself.
+if(COMPRESSOR_FUZZ)
+    add_compile_options(-fsanitize=fuzzer-no-link,address -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address)
+endif()
+
 find_package(GTest CONFIG REQUIRED)
 find_package(benchmark CONFIG REQUIRED)
 find_package(CLI11 CONFIG REQUIRED)
@@ -64,4 +72,5 @@ add_subdirectory(compressor_cli)
 add_subdirectory(compressor_app)
 add_subdirectory(compressor_benchmark)
 add_subdirectory(compressor_example)
+add_subdirectory(fuzz)
 add_subdirectory(lib/instrumentor)

@@ -386,7 +386,7 @@ Existing examples: macOS compressed memory, Linux zram and zswap, Windows memory
 ### Tooling
 
 - [ ] **Benchmark harness:** compression ratio and speed compared with gzip, zstd and xz on standard test sets (Canterbury, Silesia), tracked over time.
-- [ ] **Fuzzing the decoder** with libFuzzer, so a crafted file can't crash it or corrupt memory.
+- [x] **Fuzzing the decoder (done, autonomous run item 2):** `fuzz/` targets `fuzz_container`, `fuzz_archive`, `fuzz_stats` with consistency checks (a decoded container also parses and isn't also an archive; every accepted index path stays inside the extraction directory; what verifies also extracts file by file). Seeds in `fuzz/corpus/` from `fuzz_make_seeds`, replayed by `FuzzCorpus.*` in every build; the `fuzz` preset (Homebrew clang 23, libFuzzer, ASan) adds `Fuzz.*` with 50 000 runs each. 10 minutes per target (about 14 million inputs) and 4.4 million more after adding the checks found nothing. Building with clang 23 found a missing `<iterator>` in `huffman.cpp` and an ignored `future::get()` result in a test; `-Wmissing-designated-field-initializers` is now off where the compiler has it. Details in `docs/development.md`, "Fuzzing".
 - [ ] **Interactive web demo:** compile to WebAssembly and show the tree being built and the bit stream for some input text.
 - [ ] **Python bindings** via pybind11.
 
@@ -414,7 +414,7 @@ Decisions taken for the pipeline (Claude's defaults, accepted): each block recor
 
 - [ ] 0. Branch, commit the clang-tidy hook change and this plan.
 - [x] 1. (done) `stats` (folder compression step 3): size, ratio, entropy, byte histogram, stored/Huffman split per block; `--graph` writes the Huffman tree as Graphviz.
-- [ ] 2. Fuzzing the decoder: libFuzzer targets (Homebrew llvm) for the container reader, the archive index and extraction, seeded from the samples, with a short run under ctest; every crash fixed with a regression test.
+- [x] 2. (done) Fuzzing the decoder: libFuzzer targets (Homebrew llvm) for the container reader, the archive index and extraction, seeded from the samples, with a short run under ctest; every crash fixed with a regression test.
 - [ ] 3. Deduplication: identical files stored once and pointing back at the first copy's data; index rules, docs and extraction updated.
 - [ ] 4. zgrep-style search: `grep PATTERN INPUT [PATH...]` over a plain file or an archive, streaming, matches across block boundaries, `path:line:text`, `-c`, `-l`, `-b`; fixed strings first.
 - [ ] 5. Block index search: with paths, decode only their blocks; search blocks in parallel with an overlap of pattern length - 1 at the edges; benchmarked.
