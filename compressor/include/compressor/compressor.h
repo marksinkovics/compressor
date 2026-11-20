@@ -1,6 +1,7 @@
 #ifndef Compressor_h
 #define Compressor_h
 
+#include <cstdint>
 #include <filesystem>
 #include <iosfwd>
 #include <memory>
@@ -29,6 +30,13 @@ struct StandardStreams
 // stdin and stdout through StdioInputBuf and StdioOutputBuf, and std::cerr.
 StandardStreams process_streams();
 
+enum class OutputFormat : uint8_t
+{
+    ingot,
+    gzip, // one file, RFC 1952
+    zip,  // a folder
+};
+
 struct StatsOptions
 {
     StatsReport report;
@@ -45,6 +53,9 @@ public:
                         const std::filesystem::path& output) = 0;
     virtual bool decode(const std::filesystem::path& input,
                         const std::filesystem::path& output) = 0;
+    // encode() in another format; gzip takes a file or the standard input, zip a folder.
+    virtual bool encode_as(const std::filesystem::path& input, const std::filesystem::path& output,
+                           OutputFormat format) = 0;
     // Prints the paths in a folder archive to the standard output; `details` adds the types,
     // permissions, sizes and times.
     virtual bool list(const std::filesystem::path& archive, bool details) = 0;
@@ -80,6 +91,8 @@ public:
 
     bool encode(const std::filesystem::path& input, const std::filesystem::path& output) override;
     bool decode(const std::filesystem::path& input, const std::filesystem::path& output) override;
+    bool encode_as(const std::filesystem::path& input, const std::filesystem::path& output,
+                   OutputFormat format) override;
     bool list(const std::filesystem::path& archive, bool details) override;
     bool extract(const std::filesystem::path& archive, const std::string& path,
                  const std::filesystem::path& output) override;

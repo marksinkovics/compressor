@@ -28,6 +28,7 @@ struct Settings
     std::string graph;
     SearchOptions search;
     std::vector<std::string> paths;
+    std::string format = "ingot";
     bool count = false;
     bool names = false;
 };
@@ -113,6 +114,10 @@ int CLI::run(std::span<const char* const> args)
     Settings stats_settings;
     Settings grep_settings;
     auto* encode = add_command(app, "encode", "Compress a file or a folder", true, encode_settings);
+    encode
+        ->add_option("-f,--format", encode_settings.format,
+                     "ingot (default), gzip (a file) or zip (a folder)")
+        ->check(::CLI::IsMember({"ingot", "gzip", "zip"}));
     auto* decode =
         add_command(app, "decode", "Decompress a file or a folder archive", false, decode_settings);
 
@@ -203,8 +208,13 @@ int CLI::run(std::span<const char* const> args)
     if (encode->parsed())
     {
         const auto compressor = make_compressor_(encode_settings.threads);
-        return finish(compressor->encode(encode_settings.input, encode_settings.output),
-                      "Encoding " + input_name(encode_settings));
+        const bool encoded =
+            encode_settings.format == "ingot"
+                ? compressor->encode(encode_settings.input, encode_settings.output)
+                : compressor->encode_as(encode_settings.input, encode_settings.output,
+                                        encode_settings.format == "gzip" ? OutputFormat::gzip
+                                                                         : OutputFormat::zip);
+        return finish(encoded, "Encoding " + input_name(encode_settings));
     }
     if (decode->parsed())
     {

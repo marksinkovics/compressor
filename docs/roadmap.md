@@ -340,7 +340,7 @@ Layout decided under "Decisions" (solid blocks plus an index); format in [file_f
 
 ### Well-known output formats
 
-- [ ] **Own Deflate encoder** that produces valid `.gz` and `.zip` files macOS and other tools can open. Deflate is LZ77 followed by Huffman coding, and the encoder chooses the Huffman tables, so the compression still uses our own Huffman code.
+- [x] **Own Deflate encoder** (done, autonomous run item 9): `compressor_app encode -f gzip` (a file or standard input) and `-f zip` (a folder). `huffman/` gained `code_lengths()`/`canonical_codes()` for any alphabet size (Deflate's 286, 30 and 19 symbols; the 256-symbol versions wrap them). `lz77/`: `Lz77MatchFinder`, hash chains over 3-byte prefixes, a 32 KiB window across 1 MiB input pieces, zlib's level-6 lazy rules, 8-byte match compares. `deflate/deflate.{h,cpp}`: `deflate_stream()` writes blocks of up to 16 Ki tokens as whichever of dynamic Huffman (our package-merge lengths, code length codes run-length coded), fixed or stored is smallest; `write_gzip()` (RFC 1952, with the file's name and time). `deflate/zip.{h,cpp}`: `write_zip()` over `scan_tree()` entries, data descriptors (streams to stdout), stored directories and Unix symlinks, modes in the external attributes, UTF-8 names; no Zip64 yet (refuses 4 GiB or 65 536 entries). `ICompressor::encode_as(input, output, OutputFormat)`. Checked: zlib inflates every test output (`DeflateTests`: small inputs, text, noise, matches at exactly 32 KiB across pieces, long runs, both option extremes, sample files, the gzip header), `ZipTests` read archives back like unzip (central directory, local headers, descriptors, modes, symlinks); by hand, `gunzip -t`, `unzip -t`, `unzip` and `ditto -x -k` (Archive Utility) give identical trees. Size within 0.3% of gzip -6 on every Silesia file, 1.45× its time (`docs/benchmarks.md`, "Deflate"). Not done: our own inflate (so `decode` can't read `.gz`), Zip64, multithreaded Deflate, compression levels (item 10). Was: **Own Deflate encoder** that produces valid `.gz` and `.zip` files macOS and other tools can open. Deflate is LZ77 followed by Huffman coding, and the encoder chooses the Huffman tables, so the compression still uses our own Huffman code.
 
 ### Algorithms
 
@@ -398,7 +398,7 @@ Existing examples: macOS compressed memory, Linux zram and zswap, Windows memory
 3. Multithreaded blocks (container format, done).
 4. Folder support: done (steps 1–3 and deduplication).
 5. An LZ77 pipeline next to Huffman (from "Algorithms": the pluggable pipeline, transforms such as RLE, MTF and BWT, LZ77/LZW, other entropy coders, an auto mode, pre-trained dictionaries).
-6. A Deflate encoder, so the output is valid `.gz` and `.zip`.
+6. A Deflate encoder, so the output is valid `.gz` and `.zip` (done).
 7. Search inside compressed data: jumping to the right block through the block index, zgrep-style search, search without decompressing, an FM-index. The macFUSE mount is skipped for now.
 8. Transforms for specific data types ("Data other than text").
 9. Other advanced compression algorithms, with or without Huffman ("Algorithms").
@@ -422,7 +422,7 @@ Decisions taken for the pipeline (Claude's defaults, accepted): each block recor
 - [x] 6. (done as a benchmark; the command needs a format change, see "Compressed-domain prefilter") Search without decompressing (experiment): match the Huffman-encoded pattern in the bit stream, resynchronising at code boundaries; checked against item 4, kept as a command only if it is faster.
 - [x] 7. (done, 2.6×) Known issue: interleave the ARM CRC32 loop into 3 chains, kept only if `tools/bench.sh` shows a gain.
 - [x] 8. (done, folder extraction 54× faster) Known issue: file output speed with threads; profile with `bench-cli.sh`, keep only measured wins.
-- [ ] 9. Deflate: hash-chain LZ77 matcher (32 KB window), Deflate encoder with our length-limited canonical Huffman, `encode --gzip` (file) and `encode --zip` (folder); every output checked with zlib, by hand with `gunzip`/`unzip`; benchmarked against `gzip`.
+- [x] 9. (done) Deflate: hash-chain LZ77 matcher (32 KB window), Deflate encoder with our length-limited canonical Huffman, `encode --gzip` (file) and `encode --zip` (folder); every output checked with zlib, by hand with `gunzip`/`unzip`; benchmarked against `gzip`.
 - [ ] 10. Pluggable pipeline (format version 2, as decided above) with LZ77 + Huffman as the first new pipeline, and compression levels.
 - [ ] 11. Auto mode: try several pipelines per block at the higher levels and keep the smallest.
 - [ ] 12. Transforms for data types: corpus (PPM/BMP, WAV, CSV/logs), delta with strides 1/2/4, PNG row filters, an x86/ARM branch filter; detection from known headers, else trying strides on a sample; benchmarked per type.

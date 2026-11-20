@@ -16,6 +16,10 @@ public:
                 (override));
     MOCK_METHOD(bool, decode, (const std::filesystem::path&, const std::filesystem::path&),
                 (override));
+    MOCK_METHOD(bool, encode_as,
+                (const std::filesystem::path&, const std::filesystem::path&,
+                 compressor::OutputFormat),
+                (override));
     MOCK_METHOD(bool, list, (const std::filesystem::path&, bool), (override));
     MOCK_METHOD(bool, extract,
                 (const std::filesystem::path&, const std::string&, const std::filesystem::path&),

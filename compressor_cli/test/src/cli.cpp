@@ -386,3 +386,28 @@ TEST_F(CLITests, Grep_takes_either_count_or_names)
     EXPECT_NE(run({"grep", "-c", "-l", "x", input_}), EXIT_SUCCESS);
     EXPECT_NE(run({"grep", "x"}), EXIT_SUCCESS);
 }
+
+TEST_F(CLITests, Encode_passes_the_format)
+{
+    EXPECT_CALL(*compressor_,
+                encode_as(fs::path(input_), fs::path(output_), compressor::OutputFormat::gzip))
+        .WillOnce(Return(true));
+    EXPECT_EQ(run({"encode", "-f", "gzip", "-i", input_, "-o", output_}), EXIT_SUCCESS);
+
+    compressor_ = std::make_unique<MockICompressor>();
+    EXPECT_CALL(*compressor_,
+                encode_as(fs::path(dir_), fs::path(output_), compressor::OutputFormat::zip))
+        .WillOnce(Return(true));
+    EXPECT_EQ(run({"encode", "--format", "zip", "-i", dir_.string(), "-o", output_}), EXIT_SUCCESS);
+
+    compressor_ = std::make_unique<MockICompressor>();
+    EXPECT_CALL(*compressor_, encode(::testing::_, ::testing::_)).WillOnce(Return(true));
+    EXPECT_CALL(*compressor_, encode_as(::testing::_, ::testing::_, ::testing::_)).Times(0);
+    EXPECT_EQ(run({"encode", "-f", "ingot", "-i", input_, "-o", output_}), EXIT_SUCCESS);
+}
+
+TEST_F(CLITests, An_unknown_format_fails)
+{
+    EXPECT_CALL(*compressor_, encode_as(::testing::_, ::testing::_, ::testing::_)).Times(0);
+    EXPECT_NE(run({"encode", "-f", "rar", "-i", input_, "-o", output_}), EXIT_SUCCESS);
+}

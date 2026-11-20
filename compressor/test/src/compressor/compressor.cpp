@@ -570,3 +570,34 @@ TEST_F(CompressorArchiveCommandTests, Grep_rejects_a_line_break_and_reports_dama
     EXPECT_EQ(make_compressor().grep(archive_, any, {}), SearchResult::failed);
     EXPECT_THAT(err_.str(), HasSubstr("Cannot search"));
 }
+
+TEST_F(CompressorArchiveCommandTests, A_file_encodes_as_gzip_and_a_folder_as_zip)
+{
+    using compressor::OutputFormat;
+    const fs::path gz = dir_ / "a.txt.gz";
+    ASSERT_TRUE(make_compressor().encode_as(folder_ / "a.txt", gz, OutputFormat::gzip))
+        << err_.str();
+    const std::string gzip = read_file(gz);
+    ASSERT_GE(gzip.size(), 18U);
+    EXPECT_EQ(gzip.substr(0, 3), "\x1f\x8b\x08");
+    EXPECT_NE(gzip.find("a.txt"), std::string::npos);
+
+    in_.str("from stdin");
+    ASSERT_TRUE(make_compressor().encode_as("-", "-", OutputFormat::gzip)) << err_.str();
+    EXPECT_EQ(out_.str().substr(0, 2), "\x1f\x8b");
+
+    const fs::path zip = dir_ / "folder.zip";
+    ASSERT_TRUE(make_compressor().encode_as(folder_, zip, OutputFormat::zip)) << err_.str();
+    EXPECT_EQ(read_file(zip).substr(0, 4), "PK\x03\x04");
+}
+
+TEST_F(CompressorArchiveCommandTests, Gzip_needs_a_file_and_zip_a_folder)
+{
+    using compressor::OutputFormat;
+    EXPECT_FALSE(make_compressor().encode_as(folder_, dir_ / "x.gz", OutputFormat::gzip));
+    EXPECT_THAT(err_.str(), HasSubstr("use the zip format"));
+    EXPECT_FALSE(make_compressor().encode_as(folder_ / "a.txt", dir_ / "x.zip", OutputFormat::zip));
+    EXPECT_THAT(err_.str(), HasSubstr("use the gzip format"));
+    EXPECT_FALSE(fs::exists(dir_ / "x.gz"));
+    EXPECT_FALSE(fs::exists(dir_ / "x.zip"));
+}

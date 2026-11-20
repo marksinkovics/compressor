@@ -1,5 +1,6 @@
 #include <compressor/compressor.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <expected>
 #include <filesystem>
@@ -24,6 +25,8 @@
 #include <compressor/archive/index.h>
 #include <compressor/archive/metadata.h>
 #include <compressor/data/data.h>
+#include <compressor/deflate/deflate.h>
+#include <compressor/deflate/zip.h>
 #include <compressor/engine/engine.h>
 #include <compressor/error.h>
 #include <compressor/search/search.h>
@@ -474,6 +477,70 @@ bool Compressor::decode(const fs::path& input, const fs::path& output)
                      [this](std::istream& in, std::ostream& out) {
         return decoder_->decode(in, out);
     });
+}
+
+bool Compressor::encode_as(const fs::path& input, const fs::path& output, OutputFormat format)
+{
+    PROFILE_SESSION("Compressor::EncodeAs")
+    std::ostream& err = streams_.err;
+    std::error_code error;
+    const bool folder = !is_standard(input) && fs::is_directory(input, error);
+    switch (format)
+    {
+    case OutputFormat::ingot:
+        return encode(input, output);
+    case OutputFormat::gzip:
+    {
+        if (folder)
+        {
+            err << "Cannot encode " << input.string()
+                << " as gzip: it is a folder; use the zip format\n";
+            return false;
+        }
+        GzipHeader header;
+        if (!is_standard(input))
+        {
+            header.name = input.filename().string();
+            const auto metadata = read_metadata(input, true);
+            if (metadata && metadata->mtime_ns >= 0)
+            {
+                header.mtime = static_cast<uint32_t>(
+                    std::min<int64_t>(metadata->mtime_ns / 1'000'000'000, 0xFFFFFFFF));
+            }
+        }
+        return transcode(
+            streams_, "encode", input, output,
+            [&header](std::istream& in, std::ostream& out) -> std::expected<void, Error> {
+            if (auto written = write_gzip(in, out, header); !written)
+            {
+                return std::unexpected(written.error());
+            }
+            return {};
+        });
+    }
+    case OutputFormat::zip:
+    {
+        if (!folder)
+        {
+            err << "Cannot encode " << display_name(input, "standard input")
+                << " as zip: it is not a folder; use the gzip format for a file\n";
+            return false;
+        }
+        const auto report_failure = [&](const Failure& failure) {
+            report(err, "encode", input, failure);
+        };
+        auto entries = scan_tree(input, is_standard(output) ? fs::path{} : output, err);
+        if (!entries)
+        {
+            report_failure(entries.error());
+            return false;
+        }
+        return write_output(streams_, output, [&](std::ostream& out) {
+            return write_zip(input, *entries, out);
+        }, report_failure);
+    }
+    }
+    return false;
 }
 
 bool Compressor::encode_folder(const fs::path& input, const fs::path& output)

@@ -233,3 +233,15 @@ After container step 2 ([roadmap.md](roadmap.md#container-format-and-streaming))
 
 - Two libc++ problems, measured with a small program writing 200 MiB in 1 MiB pieces: `std::ofstream` writes 4 KiB per system call (332 ms; 173 ms with a 1 MiB `pubsetbuf`), and a `std::filebuf` reopened after `close()` loses its buffer and goes through `overflow` and `fwrite` almost byte by byte (about 3.5 s). `fwrite` of whole buffers takes 35 ms. The folder paths reused one `filebuf` for every file, so every file after the first was slow both ways.
 - Now new files are written through `OutputFile` (`fopen` with `"wbx"`, `StdioOutputBuf` with 1 MiB, `fwrite`) and archived files are read with `fread`. Writing to a new file costs about what writing to `/dev/null` does (85 ms decode).
+
+## Deflate (2026-11-20)
+
+`compressor_app encode -f gzip` against Apple gzip 479 at `-6` (zlib's default level), each Silesia file, one run each, wall time; same loaded machine. Our LZ77 uses zlib's level-6 settings (`Lz77Options` defaults: chains of 128, nice length 128, lazy matching below 16, a quarter chain from 8). Every output decompresses with `gzip -dc` to the original. Per-file numbers in `docs/benchmarks/deflate-vs-gzip.txt`.
+
+| All 12 files (212 MB) | Ours | gzip -6 |
+| --- | --- | --- |
+| Compressed | 68 141 519 bytes | 68 220 703 bytes (+0.12%) |
+| Time | 7.49 s | 5.16 s |
+
+- Same ratio as gzip within 0.3% on every file, smaller on 6 of 12; per-block choice of dynamic, fixed or stored helps `x-ray` (1.5% smaller).
+- 1.45× slower overall, most on plain text (dickens 0.88 s against 0.38 s): `longest_match` is about 90% of the time. zlib's lazy-match limits, a word-at-a-time match compare and reusing the look-ahead match took webster from 2.27 to 1.52 s; zlib also skips inserting most positions inside long matches.
