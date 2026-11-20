@@ -217,7 +217,7 @@ TEST_F(CompressorDataTests, Stored_data_is_written_in_the_container_format)
     const std::string bytes = serialized(stored_abc());
 
     ASSERT_EQ(bytes.size(), 8U + 13U + 3U + 9U);
-    EXPECT_EQ(bytes.substr(0, 8), std::string("\x89ING\x01\x14\0\0", 8));
+    EXPECT_EQ(bytes.substr(0, 8), std::string("\x89ING\x02\x14\0\0", 8));
     EXPECT_EQ(bytes.substr(8, 13), std::string("\x00", 1) + le32(3) + le32(3) + le32(crc("abc")));
     EXPECT_EQ(bytes.substr(21, 3), "abc");
     EXPECT_EQ(bytes.substr(24), std::string("\xFF\x03\0\0\0\0\0\0\0", 9));
@@ -242,7 +242,7 @@ TEST_F(CompressorDataTests, Empty_data_is_a_frame_header_and_an_end_block)
 {
     const std::string bytes = serialized(container({}));
 
-    EXPECT_EQ(bytes, std::string("\x89ING\x01\x14\0\0\xFF\0\0\0\0\0\0\0\0", 17));
+    EXPECT_EQ(bytes, std::string("\x89ING\x02\x14\0\0\xFF\0\0\0\0\0\0\0\0", 17));
     EXPECT_EQ(parse(bytes), container({}));
 }
 
@@ -292,7 +292,7 @@ TEST_F(CompressorDataTests, Invalid_frame_headers_are_rejected)
     EXPECT_EQ(parse("plain text, not ingot"), std::unexpected(Error::not_ingot));
     EXPECT_EQ(parse(with(0, 'I')), std::unexpected(Error::not_ingot));
     EXPECT_EQ(parse(with(3, 'Z')), std::unexpected(Error::not_ingot));
-    EXPECT_EQ(parse(with(4, '\x02')), std::unexpected(Error::unsupported_version));
+    EXPECT_EQ(parse(with(4, '\x03')), std::unexpected(Error::unsupported_version));
     EXPECT_EQ(parse(with(4, '\x00')), std::unexpected(Error::unsupported_version));
     EXPECT_EQ(parse(with(5, '\x0B')), std::unexpected(Error::corrupt_header));
     EXPECT_EQ(parse(with(5, '\x1B')), std::unexpected(Error::corrupt_header));
@@ -307,8 +307,18 @@ TEST_F(CompressorDataTests, Invalid_block_headers_are_rejected)
     const std::string huffman = serialized(encoded_aab());
 
     std::string unknown_method = stored;
-    unknown_method[method_offset] = '\x02';
+    unknown_method[method_offset] = '\x03';
     EXPECT_EQ(parse(unknown_method), std::unexpected(Error::corrupt_header));
+
+    // A pipeline block needs format version 2 and at least its descriptor.
+    std::string pipeline_in_version_1 = stored;
+    pipeline_in_version_1[4] = '\x01';
+    pipeline_in_version_1[method_offset] = '\x02';
+    EXPECT_EQ(parse(pipeline_in_version_1), std::unexpected(Error::corrupt_header));
+    std::string short_pipeline = stored;
+    short_pipeline[method_offset] = '\x02';
+    put_le32(short_pipeline, encoded_size_offset, 1);
+    EXPECT_EQ(parse(short_pipeline), std::unexpected(Error::corrupt_header));
 
     std::string empty_block = stored;
     put_le32(empty_block, size_offset, 0);
@@ -468,4 +478,14 @@ TEST_F(CompressorDataTests, Written_size_counts_the_header_and_the_code_lengths)
 {
     EXPECT_EQ(compressor::written_size(stored_block("abc")), 13U + 3U);
     EXPECT_EQ(compressor::written_size(huffman_aab()), 13U + 128U + 1U);
+}
+
+TEST_F(CompressorDataTests, A_version_1_file_still_reads)
+{
+    std::string bytes = serialized(stored_abc());
+    ASSERT_EQ(bytes[4], '\x02');
+    bytes[4] = '\x01';
+    const auto parsed = parse(bytes);
+    ASSERT_TRUE(parsed);
+    EXPECT_EQ(*parsed, stored_abc());
 }

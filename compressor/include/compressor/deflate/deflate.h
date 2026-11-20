@@ -4,7 +4,9 @@
 #include <cstdint>
 #include <expected>
 #include <iosfwd>
+#include <span>
 #include <string>
+#include <vector>
 
 #include <compressor/error.h>
 #include <compressor/lz77/lz77.h>
@@ -25,6 +27,9 @@ struct DeflateResult
 // smallest.
 std::expected<DeflateResult, Error> deflate_stream(std::istream& in, std::ostream& out,
                                                    const Lz77Options& options = {});
+
+// deflate_stream() of bytes already in memory.
+std::vector<uint8_t> deflate_bytes(std::span<const uint8_t> bytes, const Lz77Options& options = {});
 
 struct GzipHeader
 {

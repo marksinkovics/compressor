@@ -2,12 +2,12 @@ project(fuzz)
 
 # Without COMPRESSOR_FUZZ each target replays its checked-in corpus once under ctest, so every
 # input that once crashed stays a regression test. With it, ctest fuzzes each target briefly.
-set(FUZZ_TARGETS container archive stats)
+set(FUZZ_TARGETS container archive stats inflate)
 set(CORPUS_DIR "${PROJECT_SOURCE_DIR}/corpus")
 
 foreach(name IN LISTS FUZZ_TARGETS)
     add_executable(fuzz_${name} src/${name}.cpp src/discard.h)
-    target_link_libraries(fuzz_${name} PRIVATE compressor)
+    target_link_libraries(fuzz_${name} PRIVATE compressor ZLIB::ZLIB)
     set_target_properties(fuzz_${name} PROPERTIES FOLDER fuzz)
     if(COMPRESSOR_FUZZ)
         target_link_options(fuzz_${name} PRIVATE -fsanitize=fuzzer)

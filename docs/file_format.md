@@ -1,13 +1,13 @@
 # File format
 
-An ingot file (`.ingot`) is a frame header, a sequence of independently coded blocks, and an end block. Each block is stored as is or coded with its own canonical Huffman code, and carries the CRC32 of its decoded bytes. All integers are unsigned little-endian. Implemented by `operator<<` and `read_encoded()` on `EncodedData` in `compressor/src/compressor/data/data.cpp`.
+An ingot file (`.ingot`) is a frame header, a sequence of independently coded blocks, and an end block. Each block is stored as is, coded with its own canonical Huffman code, or (version 2) run through a pipeline such as LZ77 + Huffman, and carries the CRC32 of its decoded bytes. All integers are unsigned little-endian. Implemented by `operator<<` and `read_encoded()` on `EncodedData` in `compressor/src/compressor/data/data.cpp`.
 
 ## Frame header (8 bytes)
 
 | Offset | Size | Field |
 |---:|---:|---|
 | 0 | 4 | Magic `89 49 4E 47` (`\x89ING`). The high first byte catches transfers that strip the 8th bit, as in PNG |
-| 4 | 1 | Format version: 1 |
+| 4 | 1 | Format version: 2. Version 1 files (no pipeline blocks) are still read |
 | 5 | 1 | log2 of the block size, 12–26 (4 KiB–64 MiB). The encoder writes 20 (1 MiB) |
 | 6 | 2 | Flags. Bit 0: folder archive (see "Archive"); the other bits must be 0 |
 
@@ -15,12 +15,25 @@ An ingot file (`.ingot`) is a frame header, a sequence of independently coded bl
 
 | Offset | Size | Field |
 |---:|---:|---|
-| 0 | 1 | Method: 0 = stored, 1 = Huffman. 0xFF is the end block; 2–254 are reserved and rejected |
+| 0 | 1 | Method: 0 = stored, 1 = Huffman, 2 = pipeline (version 2 only). 0xFF is the end block; the rest are reserved and rejected |
 | 1 | 4 | Decoded size: 1 to the block size. Every block but the last is exactly the block size |
 | 5 | 4 | Encoded size: the bytes after this 13-byte header (code lengths and payload), so a reader can skip the block |
 | 9 | 4 | CRC32 of the decoded bytes (CRC-32/ISO-HDLC, as in gzip and zip) |
 | 13 | 128 | Huffman only. Code lengths: 4 bits per byte value. Byte value `2i` is in the low nibble of byte `13 + i`, `2i + 1` in the high nibble. 0 means the byte value doesn't occur |
-| 13 (stored), 141 (Huffman) | rest | Payload. Stored: the decoded bytes. Huffman: the code of every byte of the block in order, packed from the most significant bit of each byte down; the last byte is padded with zero bits |
+| 13 (stored, pipeline), 141 (Huffman) | rest | Payload. Stored: the decoded bytes. Huffman: the code of every byte of the block in order, packed from the most significant bit of each byte down; the last byte is padded with zero bits. Pipeline: see "Pipeline blocks"; at most `size + size / 8 + 1024` bytes |
+
+## Pipeline blocks
+
+A pipeline block's payload starts with a descriptor naming what was done to the block's bytes, then holds the coder's output:
+
+| Size | Field |
+|---:|---|
+| 1 | Transform count `n`. Each transform turns bytes into bytes; decoding undoes them last to first. None is defined yet, so `n` must be 0 |
+| 2 × n | Each transform: id, then a one-byte parameter |
+| 1 | Coder: 2 = LZ77 + Huffman. Others are reserved |
+| rest | The coder's output |
+
+LZ77 + Huffman is a raw Deflate stream (RFC 1951) of the block: matches reach back at most 32 KiB and only within the block, so blocks still decode independently and in parallel. It decodes to exactly the block's decoded size, with nothing after its final block. Decoding needs the block's own output and the payload, about twice the block size.
 
 ## End block (9 bytes)
 
@@ -75,7 +88,7 @@ The encoder writes each directory before its contents, siblings in byte order of
 
 ## Choosing the method
 
-Per block, the encoder writes whichever is smaller: stored is `size` bytes after the block header, Huffman `128 + payload`. A tie goes to stored, which decodes faster. Every code is at least 1 bit, so blocks up to 147 bytes always come out stored, and so does already-compressed data such as PNG or JPEG. A stored file is the input plus `17 + 13 × blocks` bytes.
+Per block, the encoder writes whichever is smaller: stored is `size` bytes after the block header, Huffman `128 + payload`. A tie goes to stored, which decodes faster. From level 2 on (`compressor_app encode -L 2..9`, default 6) it also tries LZ77 + Huffman with zlib's match-search settings for that level, and takes it only when strictly smaller. Level 1 never writes pipeline blocks. Every code is at least 1 bit, so blocks up to 147 bytes always come out stored, and so does already-compressed data such as PNG or JPEG. A stored file is the input plus `17 + 13 × blocks` bytes.
 
 ## Code lengths
 
@@ -101,10 +114,10 @@ Errors (`compressor::Error`):
 | Error | When |
 |---|---|
 | `not_ingot` | Shorter than 4 bytes, or the magic differs |
-| `unsupported_version` | The version isn't 1 |
+| `unsupported_version` | The version isn't 1 or 2 |
 | `truncated` | The file ends inside a header, a payload, or before the end block |
 | `corrupt_header` | Block size out of range, or a flag other than the archive flag; unknown method; a decoded size of 0 or above the block size; a short block that isn't the last; a stored block whose encoded size differs from its decoded size; a Huffman block with fewer than 128 encoded bytes, a payload longer than 15 bits per byte, or invalid code lengths; a total size that doesn't match the blocks; any byte after the end block of a plain container |
-| `corrupt_payload` | A Huffman payload ends before the decoded size is reached, no code matches within `max_code_length` bits, bytes follow the one that holds the last code, or a padding bit isn't zero |
+| `corrupt_payload` | A Huffman payload ends before the decoded size is reached, no code matches within `max_code_length` bits, bytes follow the one that holds the last code, or a padding bit isn't zero. A pipeline block with an unknown transform or coder, or a Deflate stream that is malformed, reaches back before the block, or decodes to more or fewer bytes than the block's size |
 | `checksum_mismatch` | A block decodes, but its CRC32 differs; or an archive file's contents don't match its CRC32 |
 | `unexpected_archive` | A plain decode (standard input, or an in-memory read) meets the archive flag |
 | `corrupt_index` | An archive's trailer, index CRC32 or entries break the rules under "Archive", or its data ends somewhere other than the index offset |

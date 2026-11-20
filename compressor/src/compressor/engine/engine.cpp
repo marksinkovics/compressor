@@ -13,9 +13,12 @@
 
 #include <compressor/checksum/crc32.h>
 #include <compressor/data/data.h>
+#include <compressor/deflate/deflate.h>
+#include <compressor/deflate/inflate.h>
 #include <compressor/engine/engine.h>
 #include <compressor/error.h>
 #include <compressor/huffman/huffman.h>
+#include <compressor/lz77/lz77.h>
 #include <compressor/tree/binary/nodeiterator.h>
 #include <compressor/tree/binary/tree.h>
 #include <compressor/tree/symbolnode.h>
@@ -194,8 +197,9 @@ std::vector<std::unique_ptr<IEngine>> make_engines(const EngineFactory& make_eng
     return engines;
 }
 
-Engine::Engine(uint8_t block_size_log2)
+Engine::Engine(uint8_t block_size_log2, unsigned level)
     : block_size_log2_(block_size_log2)
+    , level_(level)
 {
 }
 
@@ -317,6 +321,24 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
         bit_count += frequencies_[symbol] * codes_[symbol].length;
     }
     const uint64_t payload_bytes = (bit_count + 7) / 8;
+    const uint64_t best_bytes =
+        std::min<uint64_t>(bytes.size(), code_lengths_bytes + payload_bytes);
+    if (level_ > 1)
+    {
+        PROFILE_SCOPE("LZ77 + Huffman")
+        std::vector<uint8_t> deflated = deflate_bytes(bytes, lz77_options_for_level(level_));
+        // Only when strictly smaller: Huffman and stored decode faster.
+        if (pipeline_descriptor_bytes + deflated.size() < best_bytes)
+        {
+            codes_ = {};
+            encoded.method_ = Method::pipeline;
+            encoded.payload_.reserve(pipeline_descriptor_bytes + deflated.size());
+            encoded.payload_.push_back(0); // no transforms
+            encoded.payload_.push_back(static_cast<uint8_t>(Coder::lz77_huffman));
+            encoded.payload_.insert(encoded.payload_.end(), deflated.begin(), deflated.end());
+            return encoded;
+        }
+    }
     // Ties go to stored, which decodes faster.
     if (bytes.size() <= code_lengths_bytes + payload_bytes)
     {
@@ -354,6 +376,14 @@ std::expected<void, Error> Engine::decode_block(const EncodedBlock& block,
         }
         out.insert(out.end(), block.payload_.begin(), block.payload_.end());
     }
+    else if (block.method_ == Method::pipeline)
+    {
+        if (auto decoded = decode_pipeline(block, out); !decoded)
+        {
+            out.resize(start);
+            return decoded;
+        }
+    }
     else if (auto decoded = decode_huffman(block, out); !decoded)
     {
         out.resize(start);
@@ -366,6 +396,19 @@ std::expected<void, Error> Engine::decode_block(const EncodedBlock& block,
         return std::unexpected(Error::checksum_mismatch);
     }
     return {};
+}
+
+std::expected<void, Error> Engine::decode_pipeline(const EncodedBlock& block,
+                                                   std::vector<uint8_t>& out)
+{
+    const std::span<const uint8_t> payload = block.payload_;
+    // No transforms are defined yet.
+    if (payload.size() < pipeline_descriptor_bytes || payload[0] != 0 ||
+        payload[1] != static_cast<uint8_t>(Coder::lz77_huffman))
+    {
+        return std::unexpected(Error::corrupt_payload);
+    }
+    return inflate_bytes(payload.subspan(pipeline_descriptor_bytes), out, block.size_);
 }
 
 std::expected<void, Error> Engine::decode_huffman(const EncodedBlock& block,

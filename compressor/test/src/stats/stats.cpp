@@ -259,3 +259,18 @@ TEST(StatsTests, The_graph_is_the_code_tree_of_the_whole_content)
                          "\t\"n1\" [label=\"b [1, 1]\"];\n"
                          "}\n");
 }
+
+TEST(StatsTests, Pipeline_blocks_are_counted_and_named)
+{
+    compressor::Stats stats;
+    stats.input_bytes = 10;
+    stats.ingot = true;
+    stats.block_size_log2 = 20;
+    stats.blocks = {{.method = Method::pipeline, .size = 100, .encoded_bytes = 10}};
+    stats.content_bytes = 100;
+    stats.frequencies['a'] = 100;
+    std::ostringstream out;
+    compressor::print_stats(stats, {.blocks = true, .histogram = false}, out);
+    EXPECT_THAT(out.str(), HasSubstr("1 pipeline (LZ77 + Huffman)\n"));
+    EXPECT_THAT(out.str(), HasSubstr("pipeline         100"));
+}

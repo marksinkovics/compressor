@@ -1,3 +1,4 @@
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -8,11 +9,14 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <system_error>
+#include <vector>
 
 #include <compressor/archive/archive.h>
 #include <compressor/archive/metadata.h>
 #include <compressor/data/data.h>
+#include <compressor/deflate/deflate.h>
 #include <compressor/engine/engine.h>
 #include <compressor/stream/encoder.h>
 
@@ -24,10 +28,11 @@ namespace fs = std::filesystem;
 // Small blocks, so a few KiB give several blocks for the block table and range decoding.
 constexpr uint8_t block_size_log2 = compressor::min_block_size_log2;
 
-compressor::BlockEncoder make_encoder()
+// Level 6 gives LZ77 + Huffman pipeline blocks; level 1 only stored and Huffman ones.
+compressor::BlockEncoder make_encoder(unsigned level = 6)
 {
-    return {[] {
-        return std::make_unique<compressor::Engine>(block_size_log2);
+    return {[level] {
+        return std::make_unique<compressor::Engine>(block_size_log2, level);
     }, block_size_log2, 1};
 }
 
@@ -40,6 +45,22 @@ std::string text(std::size_t size)
         state = (state * 1103515245U) + 12345U;
         c = "eeeettaaoinshr \n"[(state >> 16U) % 16];
     }
+    return bytes;
+}
+
+// Repeated words, so LZ77 finds matches.
+std::string words(std::size_t size)
+{
+    static constexpr std::array<std::string_view, 6> vocabulary{"index ", "block ",   "archive\n",
+                                                                "match ", "huffman ", "seed, "};
+    std::string bytes;
+    uint32_t state = 7;
+    while (bytes.size() < size)
+    {
+        state = (state * 1103515245U) + 12345U;
+        bytes += vocabulary[(state >> 16U) % vocabulary.size()];
+    }
+    bytes.resize(size);
     return bytes;
 }
 
@@ -61,9 +82,9 @@ void write(const fs::path& path, const std::string& bytes)
     std::ofstream(path, std::ios::out | std::ios::binary | std::ios::trunc) << bytes;
 }
 
-std::string encode(const std::string& input)
+std::string encode(const std::string& input, unsigned level = 6)
 {
-    auto encoder = make_encoder();
+    auto encoder = make_encoder(level);
     std::istringstream in(input);
     std::ostringstream out;
     if (!encoder.encode(in, out))
@@ -79,11 +100,11 @@ std::string archive(const fs::path& scratch)
     fs::remove_all(scratch);
     fs::create_directories(scratch / "docs" / "deep");
     fs::create_directories(scratch / "empty");
-    write(scratch / "a.txt", text(3000));
+    write(scratch / "a.txt", words(3000));
     write(scratch / "docs" / "b.bin", noise(5000));
     write(scratch / "docs" / "deep" / "c.txt", text(100));
     write(scratch / "docs" / "zero", "");
-    write(scratch / "docs" / "copy.txt", text(3000)); // a duplicate of a.txt
+    write(scratch / "docs" / "copy.txt", words(3000)); // a duplicate of a.txt
     fs::create_symlink("a.txt", scratch / "link");
     // Fixed times, so the seeds come out the same on every run.
     for (const auto& entry : fs::recursive_directory_iterator(scratch))
@@ -109,6 +130,17 @@ std::string archive(const fs::path& scratch)
     return out.str();
 }
 
+// The size the inflate target expects, then a raw Deflate stream.
+std::string deflate_seed(const std::string& input)
+{
+    const std::vector<uint8_t> deflated =
+        compressor::deflate_bytes({reinterpret_cast<const uint8_t*>(input.data()), input.size()});
+    std::string seed{static_cast<char>(input.size() & 0xFFU),
+                     static_cast<char>(input.size() >> 8U)};
+    seed.append(deflated.begin(), deflated.end());
+    return seed;
+}
+
 } // namespace
 
 // Writes the seed corpus for each fuzz target into `<dir>/<target>/`.
@@ -121,12 +153,16 @@ try
         return 1;
     }
     const fs::path dir(argv[1]);
-    const std::string plain = encode(text(10'000));
+    const std::string plain = encode(words(10'000));
+    const std::string huffman = encode(text(10'000), 1);
     const std::string stored = encode(noise(5000));
     const std::string empty = encode("");
     const std::string folder = archive(dir / ".scratch");
 
     write(dir / "container" / "text.ingot", plain);
+    write(dir / "container" / "huffman.ingot", huffman);
+    write(dir / "inflate" / "text.deflate", deflate_seed(words(5000)));
+    write(dir / "inflate" / "noise.deflate", deflate_seed(noise(700)));
     write(dir / "container" / "stored.ingot", stored);
     write(dir / "container" / "empty.ingot", empty);
     write(dir / "container" / "archive.ingot", folder);

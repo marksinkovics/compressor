@@ -245,3 +245,22 @@ After container step 2 ([roadmap.md](roadmap.md#container-format-and-streaming))
 
 - Same ratio as gzip within 0.3% on every file, smaller on 6 of 12; per-block choice of dynamic, fixed or stored helps `x-ray` (1.5% smaller).
 - 1.45× slower overall, most on plain text (dickens 0.88 s against 0.38 s): `longest_match` is about 90% of the time. zlib's lazy-match limits, a word-at-a-time match compare and reusing the look-ahead match took webster from 2.27 to 1.52 s; zlib also skips inserting most positions inside long matches.
+
+## Compression levels (2026-11-20)
+
+`compressor_app encode -L <level>` of all of Silesia joined into one 212 MB file, then `decode` to `/dev/null`; 14 threads, 1 MiB blocks, one run each, wall time; load average about 10. Each output decodes to the input. Raw output in `docs/benchmarks/levels.txt`.
+
+| Level | Size | Ratio | Encode | Decode |
+| --- | --- | --- | --- | --- |
+| 1 (Huffman only, the old behaviour) | 135 218 540 | 1.567 | 0.18–0.42 s | 0.09 s |
+| 2 | 74 984 134 | 2.826 | 0.32 s | 0.12 s |
+| 3 | 70 535 426 | 3.005 | 0.37 s | 0.11 s |
+| 4 | 71 051 629 | 2.983 | 0.29 s | 0.12 s |
+| 5 | 69 276 807 | 3.059 | 0.42 s | 0.11 s |
+| **6 (default)** | 68 323 582 | 3.102 | 0.86 s | 0.11 s |
+| 7 | 68 037 581 | 3.115 | 0.81 s | 0.11 s |
+| 8 | 67 793 304 | 3.126 | 1.31 s | 0.11 s |
+| 9 | 67 746 022 | 3.128 | 1.65 s | 0.11 s |
+
+- LZ77 doubles the ratio at almost no cost in decoding; level 6 encodes about 6× faster than single-threaded `gzip -6` (5.2 s, 68.2 MB for the 12 files) at the same size, because blocks run on every core. The independent 1 MiB blocks cost little: level 6 here is 0.1% larger than one Deflate stream per file (item 9).
+- Level 4 is worse than 3, as in zlib: its lazy search has shorter chains. The first level-1 run took 24.8 s during a load spike; the reruns are the range shown.

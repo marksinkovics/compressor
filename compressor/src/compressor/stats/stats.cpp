@@ -101,7 +101,16 @@ std::string plural(uint64_t count, const char* one, const char* many)
 
 std::string_view method_name(Method method)
 {
-    return method == Method::huffman ? "huffman" : "stored";
+    switch (method)
+    {
+    case Method::stored:
+        return "stored";
+    case Method::huffman:
+        return "huffman";
+    case Method::pipeline:
+        return "pipeline";
+    }
+    return "unknown";
 }
 
 uint64_t bits_to_bytes(double bits)
@@ -226,10 +235,17 @@ void print_stats(const Stats& stats, const StatsReport& report, std::ostream& ou
 
     if (stats.ingot)
     {
-        const auto huffman = std::ranges::count(stats.blocks, Method::huffman, &BlockStats::method);
-        out << std::format("Blocks:   {} of {}: {} huffman, {} stored\n", stats.blocks.size(),
-                           block_size_text(stats.block_size_log2), huffman,
-                           stats.blocks.size() - static_cast<std::size_t>(huffman));
+        const auto count = [&stats](Method method) {
+            return std::ranges::count(stats.blocks, method, &BlockStats::method);
+        };
+        out << std::format("Blocks:   {} of {}: {} huffman, {} stored", stats.blocks.size(),
+                           block_size_text(stats.block_size_log2), count(Method::huffman),
+                           count(Method::stored));
+        if (count(Method::pipeline) > 0)
+        {
+            out << std::format(", {} pipeline (LZ77 + Huffman)", count(Method::pipeline));
+        }
+        out << '\n';
         if (stats.content_bytes > 0 && stats.input_bytes > 0)
         {
             out << std::format("Ratio:    {:.3f} (the input is {:.1f}% of the content)\n",

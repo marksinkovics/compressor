@@ -121,6 +121,12 @@ std::size_t encoded_size(const EncodedBlock& block)
     return block.payload_.size() + (block.method_ == Method::huffman ? code_lengths_bytes : 0);
 }
 
+// Generous for anything a pipeline coder writes; it only bounds what a reader allocates.
+uint64_t max_pipeline_payload(uint64_t size)
+{
+    return size + (size / 8) + 1024;
+}
+
 // Every code is at most max_code_length bits.
 uint64_t max_huffman_payload(uint64_t size)
 {
@@ -222,6 +228,13 @@ std::expected<void, Error> read_block_body(std::istream& istream, uint64_t block
             return std::unexpected(Error::corrupt_header);
         }
     }
+    else if (block.method_ == Method::pipeline)
+    {
+        if (encoded < pipeline_descriptor_bytes || encoded > max_pipeline_payload(block.size_))
+        {
+            return std::unexpected(Error::corrupt_header);
+        }
+    }
     else
     {
         if (encoded < code_lengths_bytes ||
@@ -275,10 +288,11 @@ std::expected<uint8_t, Error> FrameReader::read_header()
     {
         return std::unexpected(Error::truncated);
     }
-    if (header[4] != format_version)
+    if (header[4] < min_format_version || header[4] > format_version)
     {
         return std::unexpected(Error::unsupported_version);
     }
+    version_ = header[4];
     const uint8_t block_size_log2 = header[5];
     const auto flags = static_cast<uint16_t>(get_le<2>(std::span(header).subspan(6)));
     if (block_size_log2 < min_block_size_log2 || block_size_log2 > max_block_size_log2 ||
@@ -295,6 +309,7 @@ std::expected<uint8_t, Error> FrameReader::read_header()
 
 void FrameReader::start_blocks(uint8_t block_size_log2)
 {
+    version_ = format_version;
     flags_ = archive_flag;
     block_size_ = uint64_t{1} << block_size_log2;
     total_ = 0;
@@ -326,7 +341,9 @@ std::expected<bool, Error> FrameReader::read_block(EncodedBlock& block)
         }
         return false;
     }
-    if (method[0] > static_cast<unsigned char>(Method::huffman))
+    const auto last_method =
+        static_cast<unsigned char>(version_ >= 2 ? Method::pipeline : Method::huffman);
+    if (method[0] > last_method)
     {
         return std::unexpected(Error::corrupt_header);
     }

@@ -47,7 +47,9 @@ std::vector<std::unique_ptr<IEngine>> make_engines(const EngineFactory& make_eng
 class Engine : public IEngine
 {
 public:
-    explicit Engine(uint8_t block_size_log2 = default_block_size_log2);
+    // Level 1 chooses between stored and Huffman; from 2 on, an LZ77 + Huffman pipeline block
+    // competes too, with longer match searches the higher the level.
+    explicit Engine(uint8_t block_size_log2 = default_block_size_log2, unsigned level = 1);
 
     // Graphviz dot of the code tree of the last block encoded or decoded, rebuilt from the codes.
     void print_graph() const override;
@@ -63,10 +65,13 @@ public:
 
 private:
     std::expected<void, Error> decode_huffman(const EncodedBlock& block, std::vector<uint8_t>& out);
+    static std::expected<void, Error> decode_pipeline(const EncodedBlock& block,
+                                                      std::vector<uint8_t>& out);
 
     void set_codes(const CodeLengths& lengths);
 
     uint8_t block_size_log2_;
+    unsigned level_;
     Frequencies frequencies_{}; // zero after decode: the format stores no frequencies
     Codes codes_{};
 };

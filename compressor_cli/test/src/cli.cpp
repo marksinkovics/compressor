@@ -49,8 +49,9 @@ protected:
         for (const auto& arg : storage)
             argv.push_back(arg.c_str());
 
-        compressor::CLI cli([this](unsigned threads) {
-            threads_ = threads;
+        compressor::CLI cli([this](const compressor::CompressorSettings& settings) {
+            threads_ = settings.threads;
+            level_ = settings.level;
             return std::move(compressor_);
         }, out_, err_);
         return cli.run(argv);
@@ -61,6 +62,7 @@ protected:
     std::string output_;
     std::unique_ptr<MockICompressor> compressor_ = std::make_unique<MockICompressor>();
     std::optional<unsigned> threads_;
+    std::optional<unsigned> level_;
     std::ostringstream out_;
     std::ostringstream err_;
 };
@@ -213,7 +215,7 @@ TEST_F(CLITests, Unknown_option_fails)
 {
     EXPECT_CALL(*compressor_, encode(::testing::_, ::testing::_)).Times(0);
 
-    EXPECT_NE(run({"encode", "-i", input_, "-o", output_, "--level", "9"}), EXIT_SUCCESS);
+    EXPECT_NE(run({"encode", "-i", input_, "-o", output_, "--speed", "9"}), EXIT_SUCCESS);
 }
 
 TEST_F(CLITests, Threads_default_to_zero_meaning_all_cores)
@@ -410,4 +412,26 @@ TEST_F(CLITests, An_unknown_format_fails)
 {
     EXPECT_CALL(*compressor_, encode_as(::testing::_, ::testing::_, ::testing::_)).Times(0);
     EXPECT_NE(run({"encode", "-f", "rar", "-i", input_, "-o", output_}), EXIT_SUCCESS);
+}
+
+TEST_F(CLITests, Encode_passes_the_level_and_defaults_to_6)
+{
+    EXPECT_CALL(*compressor_, encode(::testing::_, ::testing::_)).WillOnce(Return(true));
+    EXPECT_EQ(run({"encode", "-i", input_, "-o", output_}), EXIT_SUCCESS);
+    EXPECT_EQ(level_, compressor::default_level);
+
+    compressor_ = std::make_unique<MockICompressor>();
+    EXPECT_CALL(*compressor_, encode(::testing::_, ::testing::_)).WillOnce(Return(true));
+    EXPECT_EQ(run({"encode", "-L", "9", "-i", input_, "-o", output_}), EXIT_SUCCESS);
+    EXPECT_EQ(level_, 9U);
+}
+
+TEST_F(CLITests, A_level_outside_1_to_9_fails)
+{
+    EXPECT_CALL(*compressor_, encode(::testing::_, ::testing::_)).Times(0);
+    for (const char* level : {"0", "10", "fast"})
+    {
+        EXPECT_NE(run({"encode", "--level", level, "-i", input_, "-o", output_}), EXIT_SUCCESS)
+            << level;
+    }
 }

@@ -1,0 +1,9 @@
+L1   135218540 bytes  ratio 1.567  encode 24.77 s  decode  0.09 s
+L2    74984134 bytes  ratio 2.826  encode  0.32 s  decode  0.12 s
+L3    70535426 bytes  ratio 3.005  encode  0.37 s  decode  0.11 s
+L4    71051629 bytes  ratio 2.983  encode  0.29 s  decode  0.12 s
+L5    69276807 bytes  ratio 3.059  encode  0.42 s  decode  0.11 s
+L6    68323582 bytes  ratio 3.102  encode  0.86 s  decode  0.11 s
+L7    68037581 bytes  ratio 3.115  encode  0.81 s  decode  0.11 s
+L8    67793304 bytes  ratio 3.126  encode  1.31 s  decode  0.11 s
+L9    67746022 bytes  ratio 3.128  encode  1.65 s  decode  0.11 s

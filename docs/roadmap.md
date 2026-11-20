@@ -344,7 +344,7 @@ Layout decided under "Decisions" (solid blocks plus an index); format in [file_f
 
 ### Algorithms
 
-- [ ] **Pluggable pipeline:** zero or more transforms followed by an entropy coder, with the pipeline recorded in the header.
+- [x] **Pluggable pipeline** (done, autonomous run item 10): format version 2 adds method 2, a pipeline block whose payload starts with a descriptor (transform count, id and parameter per transform, coder); version 1 still reads. The first coder is LZ77 + Huffman: a raw Deflate stream per block, decoded by our own `deflate/inflate.{h,cpp}` (`inflate_bytes()`, bounds-checked, accepts what zlib accepts: `InflateTests` decode zlib's streams of every strategy and level, reject every truncation, wrong sizes, trailing bytes and bad distances; `fuzz_inflate` compares it with zlib on every input). `Engine(block_size_log2, level)`: level 1 is stored/Huffman as before, 2-9 also try LZ77 + Huffman with `lz77_options_for_level()` (zlib's table) and keep it when strictly smaller. `CompressorSettings{threads, level}`, `encode -L 1..9` (default 6). On Silesia, level 6 doubles the ratio (1.57 → 3.10) at 0.86 s for 212 MB on 14 threads, decoding still 0.11 s (`docs/benchmarks.md`, "Compression levels"). `stats` names pipeline blocks. Transforms come with item 12. Was: **Pluggable pipeline:** zero or more transforms followed by an entropy coder, with the pipeline recorded in the header.
 - [ ] **Transforms:** RLE, delta encoding, move-to-front, BWT (BWT + MTF + RLE + Huffman is the bzip2 approach).
 - [ ] **Dictionary methods:** LZ77/LZSS, LZW.
 - [ ] **Entropy coders:** adaptive Huffman, arithmetic coding, rANS/tANS.
@@ -397,7 +397,7 @@ Existing examples: macOS compressed memory, Linux zram and zswap, Windows memory
 2. Hardware CRC32 (known issue "CRC32 caps stored blocks", done).
 3. Multithreaded blocks (container format, done).
 4. Folder support: done (steps 1–3 and deduplication).
-5. An LZ77 pipeline next to Huffman (from "Algorithms": the pluggable pipeline, transforms such as RLE, MTF and BWT, LZ77/LZW, other entropy coders, an auto mode, pre-trained dictionaries).
+5. An LZ77 pipeline next to Huffman (done: format version 2, levels; from "Algorithms": the pluggable pipeline, transforms such as RLE, MTF and BWT, LZ77/LZW, other entropy coders, an auto mode, pre-trained dictionaries).
 6. A Deflate encoder, so the output is valid `.gz` and `.zip` (done).
 7. Search inside compressed data: jumping to the right block through the block index, zgrep-style search, search without decompressing, an FM-index. The macFUSE mount is skipped for now.
 8. Transforms for specific data types ("Data other than text").
@@ -423,7 +423,7 @@ Decisions taken for the pipeline (Claude's defaults, accepted): each block recor
 - [x] 7. (done, 2.6×) Known issue: interleave the ARM CRC32 loop into 3 chains, kept only if `tools/bench.sh` shows a gain.
 - [x] 8. (done, folder extraction 54× faster) Known issue: file output speed with threads; profile with `bench-cli.sh`, keep only measured wins.
 - [x] 9. (done) Deflate: hash-chain LZ77 matcher (32 KB window), Deflate encoder with our length-limited canonical Huffman, `encode --gzip` (file) and `encode --zip` (folder); every output checked with zlib, by hand with `gunzip`/`unzip`; benchmarked against `gzip`.
-- [ ] 10. Pluggable pipeline (format version 2, as decided above) with LZ77 + Huffman as the first new pipeline, and compression levels.
+- [x] 10. (done) Pluggable pipeline (format version 2, as decided above) with LZ77 + Huffman as the first new pipeline, and compression levels.
 - [ ] 11. Auto mode: try several pipelines per block at the higher levels and keep the smallest.
 - [ ] 12. Transforms for data types: corpus (PPM/BMP, WAV, CSV/logs), delta with strides 1/2/4, PNG row filters, an x86/ARM branch filter; detection from known headers, else trying strides on a sample; benchmarked per type.
 - [ ] 13. Advanced algorithms, each a pipeline: tANS/rANS, adaptive arithmetic coding, BWT + MTF + RLE, Zstd-style LZ77 + tANS, LZMA-style LZ77 + context-modelled range coder, then PPM and context mixing as experiments.

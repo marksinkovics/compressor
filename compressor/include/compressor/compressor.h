@@ -27,6 +27,15 @@ struct StandardStreams
     std::ostream& err;
 };
 
+// Compression level when none is given: LZ77 + Huffman with zlib's level-6 match search.
+inline constexpr unsigned default_level = 6;
+
+struct CompressorSettings
+{
+    unsigned threads = 0; // 0: default_thread_count()
+    unsigned level = default_level;
+};
+
 // stdin and stdout through StdioInputBuf and StdioOutputBuf, and std::cerr.
 StandardStreams process_streams();
 
@@ -81,10 +90,9 @@ public:
 class Compressor : public ICompressor
 {
 public:
-    // Block coders with default_thread_count() threads.
+    // Block coders with default_thread_count() threads at default_level.
     Compressor();
-    // 0 means default_thread_count().
-    explicit Compressor(unsigned threads);
+    explicit Compressor(CompressorSettings settings);
     Compressor(std::unique_ptr<IBlockEncoder> encoder, std::unique_ptr<IBlockDecoder> decoder,
                StandardStreams streams = process_streams());
     ~Compressor() override = default;

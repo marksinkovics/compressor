@@ -19,6 +19,41 @@ constexpr std::size_t hash_size = std::size_t{1} << hash_bits;
 
 } // namespace
 
+Lz77Options lz77_options_for_level(unsigned level)
+{
+    // zlib's table for its levels 1, 3 and 4-9.
+    switch (level)
+    {
+    case 0:
+    case 1:
+    case 2:
+        return {.max_chain = 4, .nice_length = 8, .lazy = false, .max_lazy = 0, .good_length = 4};
+    case 3:
+        return {.max_chain = 32, .nice_length = 32, .lazy = false, .max_lazy = 0, .good_length = 4};
+    case 4:
+        return {.max_chain = 16, .nice_length = 16, .lazy = true, .max_lazy = 4, .good_length = 4};
+    case 5:
+        return {.max_chain = 32, .nice_length = 32, .lazy = true, .max_lazy = 16, .good_length = 8};
+    case 6:
+        return {};
+    case 7:
+        return {
+            .max_chain = 256, .nice_length = 128, .lazy = true, .max_lazy = 32, .good_length = 8};
+    case 8:
+        return {.max_chain = 1024,
+                .nice_length = 258,
+                .lazy = true,
+                .max_lazy = 128,
+                .good_length = 32};
+    default:
+        return {.max_chain = 4096,
+                .nice_length = 258,
+                .lazy = true,
+                .max_lazy = 258,
+                .good_length = 32};
+    }
+}
+
 Lz77MatchFinder::Lz77MatchFinder(Lz77Options options)
     : options_(options)
     , head_(hash_size, -1)

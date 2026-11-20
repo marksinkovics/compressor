@@ -46,11 +46,6 @@ namespace
 
 namespace fs = std::filesystem;
 
-std::unique_ptr<IEngine> make_engine()
-{
-    return std::make_unique<Engine>();
-}
-
 unsigned thread_count(unsigned requested)
 {
     return requested == 0 ? default_thread_count() : requested;
@@ -433,14 +428,18 @@ StandardStreams process_streams()
 }
 
 Compressor::Compressor()
-    : Compressor(0)
+    : Compressor(CompressorSettings{})
 {
 }
 
-Compressor::Compressor(unsigned threads)
-    : Compressor(std::make_unique<BlockEncoder>(make_engine, default_block_size_log2,
-                                                thread_count(threads)),
-                 std::make_unique<BlockDecoder>(make_engine, thread_count(threads)))
+Compressor::Compressor(CompressorSettings settings)
+    : Compressor(std::make_unique<BlockEncoder>(
+                     [level = settings.level] {
+                         return std::make_unique<Engine>(default_block_size_log2, level);
+                     }, default_block_size_log2, thread_count(settings.threads)),
+                 std::make_unique<BlockDecoder>([] {
+                     return std::make_unique<Engine>();
+                 }, thread_count(settings.threads)))
 {
 }
 

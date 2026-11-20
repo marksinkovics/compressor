@@ -220,7 +220,8 @@ TEST_F(EdgeCaseTests, Existing_longer_output_files_are_truncated)
 
 TEST_F(EdgeCaseTests, Decoding_a_truncated_header_fails_and_creates_no_output)
 {
-    write_bytes(encoded_, encoded_bytes(compressible()).substr(0, 100));
+    // Inside the first block header: frame header (8) plus 7 of its 13 bytes.
+    write_bytes(encoded_, encoded_bytes(compressible()).substr(0, 15));
 
     EXPECT_FALSE(decode(encoded_, decoded_));
     EXPECT_FALSE(fs::exists(decoded_));
@@ -239,8 +240,16 @@ TEST_F(EdgeCaseTests, Decoding_a_truncated_payload_fails_and_leaves_the_output_u
 
 TEST_F(EdgeCaseTests, Incompressible_input_is_stored_with_only_the_framing_added)
 {
-    const fs::path sample = fs::path(samples_dir) / "flower.png";
-    ASSERT_TRUE(fs::exists(sample));
+    // Random bytes; a PNG, though compressed, still shrinks a little with LZ77.
+    std::string noise((3U << 20U) + 5, '\0');
+    uint32_t state = 1;
+    for (char& c : noise)
+    {
+        state = (state * 1103515245U) + 12345U;
+        c = static_cast<char>(state >> 16U);
+    }
+    const fs::path sample = input_;
+    write_bytes(sample, noise);
     ASSERT_TRUE(encode(sample, encoded_));
 
     // Frame header, one 13-byte header per 1 MiB block, end block.

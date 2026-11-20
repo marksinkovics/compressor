@@ -428,18 +428,77 @@ void put_le(std::ostream& out, uint64_t value, std::size_t bytes)
     }
 }
 
+// Raw Deflate over input added in pieces.
+class DeflateWriter
+{
+public:
+    explicit DeflateWriter(const Lz77Options& options)
+        : finder_(options)
+        , writer_(encoded_)
+    {
+    }
+
+    // Appends what this piece completes to encoded().
+    void add(std::span<const uint8_t> bytes, bool final)
+    {
+        finder_.add(bytes);
+        finder_.tokenize(tokens_, final);
+        // Blocks of at most tokens_per_block, each with the raw bytes it covers.
+        std::size_t first = 0;
+        while (first < tokens_.size())
+        {
+            const std::size_t count = std::min(tokens_per_block, tokens_.size() - first);
+            const std::span<const Lz77Token> block(tokens_.data() + first, count);
+            uint64_t covered = 0;
+            for (const Lz77Token& token : block)
+            {
+                covered += token.distance == 0 ? 1 : token.length_or_literal;
+            }
+            const bool last = final && first + count == tokens_.size();
+            writer_.write(block, finder_.history(block_start_).first(covered), last);
+            block_start_ += covered;
+            first += count;
+        }
+        if (final && tokens_.empty())
+        {
+            writer_.write({}, {}, true);
+        }
+        if (final)
+        {
+            writer_.finish();
+        }
+        tokens_.clear();
+        finder_.drop_old(block_start_);
+    }
+
+    std::vector<uint8_t>& encoded()
+    {
+        return encoded_;
+    }
+
+private:
+    Lz77MatchFinder finder_;
+    std::vector<Lz77Token> tokens_;
+    std::vector<uint8_t> encoded_;
+    BlockWriter writer_;
+    uint64_t block_start_ = 0;
+};
+
 } // namespace
+
+std::vector<uint8_t> deflate_bytes(std::span<const uint8_t> bytes, const Lz77Options& options)
+{
+    DeflateWriter writer(options);
+    writer.add(bytes, true);
+    return std::move(writer.encoded());
+}
 
 std::expected<DeflateResult, Error> deflate_stream(std::istream& in, std::ostream& out,
                                                    const Lz77Options& options)
 {
     DeflateResult result;
-    Lz77MatchFinder finder(options);
-    std::vector<Lz77Token> tokens;
-    std::vector<uint8_t> encoded;
-    BlockWriter writer(encoded);
+    DeflateWriter writer(options);
     std::vector<char> piece(piece_bytes);
-    uint64_t block_start = 0;
     bool done = false;
     while (!done)
     {
@@ -453,32 +512,9 @@ std::expected<DeflateResult, Error> deflate_stream(std::istream& in, std::ostrea
         const std::span<const uint8_t> bytes(reinterpret_cast<const uint8_t*>(piece.data()), got);
         result.crc = crc32(bytes, result.crc);
         result.input_bytes += got;
-        finder.add(bytes);
+        writer.add(bytes, done);
 
-        finder.tokenize(tokens, done);
-        // Blocks of at most tokens_per_block, each with the raw bytes it covers.
-        std::size_t first = 0;
-        while (first < tokens.size())
-        {
-            const std::size_t count = std::min(tokens_per_block, tokens.size() - first);
-            const std::span<const Lz77Token> block(tokens.data() + first, count);
-            uint64_t covered = 0;
-            for (const Lz77Token& token : block)
-            {
-                covered += token.distance == 0 ? 1 : token.length_or_literal;
-            }
-            const bool last = done && first + count == tokens.size();
-            writer.write(block, finder.history(block_start).first(covered), last);
-            block_start += covered;
-            first += count;
-        }
-        if (done && tokens.empty())
-        {
-            writer.write({}, {}, true);
-        }
-        tokens.clear();
-        finder.drop_old(block_start);
-
+        std::vector<uint8_t>& encoded = writer.encoded();
         out.write(reinterpret_cast<const char*>(encoded.data()),
                   static_cast<std::streamsize>(encoded.size()));
         result.output_bytes += encoded.size();
@@ -487,14 +523,6 @@ std::expected<DeflateResult, Error> deflate_stream(std::istream& in, std::ostrea
         {
             return std::unexpected(Error::write_failed);
         }
-    }
-    writer.finish();
-    out.write(reinterpret_cast<const char*>(encoded.data()),
-              static_cast<std::streamsize>(encoded.size()));
-    result.output_bytes += encoded.size();
-    if (!out)
-    {
-        return std::unexpected(Error::write_failed);
     }
     return result;
 }

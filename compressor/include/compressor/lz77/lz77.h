@@ -32,6 +32,11 @@ struct Lz77Options
     std::size_t good_length = 8;   // and with a quarter of the chain from this length on
 };
 
+// 1 means no LZ77 at all (Huffman only); 2-9 grow from greedy and short chains to zlib's level 9.
+inline constexpr unsigned min_level = 1;
+inline constexpr unsigned max_level = 9;
+Lz77Options lz77_options_for_level(unsigned level);
+
 // Finds matches with hash chains over 3-byte prefixes. Input comes in pieces; matches may reach
 // back into earlier pieces as far as the window.
 class Lz77MatchFinder

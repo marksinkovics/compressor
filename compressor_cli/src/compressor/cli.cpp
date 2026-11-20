@@ -10,6 +10,7 @@
 
 #include <compressor/archive/archive.h>
 #include <compressor/compressor.h>
+#include <compressor/lz77/lz77.h>
 
 namespace compressor
 {
@@ -23,6 +24,7 @@ struct Settings
     std::string output{standard_stream};
     std::string path; // in an archive
     unsigned threads = 0;
+    unsigned level = default_level;
     bool details = false;
     StatsOptions stats;
     std::string graph;
@@ -114,6 +116,11 @@ int CLI::run(std::span<const char* const> args)
     Settings stats_settings;
     Settings grep_settings;
     auto* encode = add_command(app, "encode", "Compress a file or a folder", true, encode_settings);
+    encode
+        ->add_option("-L,--level", encode_settings.level,
+                     "1: Huffman only, fastest; 2-9: also LZ77 + Huffman, searching longer "
+                     "for matches the higher (default 6)")
+        ->check(::CLI::Range(min_level, max_level));
     encode
         ->add_option("-f,--format", encode_settings.format,
                      "ingot (default), gzip (a file) or zip (a folder)")
@@ -207,7 +214,8 @@ int CLI::run(std::span<const char* const> args)
 
     if (encode->parsed())
     {
-        const auto compressor = make_compressor_(encode_settings.threads);
+        const auto compressor =
+            make_compressor_({.threads = encode_settings.threads, .level = encode_settings.level});
         const bool encoded =
             encode_settings.format == "ingot"
                 ? compressor->encode(encode_settings.input, encode_settings.output)
@@ -218,13 +226,14 @@ int CLI::run(std::span<const char* const> args)
     }
     if (decode->parsed())
     {
-        const auto compressor = make_compressor_(decode_settings.threads);
+        const auto compressor =
+            make_compressor_({.threads = decode_settings.threads, .level = decode_settings.level});
         return finish(compressor->decode(decode_settings.input, decode_settings.output),
                       "Decoding " + input_name(decode_settings));
     }
     if (list->parsed())
     {
-        const auto compressor = make_compressor_(1);
+        const auto compressor = make_compressor_({.threads = 1, .level = default_level});
         return finish(compressor->list(list_settings.input, list_settings.details),
                       "Listing " + list_settings.input);
     }
@@ -237,7 +246,8 @@ int CLI::run(std::span<const char* const> args)
         {
             output = std::filesystem::path(archive_path(settings.path)).filename();
         }
-        const auto compressor = make_compressor_(settings.threads);
+        const auto compressor =
+            make_compressor_({.threads = settings.threads, .level = settings.level});
         return finish(compressor->extract(settings.input, settings.path, output),
                       "Extracting " + settings.path + " from " + settings.input);
     }
@@ -251,7 +261,8 @@ int CLI::run(std::span<const char* const> args)
         {
             grep_settings.search.output = SearchOutput::names;
         }
-        const auto compressor = make_compressor_(grep_settings.threads);
+        const auto compressor =
+            make_compressor_({.threads = grep_settings.threads, .level = grep_settings.level});
         switch (compressor->grep(grep_settings.input, grep_settings.search, grep_settings.paths))
         {
         case SearchResult::matched:
@@ -267,11 +278,12 @@ int CLI::run(std::span<const char* const> args)
     if (stats->parsed())
     {
         stats_settings.stats.graph = stats_settings.graph;
-        const auto compressor = make_compressor_(1);
+        const auto compressor = make_compressor_({.threads = 1, .level = default_level});
         return finish(compressor->stats(stats_settings.input, stats_settings.stats),
                       "Analysing " + stats_settings.input);
     }
-    const auto compressor = make_compressor_(verify_settings.threads);
+    const auto compressor =
+        make_compressor_({.threads = verify_settings.threads, .level = verify_settings.level});
     return finish(compressor->verify(verify_settings.input),
                   "Verifying " + input_name(verify_settings));
 }

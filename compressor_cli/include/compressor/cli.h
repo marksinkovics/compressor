@@ -11,8 +11,9 @@
 namespace compressor
 {
 
-// Called after parsing with the --threads value; 0 means all cores.
-using CompressorFactory = std::function<std::unique_ptr<ICompressor>(unsigned threads)>;
+// Called after parsing with the --threads and --level values; 0 threads means all cores.
+using CompressorFactory =
+    std::function<std::unique_ptr<ICompressor>(const CompressorSettings& settings)>;
 
 class CLI
 {

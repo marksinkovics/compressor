@@ -505,3 +505,56 @@ TEST_F(EngineTests, A_corrupt_later_block_fails_the_whole_decode)
     compressor::Engine decoder;
     EXPECT_EQ(decoder.decode(encoded), std::unexpected(compressor::Error::checksum_mismatch));
 }
+
+TEST_F(EngineTests, From_level_2_repetitive_text_becomes_an_lz77_huffman_pipeline_block)
+{
+    const std::string text = repeat("the same sentence, over and over again. ", 2000);
+    compressor::Engine fast(compressor::default_block_size_log2, 1);
+    const compressor::EncodedBlock huffman = fast.encode_block(bytes(text));
+    EXPECT_EQ(huffman.method_, compressor::Method::huffman);
+
+    for (const unsigned level : {2U, 6U, 9U})
+    {
+        compressor::Engine engine(compressor::default_block_size_log2, level);
+        const compressor::EncodedBlock block = engine.encode_block(bytes(text));
+        ASSERT_EQ(block.method_, compressor::Method::pipeline) << level;
+        EXPECT_EQ(block.payload_[0], 0) << "no transforms";
+        EXPECT_EQ(block.payload_[1], static_cast<uint8_t>(compressor::Coder::lz77_huffman));
+        EXPECT_LT(block.payload_.size(), huffman.payload_.size() / 20) << level;
+        EXPECT_EQ(decode_block(engine, block), decoded(text)) << level;
+    }
+}
+
+TEST_F(EngineTests, Random_bytes_stay_stored_at_every_level)
+{
+    std::string bytes_noise(20'000, '\0');
+    uint32_t state = 1;
+    for (char& c : bytes_noise)
+    {
+        state = (state * 1103515245U) + 12345U;
+        c = static_cast<char>(state >> 16U);
+    }
+    compressor::Engine engine(compressor::default_block_size_log2, 9);
+    EXPECT_EQ(engine.encode_block(bytes(bytes_noise)).method_, compressor::Method::stored);
+}
+
+TEST_F(EngineTests, A_pipeline_with_an_unknown_transform_or_coder_is_corrupt)
+{
+    const std::string text = repeat("abcabcabd", 500);
+    compressor::Engine engine(compressor::default_block_size_log2, 6);
+    compressor::EncodedBlock block = engine.encode_block(bytes(text));
+    ASSERT_EQ(block.method_, compressor::Method::pipeline);
+
+    compressor::EncodedBlock unknown_transform = block;
+    unknown_transform.payload_[0] = 1;
+    EXPECT_EQ(decode_block(engine, unknown_transform),
+              std::unexpected(compressor::Error::corrupt_payload));
+    compressor::EncodedBlock unknown_coder = block;
+    unknown_coder.payload_[1] = 7;
+    EXPECT_EQ(decode_block(engine, unknown_coder),
+              std::unexpected(compressor::Error::corrupt_payload));
+    compressor::EncodedBlock wrong_crc = block;
+    wrong_crc.crc_ ^= 1U;
+    EXPECT_EQ(decode_block(engine, wrong_crc),
+              std::unexpected(compressor::Error::checksum_mismatch));
+}

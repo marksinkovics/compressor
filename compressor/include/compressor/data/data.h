@@ -30,7 +30,9 @@ bool operator==(const DecodedData& lhs, const DecodedData& rhs);
 
 // docs/file_format.md
 inline constexpr std::array<uint8_t, 4> magic{0x89, 'I', 'N', 'G'};
-inline constexpr uint8_t format_version = 1;
+// Written; version 1 (no pipeline blocks) is still read.
+inline constexpr uint8_t format_version = 2;
+inline constexpr uint8_t min_format_version = 1;
 inline constexpr uint8_t default_block_size_log2 = 20;
 inline constexpr uint8_t min_block_size_log2 = 12;
 inline constexpr uint8_t max_block_size_log2 = 26;
@@ -46,7 +48,16 @@ enum class Method : uint8_t
 {
     stored = 0,
     huffman = 1,
+    pipeline = 2, // version 2: the payload starts with a pipeline descriptor
 };
+
+// Pipeline descriptor (docs/file_format.md, "Pipeline blocks"): a transform count, each transform's
+// id and parameter, then the coder.
+enum class Coder : uint8_t
+{
+    lz77_huffman = 2, // a raw Deflate stream (RFC 1951) of the transformed bytes
+};
+inline constexpr std::size_t pipeline_descriptor_bytes = 2; // with no transforms
 
 struct EncodedBlock
 {
@@ -95,6 +106,7 @@ public:
 
 private:
     std::istream& istream_;
+    uint8_t version_ = format_version;
     uint16_t flags_ = 0;
     uint64_t block_size_ = 0;
     uint64_t total_ = 0;
