@@ -66,7 +66,7 @@ std::size_t count_matches(std::string_view text, std::string_view pattern)
     return count;
 }
 
-void decode_and_find(::benchmark::State& state, const fs::path& path, std::string pattern)
+void decode_and_find(::benchmark::State& state, const fs::path& path, const std::string& pattern)
 {
     const Prepared& file = prepare(path);
     Engine engine;
@@ -137,7 +137,7 @@ std::size_t bit_candidates(std::span<const uint8_t> payload, uint64_t pattern, u
     return candidates;
 }
 
-void bit_scan(::benchmark::State& state, const fs::path& path, std::string pattern)
+void bit_scan(::benchmark::State& state, const fs::path& path, const std::string& pattern)
 {
     const Prepared& file = prepare(path);
     std::size_t candidates = 0;
