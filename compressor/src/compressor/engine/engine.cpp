@@ -391,8 +391,13 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
         if (level_ >= bwt_level)
         {
             coders.push_back(Coder::bwt);
-            coders.push_back(Coder::bwt_cm);
             coders.push_back(Coder::lzr);
+        }
+        // BWT + CM decodes at about 4 MB/s per thread; at level 8 it would have made decoding 12x
+        // slower for 7% on Silesia, so only level 9, which already decodes slowly, tries it.
+        if (level_ >= cm_level)
+        {
+            coders.push_back(Coder::bwt_cm);
         }
         const std::vector<Transform> transforms = choose_transforms(bytes, level_ >= auto_level);
         std::vector<uint8_t> best_pipeline = pipeline({}, Coder::lz77_huffman);

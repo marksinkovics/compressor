@@ -488,14 +488,14 @@ Autonomous run 3, item 3. Two coders, both measured per 1 MiB block (`compressor
 
 Order 2 in 2^20 instead of 2^22 counters costs 0.07%; a branch-free `floor_shift` changed nothing (the compiler had already removed the branch). The time goes to the per-bit dependency chain (counter, stretch, mix, squash, coder, then the next bit's context), not to memory.
 
-It competes from level 8. Whole corpora as one tar, 6 threads, against level 8 before:
+Measured at level 8 first. Whole corpora as one tar, 6 threads, against level 8 before:
 
 | Level 8 | Silesia | Canterbury | Images |
 | --- | ---: | ---: | ---: |
 | before | 54,084,293 | 561,904 | 8,378,016 |
 | with BWT + CM | 50,329,601 (−6.9%) | 470,053 (−16.3%) | 7,332,638 (−12.5%) |
 
-On Silesia, encoding took 309 instead of 202 CPU seconds and decoding 50.5 instead of 4.6: level 8 now decodes at about 4 MB/s per thread instead of 45. The level before was already larger and slower to decode than `xz -6` (49.5 MB at 500 MB/s on 6 threads), so level 8 is now a step between it and level 9 (CM, 47.7 MB) rather than a fast-decoding level. If decode speed at level 8 matters more, coder 7 can move to level 9 only (one line in `Engine::encode_block`). At level 9 it wins only some blocks (noisy samples after a delta); alice29 and kennedy.xls come out byte-identical.
+On Silesia, encoding took 309 instead of 202 CPU seconds and decoding 50.5 instead of 4.6: level 8 would decode at about 4 MB/s per thread instead of 45. So coder 7 is tried only at level 9, which already decodes slowly (decided 2026-11-20), and level 8 stays as it was. At level 9 it wins only some blocks (noisy samples after a delta); alice29 and kennedy.xls come out byte-identical.
 
 **tANS (coder 8)**, order 0, 2^11 states, two interleaved states, against order-0 rANS (2^15) per 1 MiB block:
 

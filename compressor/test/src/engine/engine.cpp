@@ -11,7 +11,6 @@
 
 #include <gtest/gtest.h>
 
-#include <compressor/bwt/bwt.h>
 #include <compressor/checksum/crc32.h>
 #include <compressor/data/data.h>
 #include <compressor/engine/engine.h>
@@ -630,29 +629,14 @@ std::string bwt_words()
 
 } // namespace
 
-TEST_F(EngineTests, At_level_8_text_takes_the_bwt_cm_coder)
+TEST_F(EngineTests, At_level_8_text_can_take_the_bwt_coder)
 {
     const std::string text = bwt_words();
     compressor::Engine engine(compressor::default_block_size_log2, compressor::bwt_level);
     const compressor::EncodedBlock block = engine.encode_block(bytes(text));
     ASSERT_EQ(block.method_, compressor::Method::pipeline);
     EXPECT_EQ(block.payload_[(block.payload_[0] * 5) + 1],
-              static_cast<uint8_t>(compressor::Coder::bwt_cm));
-    EXPECT_EQ(decode_block(engine, block), decoded(text));
-}
-
-TEST_F(EngineTests, A_bwt_coder_block_still_decodes)
-{
-    // Level 8 wrote coder 3 before coder 7 replaced it on text.
-    const std::string text = bwt_words();
-    compressor::EncodedBlock block;
-    block.method_ = compressor::Method::pipeline;
-    block.size_ = static_cast<uint32_t>(text.size());
-    block.crc_ = compressor::crc32(bytes(text));
-    block.payload_ = {0, static_cast<uint8_t>(compressor::Coder::bwt)};
-    const std::vector<uint8_t> coded = compressor::bwt_encode(bytes(text));
-    block.payload_.insert(block.payload_.end(), coded.begin(), coded.end());
-    compressor::Engine engine(compressor::default_block_size_log2, 1);
+              static_cast<uint8_t>(compressor::Coder::bwt));
     EXPECT_EQ(decode_block(engine, block), decoded(text));
 }
 
@@ -703,7 +687,7 @@ TEST_F(EngineTests, Noisy_samples_take_a_delta_and_the_tans_coder)
     EXPECT_LT(block.payload_.size(), rans.payload_.size() + (rans.payload_.size() / 200));
     EXPECT_EQ(decode_block(engine, rans), decoded(samples));
 
-    // Levels 8 and 9 try the context models after the same transform, and win with BWT + CM.
+    // Level 9 tries the context models after the same transform, and wins with BWT + CM.
     compressor::Engine best(compressor::default_block_size_log2, compressor::cm_level);
     const compressor::EncodedBlock mixed = best.encode_block(bytes(samples));
     ASSERT_EQ(mixed.method_, compressor::Method::pipeline);
