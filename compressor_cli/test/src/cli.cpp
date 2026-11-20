@@ -42,7 +42,7 @@ protected:
 
     int run(std::initializer_list<std::string> args)
     {
-        std::vector<std::string> storage{"compressor_app"};
+        std::vector<std::string> storage{"ingot"};
         storage.insert(storage.end(), args);
         std::vector<const char*> argv;
         argv.reserve(storage.size());
@@ -129,6 +129,7 @@ TEST_F(CLITests, Help_prints_once_and_succeeds)
     EXPECT_EQ(help.find("OPTIONS:", first + 1), std::string::npos);
     EXPECT_THAT(help, HasSubstr("encode"));
     EXPECT_THAT(help, HasSubstr("decode"));
+    EXPECT_THAT(help, HasSubstr("ingot [OPTIONS] SUBCOMMAND"));
     EXPECT_THAT(err_.str(), IsEmpty());
 }
 
@@ -453,8 +454,8 @@ TEST_F(CLITests, Encode_passes_the_search_index_flag)
         EXPECT_CALL(*mock, encode(::testing::_, ::testing::_)).WillOnce(Return(true));
         return mock;
     }, out_, err_);
-    const std::vector<const char*> args{"compressor_app", "encode", "--search-index", "-i",
-                                        input_.c_str(),   "-o",     output_.c_str()};
+    const std::vector<const char*> args{"ingot",        "encode", "--search-index", "-i",
+                                        input_.c_str(), "-o",     output_.c_str()};
     EXPECT_EQ(cli.run(args), EXIT_SUCCESS);
     EXPECT_EQ(search_index, true);
 }

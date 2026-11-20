@@ -1,4 +1,4 @@
-project(compressor_app)
+project(ingot)
 
 set(INCLUDE_DIR ${PROJECT_SOURCE_DIR}/include)
 set(INCLUDE_FILES)

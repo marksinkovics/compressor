@@ -117,7 +117,7 @@ The encoder writes each directory before its contents, siblings in byte order of
 
 ### Extracting
 
-`compressor_app decode` extracts into a new directory: it builds a temporary directory next to the output and renames it into place on success, and refuses an output that already exists or is standard output. It creates the directories, then decodes the data into the files in order (checking each file's CRC32; a duplicate is copied from the first file written with the same data), then creates the symlinks, then sets permissions and times, directories last. Archives can't be decoded from standard input yet, as the index is at the end.
+`ingot decode` extracts into a new directory: it builds a temporary directory next to the output and renames it into place on success, and refuses an output that already exists or is standard output. It creates the directories, then decodes the data into the files in order (checking each file's CRC32; a duplicate is copied from the first file written with the same data), then creates the symlinks, then sets permissions and times, directories last. Archives can't be decoded from standard input yet, as the index is at the end.
 
 `list`, `extract`, `cat` and `verify` read the index first. `extract` and `cat` decode only the blocks the block table gives for the selected files' byte range, checking that each block ends where the next one starts.
 
@@ -149,7 +149,7 @@ A query runs backward search with ranks from the wavelet matrix (eight bit ranks
 
 ## Choosing the method
 
-Per block, the encoder writes whichever is smaller: stored is `size` bytes after the block header, Huffman `128 + payload`. A tie goes to stored, which decodes faster. From level 2 on (`compressor_app encode -L 2..9`, default 6) it also tries LZ77 + Huffman with zlib's match-search settings for that level, and takes it only when strictly smaller. Level 1 never writes pipeline blocks. Every code is at least 1 bit, so blocks up to 147 bytes always come out stored, and so does already-compressed data such as PNG or JPEG. A stored file is the input plus `17 + 13 × blocks` bytes.
+Per block, the encoder writes whichever is smaller: stored is `size` bytes after the block header, Huffman `128 + payload`. A tie goes to stored, which decodes faster. From level 2 on (`ingot encode -L 2..9`, default 6) it also tries LZ77 + Huffman with zlib's match-search settings for that level, and takes it only when strictly smaller. Level 1 never writes pipeline blocks. Every code is at least 1 bit, so blocks up to 147 bytes always come out stored, and so does already-compressed data such as PNG or JPEG. A stored file is the input plus `17 + 13 × blocks` bytes.
 
 ## Code lengths
 
@@ -184,4 +184,4 @@ Errors (`compressor::Error`):
 | `corrupt_index` | An archive's trailer, index CRC32 or entries break the rules under "Archive", or its data ends somewhere other than the index offset |
 | `file_failed` | An archived file or directory can't be read, or an extracted one can't be created or written; the message names the path |
 
-`compressor_app decode` reports the error on stderr, exits non-zero and doesn't create or change the output file. Decoding to standard output can't take back what is already written: the blocks before the failing one stay in the output.
+`ingot decode` reports the error on stderr, exits non-zero and doesn't create or change the output file. Decoding to standard output can't take back what is already written: the blocks before the failing one stay in the output.

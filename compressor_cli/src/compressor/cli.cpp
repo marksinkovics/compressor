@@ -104,7 +104,7 @@ CLI::CLI(CompressorFactory make_compressor, std::ostream& out, std::ostream& err
 
 int CLI::run(std::span<const char* const> args)
 {
-    ::CLI::App app("Huffman-coding compressor", "compressor");
+    ::CLI::App app("ingot: compress files and folders, search and extract archives", "ingot");
     app.set_version_flag("--version", COMPRESSOR_VERSION);
     app.require_subcommand(1);
 

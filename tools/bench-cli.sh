@@ -1,5 +1,5 @@
 #!/bin/bash
-# Time compressor_app encode and decode end to end (file I/O included) on corpus files.
+# Time ingot encode and decode end to end (file I/O included) on corpus files.
 #
 #   tools/bench-cli.sh [--runs <n>] [--out <file>] [<file>...]
 #
@@ -15,7 +15,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 BUILD_DIR="$REPO_ROOT/build/release"
-APP=build/release/compressor_app/compressor_app
+APP=build/release/ingot/ingot
 DEFAULT_FILES=(
     corpus/canterbury/kennedy.xls
     corpus/silesia/webster
@@ -99,7 +99,7 @@ main() {
     cd "$REPO_ROOT"
     [[ ${#files[@]} -gt 0 ]] || files=("${DEFAULT_FILES[@]}")
     [[ -f "$BUILD_DIR/CMakeCache.txt" ]] || cmake --preset release
-    cmake --build --preset release --target compressor_app
+    cmake --build --preset release --target ingot
 
     local tmp=build/release/bench-cli
     mkdir -p "$tmp"

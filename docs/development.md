@@ -63,7 +63,7 @@ Run `cmake --workflow --preset debug`, or `ctest --preset debug` after a build. 
 
 The round-trip tests (`RoundTripTests`) encode and decode every file in `compressor_example/samples/raw/` and compare the result byte for byte; a file added there is tested automatically.
 
-`PipeRoundTrip.*` (in `compressor_app/CMakeLists.txt`) run the built `compressor_app` through `compressor_app/test/pipe_roundtrip.cmake`: stdin-to-stdout encoding must match file encoding, and `encode | decode` must give the input back. They cover an empty input, `lorem_50p.txt` and `flower.png`.
+`PipeRoundTrip.*` (in `ingot/CMakeLists.txt`) run the built `ingot` through `ingot/test/pipe_roundtrip.cmake`: stdin-to-stdout encoding must match file encoding, and `encode | decode` must give the input back. They cover an empty input, `lorem_50p.txt` and `flower.png`.
 
 ThreadSanitizer has no preset yet; an ad hoc build in `build/tsan` checks the thread pool and the block coders (gtest stays uninstrumented, which hasn't caused reports so far). It runs inside Claude's sandbox, unlike ASan:
 
@@ -148,9 +148,9 @@ bash tools/fetch-corpus.sh images        # macOS only: uncompressed images made 
 bash tools/bench.sh --out new.json       # all three sets, about 2 minutes (default: build/release/benchmark.json)
 bash tools/bench.sh --filter 'Engine/.*/canterbury'
 python3 tools/bench-compare.py docs/benchmarks/decode-table.json new.json
-bash tools/bench-cli.sh --out cli.json  # compressor_app end to end, file I/O included
+bash tools/bench-cli.sh --out cli.json  # ingot end to end, file I/O included
 ```
 
-`tools/bench-cli.sh` times `compressor_app encode`/`decode` on `kennedy.xls`, `webster` and `mozilla` (or the files given, relative to the repo root), after checking that each round-trips. It uses [hyperfine](https://github.com/sharkdp/hyperfine) 2.x (`brew install hyperfine`) and falls back to a python3 loop without it; both write `results[].summary.time_wall_clock`, and the script prints a table from it.
+`tools/bench-cli.sh` times `ingot encode`/`decode` on `kennedy.xls`, `webster` and `mozilla` (or the files given, relative to the repo root), after checking that each round-trips. It uses [hyperfine](https://github.com/sharkdp/hyperfine) 2.x (`brew install hyperfine`) and falls back to a python3 loop without it; both write `results[].summary.time_wall_clock`, and the script prints a table from it.
 
 How the benchmarks work, what the counters mean and the baseline numbers are in [benchmarks.md](benchmarks.md).

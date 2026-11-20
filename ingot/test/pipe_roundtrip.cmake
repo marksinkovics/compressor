@@ -1,4 +1,4 @@
-# cmake -DAPP=<compressor_app> -DINPUT=<file, or empty for an empty input> -DWORK_DIR=<dir> -P
+# cmake -DAPP=<ingot> -DINPUT=<file, or empty for an empty input> -DWORK_DIR=<dir> -P
 foreach(var APP WORK_DIR)
     if(NOT DEFINED ${var})
         message(FATAL_ERROR "Set ${var}")

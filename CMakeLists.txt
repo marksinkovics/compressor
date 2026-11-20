@@ -69,7 +69,7 @@ find_package(ZLIB REQUIRED)
 
 add_subdirectory(compressor)
 add_subdirectory(compressor_cli)
-add_subdirectory(compressor_app)
+add_subdirectory(ingot)
 add_subdirectory(compressor_benchmark)
 add_subdirectory(compressor_example)
 add_subdirectory(fuzz)

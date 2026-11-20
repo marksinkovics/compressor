@@ -118,7 +118,7 @@ Decode speed by cap, as the median of 3 repetitions and the best of 2 interleave
 
 The geometric mean over Canterbury and Silesia is 1.01. Only the files of a few KB lose up to 10%, from filling the larger table, so the cap is 15.
 
-The CLI is now limited by I/O, not by the codec: `compressor_app decode` on `mozilla` (51 MB) takes 1.9 s, but the in-memory decode only 0.2 s. The rest is `operator>>` converting the payload bit by bit and the byte-wise stream reads; see the "Copies and I/O" step.
+The CLI is now limited by I/O, not by the codec: `ingot decode` on `mozilla` (51 MB) takes 1.9 s, but the in-memory decode only 0.2 s. The rest is `operator>>` converting the payload bit by bit and the byte-wise stream reads; see the "Copies and I/O" step.
 
 ## Encode bit buffer (2026-11-19)
 
@@ -127,7 +127,7 @@ After the "Encode bit buffer" step: `Engine::encode` packs codes into bytes thro
 - **Encode:** 210–960 MiB/s, up from 25–138: 2.5–38× faster. The gain grows with the average code length, since the old encoder appended bit by bit: largest on the nearly incompressible files (`flower.png` 38×, `lena.jpg` 29×, `sao` 17×), smallest on `ptt5` (2.5×) and small files, where counting frequencies and building the codes take a larger share. `Engine` now encodes faster than zlib's Huffman-only mode (130–230 MiB/s) on every file.
 - **Decode:** unchanged within noise (0.96–1.41×). Dropping the bit-reversal lookup barely matters next to the decode table.
 - **Ratio:** unchanged; the encoded bytes are identical to before (checked on `mozilla`).
-- **CLI:** `compressor_app` on `mozilla` (51 MB) encodes in 0.3 s and decodes in 0.85 s (was 1.9 s, since `operator>>` no longer converts bit by bit). The remaining decode time is mostly the byte-wise stream I/O for the "Copies and I/O" step.
+- **CLI:** `ingot` on `mozilla` (51 MB) encodes in 0.3 s and decodes in 0.85 s (was 1.9 s, since `operator>>` no longer converts bit by bit). The remaining decode time is mostly the byte-wise stream I/O for the "Copies and I/O" step.
 
 ## Copies and I/O (2026-11-19)
 
@@ -169,7 +169,7 @@ After container step 2 ([roadmap.md](roadmap.md#container-format-and-streaming))
 
 ## Multithreaded blocks (2026-11-19)
 
-`compressor_app -T <n>` on all of Silesia joined into one 212 MB file (`cat corpus/silesia/*`), hyperfine, 5 runs, medians; Apple M3 Max (10 performance + 4 efficiency cores) with three QEMU VMs and syncthing using about 3–4 cores, load average 18–100. Results in `docs/benchmarks/multithreaded-blocks-cli.json`. The encoded file is byte-identical for every thread count.
+`ingot -T <n>` on all of Silesia joined into one 212 MB file (`cat corpus/silesia/*`), hyperfine, 5 runs, medians; Apple M3 Max (10 performance + 4 efficiency cores) with three QEMU VMs and syncthing using about 3–4 cores, load average 18–100. Results in `docs/benchmarks/multithreaded-blocks-cli.json`. The encoded file is byte-identical for every thread count.
 
 | Threads | Encode | Decode |
 | --- | --- | --- |
@@ -184,7 +184,7 @@ After container step 2 ([roadmap.md](roadmap.md#container-format-and-streaming))
 
 ## Search (2026-11-20)
 
-`compressor_app grep` on all of Silesia archived as a folder (`encode -i corpus/silesia`, 135 MB for 212 MB), hyperfine, 20 runs, medians, 14 threads; the same machine with a QEMU VM busy, load average about 13. `old_app` builds each line before matching it, `new_app` searches the decoded piece first and looks for line boundaries only around a match. Results in `docs/benchmarks/grep-cli.json`.
+`ingot grep` on all of Silesia archived as a folder (`encode -i corpus/silesia`, 135 MB for 212 MB), hyperfine, 20 runs, medians, 14 threads; the same machine with a QEMU VM busy, load average about 13. `old_app` builds each line before matching it, `new_app` searches the decoded piece first and looks for line boundaries only around a match. Results in `docs/benchmarks/grep-cli.json`.
 
 | Command | Before | After |
 | --- | --- | --- |
@@ -222,7 +222,7 @@ After container step 2 ([roadmap.md](roadmap.md#container-format-and-streaming))
 
 ## File output (2026-11-20)
 
-`compressor_app` on Silesia, 14 threads, hyperfine, 8 runs, medians; load average 90–150 (QEMU VMs). `before_app` is the build before this change. Results in `docs/benchmarks/file-io-cli.json`.
+`ingot` on Silesia, 14 threads, hyperfine, 8 runs, medians; load average 90–150 (QEMU VMs). `before_app` is the build before this change. Results in `docs/benchmarks/file-io-cli.json`.
 
 | Command | Before | After |
 | --- | --- | --- |
@@ -236,7 +236,7 @@ After container step 2 ([roadmap.md](roadmap.md#container-format-and-streaming))
 
 ## Deflate (2026-11-20)
 
-`compressor_app encode -f gzip` against Apple gzip 479 at `-6` (zlib's default level), each Silesia file, one run each, wall time; same loaded machine. Our LZ77 uses zlib's level-6 settings (`Lz77Options` defaults: chains of 128, nice length 128, lazy matching below 16, a quarter chain from 8). Every output decompresses with `gzip -dc` to the original. Per-file numbers in `docs/benchmarks/deflate-vs-gzip.txt`.
+`ingot encode -f gzip` against Apple gzip 479 at `-6` (zlib's default level), each Silesia file, one run each, wall time; same loaded machine. Our LZ77 uses zlib's level-6 settings (`Lz77Options` defaults: chains of 128, nice length 128, lazy matching below 16, a quarter chain from 8). Every output decompresses with `gzip -dc` to the original. Per-file numbers in `docs/benchmarks/deflate-vs-gzip.txt`.
 
 | All 12 files (212 MB) | Ours | gzip -6 |
 | --- | --- | --- |
@@ -248,7 +248,7 @@ After container step 2 ([roadmap.md](roadmap.md#container-format-and-streaming))
 
 ## Compression levels (2026-11-20)
 
-`compressor_app encode -L <level>` of all of Silesia joined into one 212 MB file, then `decode` to `/dev/null`; 14 threads, 1 MiB blocks, one run each, wall time; load average about 10. Each output decodes to the input. Raw output in `docs/benchmarks/levels.txt`.
+`ingot encode -L <level>` of all of Silesia joined into one 212 MB file, then `decode` to `/dev/null`; 14 threads, 1 MiB blocks, one run each, wall time; load average about 10. Each output decodes to the input. Raw output in `docs/benchmarks/levels.txt`.
 
 | Level | Size | Ratio | Encode | Decode |
 | --- | --- | --- | --- | --- |
@@ -267,7 +267,7 @@ After container step 2 ([roadmap.md](roadmap.md#container-format-and-streaming))
 
 ## Transforms (2026-11-20)
 
-`compressor_app encode -L 6` and `-L 7` per Silesia file and on our own arm64 `compressor_app` binary (`arm64.bin`), `old_app` the build before transforms; every output decodes to the input. Raw output in `docs/benchmarks/transforms.txt`.
+`ingot encode -L 6` and `-L 7` per Silesia file and on our own arm64 `ingot` binary (`arm64.bin`), `old_app` the build before transforms; every output decodes to the input. Raw output in `docs/benchmarks/transforms.txt`.
 
 | File | Level 6 | Level 7 (auto) | Transform |
 | --- | --- | --- | --- |
@@ -282,7 +282,7 @@ After container step 2 ([roadmap.md](roadmap.md#container-format-and-streaming))
 
 ## BWT coder (2026-11-20)
 
-`compressor_app encode -L 7` against `-L 8` (which adds the BWT coder to every block's candidates) per Silesia file, and `bzip2 -9` (900 KB blocks, several Huffman tables per block); times are wall seconds, 14 threads, one run. Every output decodes to the input. Raw output in `docs/benchmarks/bwt.txt`.
+`ingot encode -L 7` against `-L 8` (which adds the BWT coder to every block's candidates) per Silesia file, and `bzip2 -9` (900 KB blocks, several Huffman tables per block); times are wall seconds, 14 threads, one run. Every output decodes to the input. Raw output in `docs/benchmarks/bwt.txt`.
 
 | File | Level 7 | Level 8 | Change | bzip2 -9 |
 | --- | --- | --- | --- | --- |
@@ -312,7 +312,7 @@ One block at a time (1 MiB), single thread, per Silesia file: the BWT coder's la
 
 ## LZR coder (2026-11-20)
 
-`compressor_app encode -L 8` per Silesia file before (LZ77 and BWT, `docs/benchmarks/bwt.txt`) and after adding the LZR coder (LZ77 over the whole 1 MiB block with LZMA's range-coded model); 14 threads, one run, wall seconds. Every output decodes to the input. Raw output in `docs/benchmarks/lzr.txt` (encode times before LZR's search was capped at level 7's for level 8).
+`ingot encode -L 8` per Silesia file before (LZ77 and BWT, `docs/benchmarks/bwt.txt`) and after adding the LZR coder (LZ77 over the whole 1 MiB block with LZMA's range-coded model); 14 threads, one run, wall seconds. Every output decodes to the input. Raw output in `docs/benchmarks/lzr.txt` (encode times before LZR's search was capped at level 7's for level 8).
 
 | File | Level 8 before | Level 8 with LZR | Change |
 | --- | --- | --- | --- |
@@ -382,7 +382,7 @@ The search index rewritten to be searched without loading it (section version 2:
 
 ## Multithreaded Deflate (2026-11-20)
 
-`compressor_app encode -f gzip|zip -T <n>` to `/dev/null`, hyperfine, 3 runs after a warm-up, mean wall time. Another project's test suite kept the load average between 40 and 55 on the 14 cores, so absolute times are high and noisy; the speed-ups are the point. `pigz` isn't installed; Apple gzip 479 is the reference.
+`ingot encode -f gzip|zip -T <n>` to `/dev/null`, hyperfine, 3 runs after a warm-up, mean wall time. Another project's test suite kept the load average between 40 and 55 on the 14 cores, so absolute times are high and noisy; the speed-ups are the point. `pigz` isn't installed; Apple gzip 479 is the reference.
 
 | Input | `-T 1` | `-T 6` | Speed-up |
 | --- | --- | --- | --- |
@@ -406,7 +406,7 @@ Coder 6 (`cm/cm.cpp`), run 2 item 2. Tuning: a scratch harness coding each Siles
 | (not kept) order 5 as well | +0.1% | |
 | (not kept) 4 MiB table / 64 MiB table | −8.1% / −11.3% | |
 
-Then `compressor_app encode -L 9 -T 6` per file, `decode -T 6`, every output compared with the input; load average 50–60 from another project's tests, so times are high:
+Then `ingot encode -L 9 -T 6` per file, `decode -T 6`, every output compared with the input; load average 50–60 from another project's tests, so times are high:
 
 | File | Level 8 | Level 9 | Change |
 | --- | --- | --- | --- |
@@ -429,7 +429,7 @@ Then `compressor_app encode -L 9 -T 6` per file, `decode -T 6`, every output com
 
 ## Median image predictor (2026-11-20)
 
-`compressor_app encode -L <level> -T 6` before (`old_app`, the CM commit) and after transform 5, the JPEG-LS median predictor with the row length found by sampling; every output decodes to the input. Images from `tools/fetch-corpus.sh images`: `photo.bmp` 1999² 24-bit (Sonoma), `gradient.bmp` 1501² (Radial Sky Blue), `abstract.bmp` 1777² (iMac Blue), `icon.tiff` 1024² RGBA (Safari's icon).
+`ingot encode -L <level> -T 6` before (`old_app`, the CM commit) and after transform 5, the JPEG-LS median predictor with the row length found by sampling; every output decodes to the input. Images from `tools/fetch-corpus.sh images`: `photo.bmp` 1999² 24-bit (Sonoma), `gradient.bmp` 1501² (Radial Sky Blue), `abstract.bmp` 1777² (iMac Blue), `icon.tiff` 1024² RGBA (Safari's icon).
 
 | File | Level 6 | Level 8 | Level 9 |
 | --- | --- | --- | --- |

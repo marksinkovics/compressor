@@ -8,7 +8,7 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 
 - Phase 0 (pre-commit hooks and code quality) is done: `tools/quality.sh`, pre-commit hooks installed, Claude format hook in `.claude/settings.json`.
 - Phase 1 (safety-net tests) is done: round-trip tests over `compressor_example/samples/raw/` and 7 `DISABLED_` edge-case tests for the Phase 2 bugs.
-- Phase 2 (bug fixes) is done: all edge-case tests enabled, 91/91 pass; `compressor_app` returns non-zero on failure.
+- Phase 2 (bug fixes) is done: all edge-case tests enabled, 91/91 pass; `ingot` returns non-zero on failure.
 - Phase 3 (build, tooling and platforms) in progress: steps "CMake" (CMake 3.25+, C++23), "Flags per target" (`COMPRESSOR_*` options, native arm64 Xcode) and "vcpkg" (manifest, global warning flags, ASan triplets), "Presets" and "Quality tools on the new build" are done; step "CI" is deferred.
 - Phase 4 (CLI11) is done: `argparser/` deleted, `encode`/`decode` subcommands with `-i`/`-o`, `--help`, `--version`; 65/65 pass.
 - The `asan` workflow passes 65/65 when run by hand (it can't run in Claude's sandbox).
@@ -26,7 +26,8 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 - The search index is searched in place (wavelet matrix through `mmap`): rare patterns 12–15× faster than `grep`, common ones as fast; 345/345 pass.
 - Zip64 is done: zip archives with files over 4 GiB or more than 65 535 entries; 347/347 pass.
 - Autonomous run 2 (list at the end of `docs/roadmap.md`, same branch, Claude commits): item 1, multithreaded Deflate (`-f gzip`/`-f zip` take `-T` and `-L`), item 2, the CM coder (coder 6 at level 9, 11.4% below level 8 on Silesia), and item 4, the 2-D median image predictor (transform 5), are done; item 3 (`grep` prefilter) was skipped as not worth it; 360/360 pass. Run 2 is finished.
-- **Next:** pick from the roadmap's open items, for example CI or the rename to ingot.
+- Autonomous run 3 (list at the end of `docs/roadmap.md`, same branch, Claude commits): item 1, the rename (the program is `ingot`, in `ingot/`; libraries keep `compressor`), is done; 360/360 pass.
+- **Next:** run 3 item 2, the benchmark harness against gzip, zstd, xz.
 
 ## Commands
 
@@ -38,7 +39,7 @@ ctest --preset debug -R EngineTests
 cmake --workflow --preset fuzz    # libFuzzer + ASan build, unit tests and short fuzz runs (docs/development.md, "Fuzzing")
 bash tools/quality.sh check       # clang-format, clang-tidy, shellcheck, shfmt (see docs/development.md)
 bash tools/bench.sh               # release benchmarks -> JSON; corpora via tools/fetch-corpus.sh (docs/benchmarks.md)
-bash tools/bench-cli.sh           # compressor_app end to end with hyperfine (python3 fallback)
+bash tools/bench-cli.sh           # ingot end to end with hyperfine (python3 fallback)
 ```
 
 - Needs `VCPKG_ROOT` set to a vcpkg checkout; the root `CMakeLists.txt` takes vcpkg's toolchain from there, and configure installs `vcpkg.json` (gtest, benchmark, cli11, zlib). Third-party code comes only through vcpkg. Every port, transitive and host ones included, needs an exact `overrides` pin in `vcpkg.json`; configure fails otherwise.
@@ -46,7 +47,7 @@ bash tools/bench-cli.sh           # compressor_app end to end with hyperfine (py
 
 ## Architecture
 
-`compressor_app` → `compressor_cli` (CLI11) → `compressor` → `lib/instrumentor`.
+`ingot` → `compressor_cli` (CLI11) → `compressor` → `lib/instrumentor`.
 
 - `compressor_cli`: `CLI` takes a `CompressorFactory` called after parsing with the `-T/--threads` value.
 
