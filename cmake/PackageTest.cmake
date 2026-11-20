@@ -58,6 +58,8 @@ macro(package_add_test)
     # binary, and macOS kills unsigned arm64 binaries.
     gtest_discover_tests("${ADD_PACKAGE_TEST_NAME}_app"
         DISCOVERY_MODE PRE_TEST
+        # macOS scans a freshly linked binary on its first launch, which can take over 10 s.
+        DISCOVERY_TIMEOUT 60
         WORKING_DIRECTORY ${PROJECT_DIR}
         PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${PROJECT_DIR}"
         TEST_LIST AUTO
