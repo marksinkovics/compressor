@@ -388,10 +388,10 @@ The search index rewritten to be searched without loading it (section version 2:
 | --- | --- | --- | --- |
 | Silesia joined (212 MB), gzip | 14.8 s | 3.2 s | 4.7× |
 | Silesia folder (12 files), zip | 13.8 s | 3.6 s | 4.1× |
-| 5000 files of 6000 bytes, zip | 1.63 s | 0.82 s | 2.0× |
+| 5000 files of 6000 bytes, zip | 1.01 s | 0.22 s | 4.7× (remeasured, see below) |
 
 - Streams are deflated in 256 KiB pieces, each primed with the 32 KiB before it and ending in an empty stored block (zlib's sync flush), so the output is the same for every thread count and 5 bytes per piece larger: 68 152 076 bytes for joined Silesia against `gzip -6`'s 68 227 961 (5.40 s, single-threaded). `gzip -dc` gives back the input.
-- Small files gain less: each file's match finder clears 512 KiB of hash tables, which costs more than deflating 6000 bytes. Sizing the tables by the input would help many small files.
+- The first run of the small files gave 1.63 s and 0.82 s (2.0×) during a load spike. Remeasured with hyperfine, 10 runs after 2 warm-ups: 1.01 s and 0.22 s, near the 0.19 s that scanning and reading the 5000 files takes (an ingot encode at level 1 of the folder). Setting up the 5000 match finders takes 0.03 s of their 0.96 s of deflating, so the suspected cost of clearing their tables isn't one.
 
 ## Context mixing coder (2026-11-20)
 
