@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <iosfwd>
 #include <memory>
+#include <string>
 #include <string_view>
 
 #include <compressor/stream/decoder.h>
@@ -33,6 +34,15 @@ public:
                         const std::filesystem::path& output) = 0;
     virtual bool decode(const std::filesystem::path& input,
                         const std::filesystem::path& output) = 0;
+    // Prints the paths in a folder archive to the standard output; `details` adds the types,
+    // permissions, sizes and times.
+    virtual bool list(const std::filesystem::path& archive, bool details) = 0;
+    // Writes the file, directory or symlink at `path` in a folder archive to `output`, which must
+    // not exist unless `path` is a file; only a file can go to the standard output.
+    virtual bool extract(const std::filesystem::path& archive, const std::string& path,
+                         const std::filesystem::path& output) = 0;
+    // Decodes everything and checks every checksum, writing nothing but a line on success.
+    virtual bool verify(const std::filesystem::path& input) = 0;
 };
 
 // Writes a regular output through a temporary file next to it and renames that on success, so a
@@ -53,6 +63,10 @@ public:
 
     bool encode(const std::filesystem::path& input, const std::filesystem::path& output) override;
     bool decode(const std::filesystem::path& input, const std::filesystem::path& output) override;
+    bool list(const std::filesystem::path& archive, bool details) override;
+    bool extract(const std::filesystem::path& archive, const std::string& path,
+                 const std::filesystem::path& output) override;
+    bool verify(const std::filesystem::path& input) override;
 
 private:
     bool encode_folder(const std::filesystem::path& input, const std::filesystem::path& output);

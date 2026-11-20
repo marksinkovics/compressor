@@ -323,7 +323,13 @@ Layout decided under "Decisions" (solid blocks plus an index); format in [file_f
   - `Compressor`: a directory input goes to `encode_folder`; an archive input file goes to `decode_folder`, which extracts into `.<name>.<random>.tmp` next to the output and renames it, and refuses an existing output or `-`. `transcode` was split into `write_output` so the folder encoder reuses the temp-file handling. CLI: `encode -i` accepts a directory (`ExistingPath`).
   - Tests: `ArchiveIndexTests` (round trip, empty archive, path rules, duplicates, parents, file ranges, block table, field ranges, unknown type, damaged index bytes, plain container), `ArchiveTests` (scan order and metadata, round trip of a tree with nested and empty directories, empty and multi-block files, symlinks, modes and pre-1970 times with nanoseconds; skipped FIFO and excluded output; damaged data and index; unreadable file; file changing size), `CompressorFolderTests` (round trip, archive inside the folder, folder to stdout, existing output, `-` output, archive on stdin, failure leaves nothing), new `CompressorDataTests`/`BlockStreamTests` for the flag and `encode_frame`, one `CLITests`. 202/202 pass. Also checked by hand: `compressor/` and `docs/` plus a symlink round trip through `compressor_app` with identical contents, modes and mtimes.
   - Not done: decoding an archive from stdin (the index is at the end; would need spooling to a temp file); owners, hard links and extended attributes; root directory metadata; the index isn't compressed; Windows (`metadata.cpp` has an `#error`, and paths with `\` aren't rejected yet).
-- [ ] **Step 2, commands:** `list`, `extract <archive> <path>` (decode only the blocks from the block table that cover the file), `cat <archive> <path>` to stdout, and `verify` (decode everything, check block and file CRCs, write nothing). Probably CLI subcommands over new `ICompressor` methods.
+- [x] **Step 2, commands (done):** `list`, `extract`, `cat`, `verify` subcommands.
+  - Decoder: `IBlockDecoder::decode_blocks(in, out, block_size_log2, offsets)` decodes the blocks starting at each offset but the last (the block table slice plus where the range ends) and checks each block ends where the next starts (`corrupt_index`); `FrameReader::start_blocks()` reads blocks without a header. `BlockDecoder`'s pipeline moved into a private `decode_all(next_block, out)` shared with `decode_frame`.
+  - `archive/archive.{h,cpp}`: `archive_path()` (normalises a user path), `select_subtree()` (the entry plus, for a directory, everything under it, re-rooted so the entry's path is empty), `extract_entries()` (an empty path is the target directory itself and gets its mode and time), `extract_file()`, `verify_archive()`, `list_archive()` (names, or `ls -l`-style details with UTC times). All decode through one `decode_targets()` that decodes only the blocks covering the selected files; `SplitOutputBuf` now skips the bytes between targets and writes to files, one stream, or nowhere (`Sink`). `extract_archive()` is `read_archive_index()` + `extract_entries()` over all entries, so full extraction also goes through the block table now.
+  - `ICompressor::list(archive, details)`, `extract(archive, path, output)`, `verify(input)`. `extract` writes a file through the temp-file `write_output` (so `-` works and an existing file is replaced) and then sets its mode and time; a directory goes through the same temp-directory-and-rename as `decode`, a symlink is created directly; both refuse `-` and existing outputs. `verify` takes an archive or a plain container (also stdin) and prints `<name>: OK`.
+  - CLI: `list [-l] ARCHIVE`, `extract ARCHIVE PATH [-o OUT]` (default: the entry's name in the current directory), `cat ARCHIVE PATH` (= `extract -o -`), `verify [INPUT]`; the archive can also be given as `-i`.
+  - Tests: `DecodeBlocksTests` (ranges, bad offsets, past the end, 1 and 3 threads), `ArchivePathTests`, `ArchiveSubtreeTests`, `ArchiveListTests`, new `ArchiveTests` (subtree extraction with root metadata, file from its blocks only with an unrelated block damaged, verify), `CompressorArchiveCommandTests`, new `CLITests`. 236/236 pass. Checked by hand with `compressor_app` on `compressor/` plus a symlink.
+  - Not done: several paths per `extract`; globbing; `verify` of an archive from stdin (same index-at-the-end limit as `decode`).
 - [ ] **Step 3, `stats`:** entropy, byte histogram, Huffman tree as Graphviz (the engine's `print_graph`).
 - [ ] **Deduplication:** store identical files only once. The index already stores each file's offset; dedup would let a file point back at earlier data, which relaxes the "back to back" rule and makes extraction copy from an earlier file.
 
@@ -339,6 +345,7 @@ Layout decided under "Decisions" (solid blocks plus an index); format in [file_f
 - [ ] **Entropy coders:** adaptive Huffman, arithmetic coding, rANS/tANS.
 - [ ] **Auto mode:** try several pipelines per block and keep the smallest.
 - [ ] **Pre-trained dictionaries/tables** for many small similar inputs (like `zstd --train`).
+- [ ] **Advanced algorithms, with or without Huffman:** for example LZMA-style (LZ77 with a range coder), Zstd-style (LZ77 with Huffman literals and tANS for the rest), PPM and context mixing (PAQ). Each would be a pipeline in the pluggable pipeline, compared with the existing benchmarks.
 
 ### Search inside compressed data
 
@@ -346,7 +353,7 @@ Layout decided under "Decisions" (solid blocks plus an index); format in [file_f
 - [ ] **Block index search:** jump to the relevant block, decompress only that, and report matches with file and offset.
 - [ ] **Search without decompressing:** encode the pattern with the file's Huffman table and match it directly in the bit stream. A match is only valid if it starts at a code boundary, which is the hard part.
 - [ ] **FM-index:** BWT-based full-text index whose search time doesn't depend on the file size.
-- [ ] **macFUSE mount**, so `grep`, `rg` and Finder work on an archive unchanged.
+- [ ] **macFUSE mount** (skipped for now), so `grep`, `rg` and Finder work on an archive unchanged.
 
 ### Data other than text
 
@@ -383,11 +390,13 @@ Existing examples: macOS compressed memory, Linux zram and zswap, Windows memory
 1. Container format with streaming and blocks (steps 1–3, done).
 2. Hardware CRC32 (known issue "CRC32 caps stored blocks", done).
 3. Multithreaded blocks (container format, done).
-4. Folder support and the extra commands (step 1 done; steps 2–3 next).
-5. An LZ77 pipeline next to Huffman.
-6. Deflate output for zip/gzip compatibility.
-7. Searching through the block index.
-8. Read-only compressed file system image, and the compressed-memory experiments.
-9. Advanced options: FM-index, FUSE mount, type-specific transforms.
+4. Folder support: steps 1–2 done; step 3, `stats`, is next, then deduplication.
+5. An LZ77 pipeline next to Huffman (from "Algorithms": the pluggable pipeline, transforms such as RLE, MTF and BWT, LZ77/LZW, other entropy coders, an auto mode, pre-trained dictionaries).
+6. A Deflate encoder, so the output is valid `.gz` and `.zip`.
+7. Search inside compressed data: jumping to the right block through the block index, zgrep-style search, search without decompressing, an FM-index. The macFUSE mount is skipped for now.
+8. Transforms for specific data types ("Data other than text").
+9. Other advanced compression algorithms, with or without Huffman ("Algorithms").
+
+Not scheduled: the macFUSE mount, the read-only compressed file system image and the compressed-memory experiments.
 
 The benchmark harness and fuzzing can be added alongside any of these steps.

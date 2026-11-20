@@ -5,9 +5,11 @@
 #include <deque>
 #include <expected>
 #include <future>
+#include <ios>
 #include <istream>
 #include <memory>
 #include <ostream>
+#include <span>
 #include <utility>
 #include <vector>
 
@@ -79,6 +81,45 @@ std::expected<void, Error> BlockDecoder::decode_frame(std::istream& in, std::ost
                                                                     : Error::corrupt_header);
     }
 
+    return decode_all([&reader](EncodedBlock& block) {
+        return reader.read_block(block);
+    }, out);
+}
+
+std::expected<void, Error> BlockDecoder::decode_blocks(std::istream& in, std::ostream& out,
+                                                       uint8_t block_size_log2,
+                                                       std::span<const uint64_t> offsets)
+{
+    if (offsets.empty())
+    {
+        return {};
+    }
+    in.clear();
+    in.seekg(static_cast<std::streamoff>(offsets.front()));
+    FrameReader reader(in);
+    reader.start_blocks(block_size_log2);
+    std::size_t next = 0;
+    return decode_all([&](EncodedBlock& block) -> std::expected<bool, Error> {
+        if (std::cmp_not_equal(static_cast<std::streamoff>(in.tellg()), offsets[next]))
+        {
+            return std::unexpected(Error::corrupt_index);
+        }
+        if (next + 1 == offsets.size())
+        {
+            return false;
+        }
+        ++next;
+        auto more = reader.read_block(block);
+        if (more && !*more)
+        {
+            return std::unexpected(Error::corrupt_index);
+        }
+        return more;
+    }, out);
+}
+
+std::expected<void, Error> BlockDecoder::decode_all(const NextBlock& next_block, std::ostream& out)
+{
     const std::size_t max_in_flight = 2 * pool_.size();
     // Tasks left in flight after an early return still finish safely: they own their block, and
     // only this worker's engine touches it.
@@ -125,7 +166,7 @@ std::expected<void, Error> BlockDecoder::decode_frame(std::istream& in, std::ost
         std::expected<bool, Error> more;
         {
             PROFILE_SCOPE("Read")
-            more = reader.read_block(next.block);
+            more = next_block(next.block);
         }
         if (!more)
         {

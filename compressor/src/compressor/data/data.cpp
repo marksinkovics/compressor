@@ -293,6 +293,14 @@ std::expected<uint8_t, Error> FrameReader::read_header()
     return block_size_log2;
 }
 
+void FrameReader::start_blocks(uint8_t block_size_log2)
+{
+    flags_ = archive_flag;
+    block_size_ = uint64_t{1} << block_size_log2;
+    total_ = 0;
+    last_size_.reset();
+}
+
 std::expected<bool, Error> FrameReader::read_block(EncodedBlock& block)
 {
     std::array<unsigned char, 1> method{};

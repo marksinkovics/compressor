@@ -5,6 +5,7 @@
 #include <expected>
 #include <istream>
 #include <ostream>
+#include <span>
 
 #include <gmock/gmock.h>
 
@@ -18,6 +19,8 @@ public:
                 (override));
     MOCK_METHOD((std::expected<void, compressor::Error>), decode_frame,
                 (std::istream&, std::ostream&, uint16_t), (override));
+    MOCK_METHOD((std::expected<void, compressor::Error>), decode_blocks,
+                (std::istream&, std::ostream&, uint8_t, std::span<const uint64_t>), (override));
 };
 
 #endif /* MockIBlockDecoder_h */

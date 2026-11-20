@@ -70,6 +70,25 @@ compressor::EngineFactory engines()
     };
 }
 
+// Random-looking bytes stay stored, so a changed byte decodes and only the CRC notices.
+std::string noise(std::size_t size)
+{
+    std::string bytes(size, '\0');
+    uint32_t state = 1;
+    for (char& c : bytes)
+    {
+        state = (state * 1103515245U) + 12345U;
+        c = static_cast<char>(state >> 16U);
+    }
+    return bytes;
+}
+
+void flip_payload_byte(std::string& bytes, uint64_t block_offset)
+{
+    char& byte = bytes[block_offset + compressor::block_header_bytes + 5];
+    byte = static_cast<char>(static_cast<uint8_t>(byte) ^ 1U);
+}
+
 std::vector<std::string> paths(const std::vector<Entry>& entries)
 {
     std::vector<std::string> names;
@@ -125,6 +144,37 @@ protected:
             return std::unexpected(written.error());
         }
         return out.str();
+    }
+
+    static compressor::ArchiveInfo info_of(const std::string& bytes)
+    {
+        std::istringstream in(bytes);
+        auto info = compressor::read_archive_index(in);
+        EXPECT_TRUE(info);
+        return info ? *info : compressor::ArchiveInfo{};
+    }
+
+    static std::expected<std::string, compressor::Failure> extract_file(const std::string& bytes,
+                                                                        const std::string& path)
+    {
+        const compressor::ArchiveInfo info = info_of(bytes);
+        const auto file = std::ranges::find(info.index.entries, path, &Entry::path);
+        EXPECT_NE(file, info.index.entries.end()) << path;
+        compressor::BlockDecoder decoder(engines(), threads);
+        std::istringstream in(bytes);
+        std::ostringstream out;
+        if (auto written = compressor::extract_file(decoder, in, info, *file, out); !written)
+        {
+            return std::unexpected(written.error());
+        }
+        return out.str();
+    }
+
+    static std::expected<void, compressor::Failure> verify(const std::string& bytes)
+    {
+        compressor::BlockDecoder decoder(engines(), threads);
+        std::istringstream in(bytes);
+        return compressor::verify_archive(decoder, in, info_of(bytes));
     }
 
     std::expected<void, compressor::Failure> extract(const std::string& bytes)
@@ -265,19 +315,10 @@ TEST_F(ArchiveTests, The_scan_skips_the_excluded_path_and_special_files)
 
 TEST_F(ArchiveTests, A_damaged_data_byte_fails_with_a_checksum_mismatch)
 {
-    // Random-looking bytes stay stored, so a changed byte decodes and only the CRC notices.
-    std::string noise(block_size, '\0');
-    uint32_t state = 1;
-    for (char& c : noise)
-    {
-        state = (state * 1103515245U) + 12345U;
-        c = static_cast<char>(state >> 16U);
-    }
-    write_file(root_ / "noise", noise);
+    write_file(root_ / "noise", noise(block_size));
     auto bytes = archive(root_);
     ASSERT_TRUE(bytes);
-    char& byte = (*bytes)[compressor::frame_header_bytes + compressor::block_header_bytes + 5];
-    byte = static_cast<char>(static_cast<uint8_t>(byte) ^ 1U);
+    flip_payload_byte(*bytes, compressor::frame_header_bytes);
 
     const auto extracted = extract(*bytes);
     ASSERT_FALSE(extracted);
@@ -340,4 +381,145 @@ TEST_F(ArchiveTests, Only_archives_are_recognised_as_archives)
     EXPECT_FALSE(compressor::is_archive(plain_in));
     std::istringstream other("not ingot");
     EXPECT_FALSE(compressor::is_archive(other));
+}
+
+TEST(ArchivePathTests, Paths_are_normalised_to_the_index_spelling)
+{
+    EXPECT_EQ(compressor::archive_path("a.txt"), "a.txt");
+    EXPECT_EQ(compressor::archive_path("./docs//deep/"), "docs/deep");
+    EXPECT_EQ(compressor::archive_path("docs/../a.txt"), "a.txt");
+}
+
+TEST(ArchiveSubtreeTests, A_subtree_is_the_entry_and_everything_under_it_relative_to_it)
+{
+    const std::vector<Entry> entries{
+        {.type = EntryType::directory, .path = "docs"},
+        {.type = EntryType::file, .path = "docs/a"},
+        {.type = EntryType::directory, .path = "docs/deep"},
+        {.type = EntryType::symlink, .path = "docs/deep/l"},
+        {.type = EntryType::directory, .path = "docs2"},
+        {.type = EntryType::file, .path = "docs2/b"},
+    };
+
+    const auto docs = compressor::select_subtree(entries, "docs");
+    ASSERT_TRUE(docs);
+    EXPECT_THAT(paths(*docs), ElementsAre("", "a", "deep", "deep/l"));
+    EXPECT_EQ(docs->front().type, EntryType::directory);
+
+    const auto file = compressor::select_subtree(entries, "docs/a");
+    ASSERT_TRUE(file);
+    EXPECT_THAT(paths(*file), ElementsAre(""));
+    EXPECT_EQ(file->front().type, EntryType::file);
+
+    EXPECT_FALSE(compressor::select_subtree(entries, "doc"));
+    EXPECT_FALSE(compressor::select_subtree(entries, ""));
+}
+
+TEST(ArchiveListTests, The_listing_names_each_entry_and_details_add_mode_size_and_utc_time)
+{
+    compressor::ArchiveInfo info;
+    info.index.entries = {
+        {.type = EntryType::directory, .path = "d", .mode = 0750},
+        {.type = EntryType::file,
+         .path = "d/f",
+         .mode = 04755,
+         .mtime_ns = 1'700'000'000'123'456'789,
+         .size = 3},
+        {.type = EntryType::file, .path = "g", .mode = 02640},
+        {.type = EntryType::symlink, .path = "l", .mode = 0777, .mtime_ns = -1, .target = "d/f"},
+        {.type = EntryType::directory, .path = "t", .mode = 01777},
+    };
+
+    std::ostringstream names;
+    compressor::list_archive(info, false, names);
+    EXPECT_EQ(names.str(), "d/\nd/f\ng\nl\nt/\n");
+
+    std::ostringstream details;
+    compressor::list_archive(info, true, details);
+    EXPECT_EQ(details.str(), "drwxr-x---            0 1970-01-01 00:00:00 d/\n"
+                             "-rwsr-xr-x            3 2023-11-14 22:13:20 d/f\n"
+                             "-rw-r-S---            0 1970-01-01 00:00:00 g\n"
+                             "lrwxrwxrwx            3 1969-12-31 23:59:59 l -> d/f\n"
+                             "drwxrwxrwt            0 1970-01-01 00:00:00 t/\n");
+}
+
+TEST_F(ArchiveTests, A_subtree_extracts_with_contents_modes_and_times_including_its_root)
+{
+    make_sample_tree();
+    const auto bytes = archive(root_);
+    ASSERT_TRUE(bytes);
+    const compressor::ArchiveInfo info = info_of(*bytes);
+    const auto docs = compressor::select_subtree(info.index.entries, "docs");
+    ASSERT_TRUE(docs);
+
+    compressor::BlockDecoder decoder(engines(), threads);
+    std::istringstream in(*bytes);
+    const auto extracted = compressor::extract_entries(decoder, in, info, *docs, out_);
+    ASSERT_TRUE(extracted) << extracted.error().detail;
+
+    const std::vector<Entry> expected = scan(root_ / "docs");
+    const std::vector<Entry> actual = scan(out_);
+    ASSERT_EQ(paths(actual), paths(expected));
+    for (std::size_t i = 0; i < expected.size(); ++i)
+    {
+        EXPECT_EQ(actual[i].mtime_ns, expected[i].mtime_ns) << expected[i].path;
+        EXPECT_EQ(actual[i].target, expected[i].target) << expected[i].path;
+    }
+    EXPECT_EQ(read_file(out_ / "deep" / "er" / "note.md"), pattern(100, 'm'));
+    const auto root = compressor::read_metadata(out_);
+    const auto original = compressor::read_metadata(root_ / "docs");
+    ASSERT_TRUE(root && original);
+    EXPECT_EQ(root->mode, original->mode);
+    EXPECT_EQ(root->mtime_ns, original->mtime_ns);
+}
+
+TEST_F(ArchiveTests, A_file_is_written_whole_from_its_blocks)
+{
+    make_sample_tree();
+    const auto bytes = archive(root_);
+    ASSERT_TRUE(bytes);
+
+    EXPECT_EQ(extract_file(*bytes, "big.bin"), read_file(root_ / "big.bin"));
+    EXPECT_EQ(extract_file(*bytes, "a.txt"), "hello archive\n");
+    EXPECT_EQ(extract_file(*bytes, "docs/zero"), "");
+}
+
+TEST_F(ArchiveTests, A_file_is_decoded_only_from_the_blocks_that_hold_it)
+{
+    write_file(root_ / "a.bin", noise(2 * block_size));
+    write_file(root_ / "b.txt", "after the noise");
+    auto bytes = archive(root_);
+    ASSERT_TRUE(bytes);
+    flip_payload_byte(*bytes, info_of(*bytes).index.block_offsets[0]);
+
+    EXPECT_EQ(extract_file(*bytes, "b.txt"), "after the noise");
+    const auto damaged = extract_file(*bytes, "a.bin");
+    ASSERT_FALSE(damaged);
+    EXPECT_EQ(damaged.error().error, Error::checksum_mismatch);
+}
+
+TEST_F(ArchiveTests, Verify_accepts_an_intact_archive)
+{
+    make_sample_tree();
+    const auto bytes = archive(root_);
+    ASSERT_TRUE(bytes);
+    EXPECT_TRUE(verify(*bytes));
+}
+
+TEST_F(ArchiveTests, Verify_finds_a_damaged_last_block)
+{
+    write_file(root_ / "noise", noise((2 * block_size) + 100));
+    auto bytes = archive(root_);
+    ASSERT_TRUE(bytes);
+    flip_payload_byte(*bytes, info_of(*bytes).index.block_offsets.back());
+    const auto verified = verify(*bytes);
+    ASSERT_FALSE(verified);
+    EXPECT_EQ(verified.error().error, Error::checksum_mismatch);
+}
+
+TEST_F(ArchiveTests, Verify_accepts_an_empty_archive)
+{
+    const auto bytes = archive(root_);
+    ASSERT_TRUE(bytes);
+    EXPECT_TRUE(verify(*bytes));
 }

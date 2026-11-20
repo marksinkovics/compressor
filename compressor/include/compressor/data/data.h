@@ -83,6 +83,9 @@ public:
 
     // Returns the block size log2.
     std::expected<uint8_t, Error> read_header();
+    // Instead of read_header(): reads blocks from the stream's position, as in a container with
+    // this block size, for decoding blocks found through an archive's block table.
+    void start_blocks(uint8_t block_size_log2);
     // Fills `block`, reusing its payload's capacity, and returns true; returns false once the end
     // block's total matches and, unless this is an archive, nothing follows it. An archive's
     // stream is left just after its end block. Only after read_header().

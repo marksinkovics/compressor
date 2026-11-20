@@ -15,6 +15,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <compressor/archive/metadata.h>
 #include <compressor/compressor.h>
 #include <compressor/error.h>
 #include <compressor/stream/decoder.h>
@@ -374,4 +375,112 @@ TEST_F(CompressorFolderTests, A_failed_folder_decode_leaves_no_output_or_tempora
     EXPECT_FALSE(make_compressor().decode(archive_, extracted_));
     EXPECT_THAT(err_.str(), HasSubstr("index is corrupt"));
     EXPECT_EQ(names(dir_), (std::vector<std::string>{"folder", "folder.ingot"}));
+}
+
+class CompressorArchiveCommandTests : public CompressorFolderTests
+{
+protected:
+    void SetUp() override
+    {
+        CompressorFolderTests::SetUp();
+        fs::create_symlink("a.txt", folder_ / "link");
+        ASSERT_FALSE(compressor::set_mode(folder_ / "a.txt", 0640));
+        ASSERT_FALSE(compressor::set_mtime(folder_ / "a.txt", 1'000'000'000'123'456'789));
+        ASSERT_TRUE(make_compressor().encode(folder_, archive_)) << err_.str();
+    }
+};
+
+TEST_F(CompressorArchiveCommandTests, List_prints_the_paths_in_the_archive)
+{
+    ASSERT_TRUE(make_compressor().list(archive_, false)) << err_.str();
+    EXPECT_EQ(out_.str(), "a.txt\nlink\nsub/\nsub/b.txt\n");
+
+    out_.str("");
+    ASSERT_TRUE(make_compressor().list(archive_, true)) << err_.str();
+    EXPECT_THAT(out_.str(), HasSubstr("-rw-r-----            5 2001-09-09 01:46:40 a.txt\n"));
+}
+
+TEST_F(CompressorArchiveCommandTests, List_rejects_a_file_that_is_not_an_archive)
+{
+    const fs::path plain = dir_ / "a.ingot";
+    ASSERT_TRUE(make_compressor().encode(folder_ / "a.txt", plain));
+
+    EXPECT_FALSE(make_compressor().list(plain, false));
+    EXPECT_THAT(err_.str(), HasSubstr("not a folder archive"));
+    EXPECT_FALSE(make_compressor().list("-", false));
+    EXPECT_THAT(err_.str(), HasSubstr("must be read from a file"));
+}
+
+TEST_F(CompressorArchiveCommandTests, Extract_writes_a_file_with_its_mode_and_time)
+{
+    const fs::path output = dir_ / "a";
+    write_file(output, "replaced");
+
+    ASSERT_TRUE(make_compressor().extract(archive_, "./a.txt", output)) << err_.str();
+    EXPECT_EQ(read_file(output), "alpha");
+    const auto metadata = compressor::read_metadata(output);
+    ASSERT_TRUE(metadata);
+    EXPECT_EQ(metadata->mode, 0640);
+    EXPECT_EQ(metadata->mtime_ns, 1'000'000'000'123'456'789);
+}
+
+TEST_F(CompressorArchiveCommandTests, Extract_writes_a_directory_into_a_new_directory)
+{
+    ASSERT_TRUE(make_compressor().extract(archive_, "sub/", extracted_)) << err_.str();
+    EXPECT_EQ(names(extracted_), std::vector<std::string>{"b.txt"});
+    EXPECT_EQ(read_file(extracted_ / "b.txt"), std::string(10'000, 'b'));
+
+    EXPECT_FALSE(make_compressor().extract(archive_, "sub", extracted_));
+    EXPECT_THAT(err_.str(), HasSubstr("already exists"));
+    EXPECT_EQ(names(dir_), (std::vector<std::string>{"extracted", "folder", "folder.ingot"}));
+}
+
+TEST_F(CompressorArchiveCommandTests, Extract_writes_a_symlink)
+{
+    ASSERT_TRUE(make_compressor().extract(archive_, "link", dir_ / "l")) << err_.str();
+    EXPECT_EQ(fs::read_symlink(dir_ / "l"), "a.txt");
+}
+
+TEST_F(CompressorArchiveCommandTests, A_file_can_be_extracted_to_standard_output)
+{
+    ASSERT_TRUE(make_compressor().extract(archive_, "sub/b.txt", "-")) << err_.str();
+    EXPECT_EQ(out_.str(), std::string(10'000, 'b'));
+}
+
+TEST_F(CompressorArchiveCommandTests, Only_a_file_can_be_extracted_to_standard_output)
+{
+    EXPECT_FALSE(make_compressor().extract(archive_, "sub", "-"));
+    EXPECT_THAT(err_.str(), HasSubstr("-o"));
+    EXPECT_EQ(out_.str(), "");
+}
+
+TEST_F(CompressorArchiveCommandTests, A_path_not_in_the_archive_is_reported)
+{
+    EXPECT_FALSE(make_compressor().extract(archive_, "missing", dir_ / "m"));
+    EXPECT_THAT(err_.str(), HasSubstr("missing: it is not in"));
+    EXPECT_FALSE(fs::exists(dir_ / "m"));
+}
+
+TEST_F(CompressorArchiveCommandTests, Verify_checks_archives_and_plain_files)
+{
+    const fs::path plain = dir_ / "a.ingot";
+    ASSERT_TRUE(make_compressor().encode(folder_ / "a.txt", plain));
+    in_.str(read_file(plain));
+
+    EXPECT_TRUE(make_compressor().verify(archive_)) << err_.str();
+    EXPECT_TRUE(make_compressor().verify(plain)) << err_.str();
+    EXPECT_TRUE(make_compressor().verify("-")) << err_.str();
+    EXPECT_EQ(out_.str(),
+              archive_.string() + ": OK\n" + plain.string() + ": OK\nstandard input: OK\n");
+}
+
+TEST_F(CompressorArchiveCommandTests, Verify_reports_a_damaged_archive)
+{
+    std::string bytes = read_file(archive_);
+    bytes.back() = 'Z';
+    write_file(archive_, bytes);
+
+    EXPECT_FALSE(make_compressor().verify(archive_));
+    EXPECT_THAT(err_.str(), HasSubstr("Cannot verify"));
+    EXPECT_EQ(out_.str(), "");
 }

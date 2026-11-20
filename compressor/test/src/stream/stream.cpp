@@ -423,3 +423,78 @@ TEST(BlockStreamTests, Decode_frame_rejects_a_plain_container_when_an_archive_is
     EXPECT_EQ(decoder.decode_frame(in, out, compressor::archive_flag),
               std::unexpected(compressor::Error::corrupt_header));
 }
+
+class DecodeBlocksTests : public ::testing::TestWithParam<unsigned>
+{
+protected:
+    void SetUp() override
+    {
+        compressor::BlockEncoder encoder(engine_factory(), block_size_log2, 2);
+        std::istringstream in(text_);
+        std::ostringstream out;
+        auto layout = encoder.encode_frame(in, out, compressor::archive_flag);
+        ASSERT_TRUE(layout);
+        bytes_ = out.str();
+        offsets_ = layout->block_offsets;
+        offsets_.push_back(layout->size - compressor::end_block_bytes);
+    }
+
+    std::expected<std::string, compressor::Error> decode_blocks(std::vector<uint64_t> offsets)
+    {
+        compressor::BlockDecoder decoder(engine_factory(), GetParam());
+        std::istringstream in(bytes_);
+        std::ostringstream out;
+        if (auto decoded = decoder.decode_blocks(in, out, block_size_log2, offsets); !decoded)
+        {
+            return std::unexpected(decoded.error());
+        }
+        if (!offsets.empty())
+        {
+            EXPECT_EQ(in.tellg(), static_cast<std::streamoff>(offsets.back()));
+        }
+        return out.str();
+    }
+
+    // Blocks first to end - 1, and where block `end` (or the end block) starts.
+    std::vector<uint64_t> range(std::size_t first, std::size_t end) const
+    {
+        return {offsets_.begin() + static_cast<std::ptrdiff_t>(first),
+                offsets_.begin() + static_cast<std::ptrdiff_t>(end + 1)};
+    }
+
+    std::string text_ = sample_text((5 * block_size) + 9);
+    std::string bytes_;
+    std::vector<uint64_t> offsets_; // each block's, then the end block's
+};
+
+TEST_P(DecodeBlocksTests, A_range_of_blocks_decodes_to_its_slice_of_the_data)
+{
+    EXPECT_EQ(decode_blocks(range(1, 3)), text_.substr(block_size, 2 * block_size));
+    EXPECT_EQ(decode_blocks(range(4, 6)), text_.substr(4 * block_size));
+    EXPECT_EQ(decode_blocks(range(0, 6)), text_);
+}
+
+TEST_P(DecodeBlocksTests, No_offsets_decode_nothing)
+{
+    EXPECT_EQ(decode_blocks({}), "");
+}
+
+TEST_P(DecodeBlocksTests, A_block_that_does_not_end_at_the_next_offset_is_rejected)
+{
+    std::vector<uint64_t> offsets = range(1, 3);
+    ++offsets[1];
+    EXPECT_EQ(decode_blocks(offsets), std::unexpected(compressor::Error::corrupt_index));
+
+    offsets = range(1, 3);
+    ++offsets.back();
+    EXPECT_EQ(decode_blocks(offsets), std::unexpected(compressor::Error::corrupt_index));
+}
+
+TEST_P(DecodeBlocksTests, A_range_past_the_last_block_is_rejected)
+{
+    std::vector<uint64_t> offsets = range(5, 6);
+    offsets.push_back(offsets.back() + compressor::end_block_bytes);
+    EXPECT_FALSE(decode_blocks(offsets));
+}
+
+INSTANTIATE_TEST_SUITE_P(Threads, DecodeBlocksTests, ::testing::Values(1U, 3U));

@@ -255,3 +255,66 @@ TEST_F(CLITests, Encode_accepts_a_folder_and_decode_does_not)
     EXPECT_CALL(*compressor_, decode(::testing::_, ::testing::_)).Times(0);
     EXPECT_NE(run({"decode", "-i", dir_.string(), "-o", output_}), EXIT_SUCCESS);
 }
+
+TEST_F(CLITests, List_takes_the_archive_as_an_argument_or_with_dash_i)
+{
+    EXPECT_CALL(*compressor_, list(fs::path(input_), false)).WillOnce(Return(true));
+    EXPECT_EQ(run({"list", input_}), EXIT_SUCCESS);
+
+    compressor_ = std::make_unique<MockICompressor>();
+    EXPECT_CALL(*compressor_, list(fs::path(input_), true)).WillOnce(Return(true));
+    EXPECT_EQ(run({"list", "-l", "-i", input_}), EXIT_SUCCESS);
+}
+
+TEST_F(CLITests, List_needs_an_existing_archive_file)
+{
+    EXPECT_CALL(*compressor_, list(::testing::_, ::testing::_)).Times(0);
+    EXPECT_NE(run({"list"}), EXIT_SUCCESS);
+    EXPECT_NE(run({"list", "-"}), EXIT_SUCCESS);
+    EXPECT_NE(run({"list", dir_.string()}), EXIT_SUCCESS);
+}
+
+TEST_F(CLITests, Extract_passes_the_archive_path_and_output)
+{
+    EXPECT_CALL(*compressor_, extract(fs::path(input_), "docs/a.txt", fs::path(output_)))
+        .WillOnce(Return(true));
+    EXPECT_EQ(run({"extract", "-T", "2", input_, "docs/a.txt", "-o", output_}), EXIT_SUCCESS);
+    EXPECT_EQ(threads_, 2U);
+
+    compressor_ = std::make_unique<MockICompressor>();
+    EXPECT_CALL(*compressor_, extract(fs::path(input_), "docs/a.txt", fs::path(output_)))
+        .WillOnce(Return(true));
+    EXPECT_EQ(run({"extract", "-i", input_, "docs/a.txt", "-o", output_}), EXIT_SUCCESS);
+}
+
+TEST_F(CLITests, Extract_writes_to_the_entry_name_by_default)
+{
+    EXPECT_CALL(*compressor_, extract(fs::path(input_), "./docs/sub/", fs::path("sub")))
+        .WillOnce(Return(true));
+    EXPECT_EQ(run({"extract", input_, "./docs/sub/"}), EXIT_SUCCESS);
+}
+
+TEST_F(CLITests, Extract_needs_a_path)
+{
+    EXPECT_CALL(*compressor_, extract(::testing::_, ::testing::_, ::testing::_)).Times(0);
+    EXPECT_NE(run({"extract", input_}), EXIT_SUCCESS);
+}
+
+TEST_F(CLITests, Cat_extracts_to_standard_output)
+{
+    EXPECT_CALL(*compressor_, extract(fs::path(input_), "a.txt", fs::path("-")))
+        .WillOnce(Return(false));
+    EXPECT_NE(run({"cat", input_, "a.txt"}), EXIT_SUCCESS);
+    EXPECT_THAT(err_.str(), HasSubstr("Extracting a.txt from " + input_ + " failed"));
+}
+
+TEST_F(CLITests, Verify_reads_a_file_or_standard_input)
+{
+    EXPECT_CALL(*compressor_, verify(fs::path(input_))).WillOnce(Return(true));
+    EXPECT_EQ(run({"verify", input_}), EXIT_SUCCESS);
+
+    compressor_ = std::make_unique<MockICompressor>();
+    EXPECT_CALL(*compressor_, verify(fs::path("-"))).WillOnce(Return(false));
+    EXPECT_NE(run({"verify"}), EXIT_SUCCESS);
+    EXPECT_THAT(err_.str(), HasSubstr("Verifying standard input failed"));
+}

@@ -71,6 +71,8 @@ The encoder writes each directory before its contents, siblings in byte order of
 
 `compressor_app decode` extracts into a new directory: it builds a temporary directory next to the output and renames it into place on success, and refuses an output that already exists or is standard output. It creates the directories, then decodes the data into the files in order (checking each file's CRC32), then creates the symlinks, then sets permissions and times, directories last. Archives can't be decoded from standard input yet, as the index is at the end.
 
+`list`, `extract`, `cat` and `verify` read the index first. `extract` and `cat` decode only the blocks the block table gives for the selected files' byte range, checking that each block ends where the next one starts.
+
 ## Choosing the method
 
 Per block, the encoder writes whichever is smaller: stored is `size` bytes after the block header, Huffman `128 + payload`. A tie goes to stored, which decodes faster. Every code is at least 1 bit, so blocks up to 147 bytes always come out stored, and so does already-compressed data such as PNG or JPEG. A stored file is the input plus `17 + 13 × blocks` bytes.

@@ -1,11 +1,13 @@
 #include <compressor/cli.h>
 
 #include <cstdlib>
+#include <filesystem>
 #include <string>
 #include <string_view>
 
 #include <CLI/CLI.hpp>
 
+#include <compressor/archive/archive.h>
 #include <compressor/compressor.h>
 
 namespace compressor
@@ -18,7 +20,9 @@ struct Settings
 {
     std::string input{standard_stream};
     std::string output{standard_stream};
+    std::string path; // in an archive
     unsigned threads = 0;
+    bool details = false;
 };
 
 std::string display_name(const std::string& path, std::string_view standard_name)
@@ -26,30 +30,56 @@ std::string display_name(const std::string& path, std::string_view standard_name
     return path == standard_stream ? std::string(standard_name) : path;
 }
 
-// `folders`: the input may also be a directory.
-::CLI::App* add_command(::CLI::App& app, const std::string& name, const std::string& description,
-                        bool folders, Settings& settings)
+void add_threads(::CLI::App& command, Settings& settings)
 {
-    auto* command = app.add_subcommand(name, description);
-    const ::CLI::Validator existing_input([folders](std::string& path) {
+    command.add_option("-T,--threads", settings.threads, "Worker threads; 0 or omitted: all cores")
+        ->check(::CLI::NonNegativeNumber);
+}
+
+// `folders`: the input may also be a directory.
+::CLI::Validator existing_input(bool folders)
+{
+    return {[folders](std::string& path) {
         if (path == standard_stream)
         {
             return std::string{};
         }
         return folders ? ::CLI::ExistingPath(path) : ::CLI::ExistingFile(path);
-    }, folders ? "PATH" : "FILE");
+    }, folders ? "PATH" : "FILE"};
+}
+
+::CLI::App* add_command(::CLI::App& app, const std::string& name, const std::string& description,
+                        bool folders, Settings& settings)
+{
+    auto* command = app.add_subcommand(name, description);
     command
         ->add_option("-i,--input", settings.input,
                      folders ? "Input file or folder; - or omitted: standard input"
                              : "Input file; - or omitted: standard input")
-        ->check(existing_input);
+        ->check(existing_input(folders));
     command->add_option("-o,--output", settings.output,
                         folders ? "Output file; - or omitted: standard output"
                                 : "Output file, or the new directory for a folder archive; - or "
                                   "omitted: standard output");
-    command->add_option("-T,--threads", settings.threads, "Worker threads; 0 or omitted: all cores")
-        ->check(::CLI::NonNegativeNumber);
+    add_threads(*command, settings);
     return command;
+}
+
+// The archive comes as -i or as the first positional argument.
+::CLI::App* add_archive_command(::CLI::App& app, const std::string& name,
+                                const std::string& description, Settings& settings)
+{
+    auto* command = app.add_subcommand(name, description);
+    command->add_option("-i,--input,archive", settings.input, "Folder archive file")
+        ->required()
+        ->check(::CLI::ExistingFile);
+    return command;
+}
+
+void add_path(::CLI::App& command, Settings& settings)
+{
+    command.add_option("path", settings.path, "File, directory or symlink in the archive")
+        ->required();
 }
 
 } // namespace
@@ -69,8 +99,43 @@ int CLI::run(std::span<const char* const> args)
 
     Settings encode_settings;
     Settings decode_settings;
+    Settings list_settings;
+    Settings extract_settings;
+    Settings cat_settings;
+    Settings verify_settings;
     auto* encode = add_command(app, "encode", "Compress a file or a folder", true, encode_settings);
-    add_command(app, "decode", "Decompress a file or a folder archive", false, decode_settings);
+    auto* decode =
+        add_command(app, "decode", "Decompress a file or a folder archive", false, decode_settings);
+
+    auto* list =
+        add_archive_command(app, "list", "List the paths in a folder archive", list_settings);
+    list->add_flag("-l,--long", list_settings.details,
+                   "Also show types, permissions, sizes and modification times (UTC)");
+
+    auto* extract = add_archive_command(
+        app, "extract", "Extract one file, directory or symlink from a folder archive",
+        extract_settings);
+    add_path(*extract, extract_settings);
+    extract_settings.output.clear();
+    extract->add_option("-o,--output", extract_settings.output,
+                        "Output path; omitted: the entry's name in the current directory; -: "
+                        "standard output, for a file");
+    add_threads(*extract, extract_settings);
+
+    auto* cat = add_archive_command(app, "cat",
+                                    "Write one file from a folder archive to standard "
+                                    "output",
+                                    cat_settings);
+    add_path(*cat, cat_settings);
+    add_threads(*cat, cat_settings);
+
+    auto* verify = app.add_subcommand(
+        "verify", "Decode a file or folder archive and check every checksum, writing nothing");
+    verify
+        ->add_option("-i,--input,input", verify_settings.input,
+                     "Input file; - or omitted: standard input")
+        ->check(existing_input(false));
+    add_threads(*verify, verify_settings);
 
     try
     {
@@ -81,20 +146,52 @@ int CLI::run(std::span<const char* const> args)
         return app.exit(e, out_, err_);
     }
 
+    const auto finish = [this](bool done, const std::string& what) {
+        if (done)
+        {
+            return EXIT_SUCCESS;
+        }
+        err_ << what << " failed\n";
+        return EXIT_FAILURE;
+    };
+    const auto input_name = [](const Settings& settings) {
+        return display_name(settings.input, "standard input");
+    };
+
     if (encode->parsed())
     {
         const auto compressor = make_compressor_(encode_settings.threads);
-        if (compressor->encode(encode_settings.input, encode_settings.output))
-            return EXIT_SUCCESS;
-        err_ << "Encoding " << display_name(encode_settings.input, "standard input") << " failed\n";
-        return EXIT_FAILURE;
+        return finish(compressor->encode(encode_settings.input, encode_settings.output),
+                      "Encoding " + input_name(encode_settings));
     }
-
-    const auto compressor = make_compressor_(decode_settings.threads);
-    if (compressor->decode(decode_settings.input, decode_settings.output))
-        return EXIT_SUCCESS;
-    err_ << "Decoding " << display_name(decode_settings.input, "standard input") << " failed\n";
-    return EXIT_FAILURE;
+    if (decode->parsed())
+    {
+        const auto compressor = make_compressor_(decode_settings.threads);
+        return finish(compressor->decode(decode_settings.input, decode_settings.output),
+                      "Decoding " + input_name(decode_settings));
+    }
+    if (list->parsed())
+    {
+        const auto compressor = make_compressor_(1);
+        return finish(compressor->list(list_settings.input, list_settings.details),
+                      "Listing " + list_settings.input);
+    }
+    if (extract->parsed() || cat->parsed())
+    {
+        Settings& settings = extract->parsed() ? extract_settings : cat_settings;
+        std::filesystem::path output =
+            cat->parsed() ? std::string{standard_stream} : settings.output;
+        if (output.empty())
+        {
+            output = std::filesystem::path(archive_path(settings.path)).filename();
+        }
+        const auto compressor = make_compressor_(settings.threads);
+        return finish(compressor->extract(settings.input, settings.path, output),
+                      "Extracting " + settings.path + " from " + settings.input);
+    }
+    const auto compressor = make_compressor_(verify_settings.threads);
+    return finish(compressor->verify(verify_settings.input),
+                  "Verifying " + input_name(verify_settings));
 }
 
 } // namespace compressor

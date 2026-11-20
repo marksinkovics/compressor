@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <expected>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <ios>
 #include <iostream>
@@ -11,13 +12,17 @@
 #include <optional>
 #include <ostream>
 #include <random>
+#include <span>
 #include <sstream>
+#include <streambuf>
 #include <string>
 #include <string_view>
 #include <system_error>
 #include <utility>
 
 #include <compressor/archive/archive.h>
+#include <compressor/archive/index.h>
+#include <compressor/archive/metadata.h>
 #include <compressor/data/data.h>
 #include <compressor/engine/engine.h>
 #include <compressor/error.h>
@@ -179,21 +184,31 @@ bool write_output(const StandardStreams& streams, const fs::path& output, Write 
     return true;
 }
 
+// The standard input, or `input` opened into `file`; null when it can't be opened.
+std::istream* open_input(const StandardStreams& streams, const fs::path& input, std::ifstream& file)
+{
+    if (is_standard(input))
+    {
+        return &streams.in;
+    }
+    file.open(input, std::ios::in | std::ios::binary);
+    if (!file)
+    {
+        streams.err << "Cannot open input file: " << input.string() << '\n';
+        return nullptr;
+    }
+    return &file;
+}
+
 template <class Coder>
 bool transcode(const StandardStreams& streams, std::string_view action, const fs::path& input,
                const fs::path& output, Coder code)
 {
     std::ifstream file;
-    std::istream* in = &streams.in;
-    if (!is_standard(input))
+    std::istream* in = open_input(streams, input, file);
+    if (in == nullptr)
     {
-        file.open(input, std::ios::in | std::ios::binary);
-        if (!file)
-        {
-            streams.err << "Cannot open input file: " << input.string() << '\n';
-            return false;
-        }
-        in = &file;
+        return false;
     }
     return write_output(streams, output, [&](std::ostream& out) -> Result {
         std::expected<void, Error> result = code(*in, out);
@@ -239,6 +254,104 @@ bool is_archive_file(const fs::path& input)
     std::ifstream file(input, std::ios::in | std::ios::binary);
     return file && is_archive(file);
 }
+
+struct OpenArchive
+{
+    std::ifstream file;
+    ArchiveInfo info;
+};
+
+std::optional<OpenArchive> open_archive(std::ostream& err, std::string_view action,
+                                        const fs::path& input)
+{
+    if (is_standard(input))
+    {
+        err << "Cannot " << action
+            << " standard input: a folder archive must be read from a file\n";
+        return std::nullopt;
+    }
+    OpenArchive archive;
+    archive.file.open(input, std::ios::in | std::ios::binary);
+    if (!archive.file)
+    {
+        err << "Cannot open input file: " << input.string() << '\n';
+        return std::nullopt;
+    }
+    if (!is_archive(archive.file))
+    {
+        err << "Cannot " << action << ' ' << input.string() << ": it is not a folder archive\n";
+        return std::nullopt;
+    }
+    auto info = read_archive_index(archive.file);
+    if (!info)
+    {
+        report(err, action, input, {.error = info.error(), .detail = {}});
+        return std::nullopt;
+    }
+    archive.info = std::move(*info);
+    return archive;
+}
+
+// A new directory or symlink can't go to the standard output or replace anything.
+bool is_new_path(std::ostream& err, std::string_view what, const fs::path& output)
+{
+    if (is_standard(output))
+    {
+        err << "Cannot write " << what << " to standard output; name the new path with -o\n";
+        return false;
+    }
+    std::error_code error;
+    if (fs::exists(fs::symlink_status(output, error)))
+    {
+        err << "Cannot write " << what << ": the output already exists: " << output.string()
+            << '\n';
+        return false;
+    }
+    return true;
+}
+
+// Builds the directory next to `output` and renames it into place.
+bool extract_to_new_directory(IBlockDecoder& decoder, std::ostream& err, std::string_view action,
+                              const fs::path& input, OpenArchive& archive,
+                              std::span<const Entry> entries, const fs::path& output)
+{
+    const std::optional<fs::path> temp = create_temp_directory_next_to(output);
+    if (!temp)
+    {
+        err << "Cannot create output directory: " << output.string() << '\n';
+        return false;
+    }
+    std::error_code error;
+    if (auto result = extract_entries(decoder, archive.file, archive.info, entries, *temp); !result)
+    {
+        fs::remove_all(*temp, error);
+        report(err, action, input, result.error());
+        return false;
+    }
+    fs::rename(*temp, output, error);
+    if (error)
+    {
+        err << "Cannot create output directory " << output.string() << ": " << error.message()
+            << '\n';
+        fs::remove_all(*temp, error);
+        return false;
+    }
+    return true;
+}
+
+class DiscardBuf : public std::streambuf
+{
+protected:
+    std::streamsize xsputn(const char* /*data*/, std::streamsize count) override
+    {
+        return count;
+    }
+
+    int_type overflow(int_type c) override
+    {
+        return traits_type::not_eof(c);
+    }
+};
 
 } // namespace
 
@@ -317,40 +430,131 @@ bool Compressor::encode_folder(const fs::path& input, const fs::path& output)
 bool Compressor::decode_folder(const fs::path& input, const fs::path& output)
 {
     std::ostream& err = streams_.err;
-    if (is_standard(output))
+    if (!is_new_path(err, "a folder archive", output))
     {
-        err << "Cannot decode " << input.string()
-            << ": it is a folder archive; name the new directory with -o\n";
         return false;
     }
+    auto archive = open_archive(err, "decode", input);
+    return archive && extract_to_new_directory(*decoder_, err, "decode", input, *archive,
+                                               archive->info.index.entries, output);
+}
+
+bool Compressor::list(const fs::path& archive, bool details)
+{
+    auto opened = open_archive(streams_.err, "list", archive);
+    if (!opened)
+    {
+        return false;
+    }
+    list_archive(opened->info, details, streams_.out);
+    streams_.out.flush();
+    if (!streams_.out)
+    {
+        streams_.err << "Cannot write the listing\n";
+        return false;
+    }
+    return true;
+}
+
+bool Compressor::extract(const fs::path& archive, const std::string& path, const fs::path& output)
+{
+    PROFILE_SESSION("Compressor::Extract")
+    std::ostream& err = streams_.err;
+    constexpr std::string_view action = "extract from";
+    auto opened = open_archive(err, action, archive);
+    if (!opened)
+    {
+        return false;
+    }
+    const std::string name = archive_path(path);
+    auto selected = select_subtree(opened->info.index.entries, name);
+    if (!selected)
+    {
+        err << "Cannot extract " << path << ": it is not in " << archive.string() << '\n';
+        return false;
+    }
+    Entry& root = selected->front();
+    const std::string what =
+        std::format("{} {}", root.type == EntryType::directory ? "directory" : "symlink", name);
     std::error_code error;
-    if (fs::exists(fs::symlink_status(output, error)))
+    switch (root.type)
     {
-        err << "Cannot decode " << input.string()
-            << ": the output already exists: " << output.string() << '\n';
-        return false;
-    }
-    const std::optional<fs::path> temp = create_temp_directory_next_to(output);
-    if (!temp)
+    case EntryType::file:
     {
-        err << "Cannot create output directory: " << output.string() << '\n';
-        return false;
+        root.path = name;
+        const bool written = write_output(streams_, output, [&](std::ostream& out) {
+            return extract_file(*decoder_, opened->file, opened->info, root, out);
+        }, [&](const Failure& failure) {
+            report(err, action, archive, failure);
+        });
+        if (!written || is_standard(output) ||
+            !fs::is_regular_file(fs::symlink_status(output, error)))
+        {
+            return written;
+        }
+        error = set_mode(output, root.mode);
+        break;
     }
-    std::ifstream in(input, std::ios::in | std::ios::binary);
-    if (auto result = extract_archive(*decoder_, in, *temp); !result)
+    case EntryType::directory:
+        return is_new_path(err, what, output) &&
+               extract_to_new_directory(*decoder_, err, action, archive, *opened, *selected,
+                                        output);
+    case EntryType::symlink:
+        if (!is_new_path(err, what, output))
+        {
+            return false;
+        }
+        fs::create_symlink(root.target, output, error);
+        break;
+    }
+    if (!error)
     {
-        fs::remove_all(*temp, error);
-        report(err, "decode", input, result.error());
-        return false;
+        error = set_mtime(output, root.mtime_ns);
     }
-    fs::rename(*temp, output, error);
     if (error)
     {
-        err << "Cannot create output directory " << output.string() << ": " << error.message()
-            << '\n';
-        fs::remove_all(*temp, error);
+        err << "Cannot write " << output.string() << ": " << error.message() << '\n';
         return false;
     }
+    return true;
+}
+
+bool Compressor::verify(const fs::path& input)
+{
+    PROFILE_SESSION("Compressor::Verify")
+    std::ostream& err = streams_.err;
+    std::expected<void, Failure> result;
+    if (is_archive_file(input))
+    {
+        auto archive = open_archive(err, "verify", input);
+        if (!archive)
+        {
+            return false;
+        }
+        result = verify_archive(*decoder_, archive->file, archive->info);
+    }
+    else
+    {
+        std::ifstream file;
+        std::istream* in = open_input(streams_, input, file);
+        if (in == nullptr)
+        {
+            return false;
+        }
+        DiscardBuf discard;
+        std::ostream out(&discard);
+        if (auto decoded = decoder_->decode(*in, out); !decoded)
+        {
+            result = std::unexpected(Failure{.error = decoded.error(), .detail = {}});
+        }
+    }
+    if (!result)
+    {
+        report(err, "verify", input, result.error());
+        return false;
+    }
+    streams_.out << display_name(input, "standard input") << ": OK\n";
+    streams_.out.flush();
     return true;
 }
 
