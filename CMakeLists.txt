@@ -12,6 +12,11 @@ if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
         CACHE FILEPATH "vcpkg toolchain")
 endif()
 
+# Also before project(): vcpkg installs the manifest's features when it runs from the toolchain.
+if(COMPRESSOR_PYTHON)
+    list(APPEND VCPKG_MANIFEST_FEATURES python)
+endif()
+
 enable_testing()
 
 project(CompressionProject VERSION 0.0.1 LANGUAGES CXX)
@@ -23,6 +28,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(COMPRESSOR_ASAN "Build our code with AddressSanitizer (needs an -asan triplet)." OFF)
 option(COMPRESSOR_PROFILING "Make the PROFILE_* macros write result.json." OFF)
 option(COMPRESSOR_FUZZ "Build the fuzz targets with libFuzzer and ASan (needs a clang with libFuzzer)." OFF)
+option(COMPRESSOR_PYTHON "Build the ingot Python module (python/; vcpkg builds CPython for it)." OFF)
+# The static libraries go into the Python module, a shared library.
+if(COMPRESSOR_PYTHON)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(VcpkgPins)
@@ -74,3 +84,6 @@ add_subdirectory(compressor_benchmark)
 add_subdirectory(compressor_example)
 add_subdirectory(fuzz)
 add_subdirectory(lib/instrumentor)
+if(COMPRESSOR_PYTHON)
+    add_subdirectory(python)
+endif()

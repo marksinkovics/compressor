@@ -24,6 +24,12 @@
       "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
     },
     {
+      "name": "python",
+      "displayName": "Release with the Python module (vcpkg builds CPython once)",
+      "inherits": "release",
+      "cacheVariables": { "COMPRESSOR_PYTHON": "ON" }
+    },
+    {
       "name": "asan",
       "displayName": "Debug with AddressSanitizer (Ninja, macOS arm64)",
       "inherits": "debug",
@@ -55,6 +61,7 @@
   "buildPresets": [
     { "name": "debug", "configurePreset": "debug" },
     { "name": "release", "configurePreset": "release" },
+    { "name": "python", "configurePreset": "python" },
     { "name": "asan", "configurePreset": "asan" },
     { "name": "xcode", "configurePreset": "xcode", "configuration": "Debug" },
     { "name": "fuzz", "configurePreset": "fuzz" }
@@ -68,6 +75,7 @@
     },
     { "name": "debug", "inherits": "base", "configurePreset": "debug" },
     { "name": "release", "inherits": "base", "configurePreset": "release" },
+    { "name": "python", "inherits": "base", "configurePreset": "python" },
     { "name": "asan", "inherits": "base", "configurePreset": "asan" },
     { "name": "xcode", "inherits": "base", "configurePreset": "xcode", "configuration": "Debug" },
     { "name": "fuzz", "inherits": "base", "configurePreset": "fuzz" }
@@ -87,6 +95,14 @@
         { "type": "configure", "name": "release" },
         { "type": "build", "name": "release" },
         { "type": "test", "name": "release" }
+      ]
+    },
+    {
+      "name": "python",
+      "steps": [
+        { "type": "configure", "name": "python" },
+        { "type": "build", "name": "python" },
+        { "type": "test", "name": "python" }
       ]
     },
     {

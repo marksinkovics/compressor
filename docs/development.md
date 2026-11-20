@@ -30,6 +30,7 @@ Third-party libraries come only from vcpkg in manifest mode: `vcpkg.json` lists 
 | `release` | Ninja | Release, for benchmarks |
 | `asan` | Ninja | Debug with `COMPRESSOR_ASAN=ON` and the `arm64-osx-asan` triplet (macOS only) |
 | `xcode` | Xcode | Debug for the build and test presets (macOS only) |
+| `python` | Ninja | Release with `COMPRESSOR_PYTHON=ON`: also the Python module (see "Python module") |
 | `fuzz` | Ninja | RelWithDebInfo with `COMPRESSOR_FUZZ=ON`, built by Homebrew's clang (`$HOMEBREW_PREFIX/opt/llvm/bin/clang++`; macOS only). See "Fuzzing". |
 
 ```bash
@@ -48,9 +49,30 @@ Local variations (another generator, extra cache variables) go into `CMakeUserPr
 | `CMAKE_COMPILE_WARNING_AS_ERROR` | `OFF` | CMake's own option: warnings are errors (`-Werror`, `/WX` on MSVC). The presets turn it on; configuring with `--compile-no-warning-as-error` overrides it. |
 | `COMPRESSOR_ASAN` | `OFF` | AddressSanitizer for our code. Needs an ASan triplet from `triplets/` (`-DVCPKG_TARGET_TRIPLET=arm64-osx-asan` or `x64-linux-asan`), so gtest and benchmark are instrumented too; configure fails without one. Use with `CMAKE_BUILD_TYPE=Debug`. On Linux it also finds leaks; Apple Clang has no LeakSanitizer on arm64. |
 | `COMPRESSOR_PROFILING` | `OFF` | The `PROFILE_*` macros write `result.json` (Chrome trace format) to the working directory. |
+| `COMPRESSOR_PYTHON` | `OFF` | Builds `python/`, the `ingot` Python module, through the manifest feature `python` (pybind11, which needs vcpkg's `python3` port: the first configure builds CPython and its libraries, about 10 minutes). Static libraries are built position-independent so they can go into the module. |
 | `COMPRESSOR_FUZZ` | `OFF` | Coverage instrumentation and ASan for our code, and libFuzzer for the `fuzz/` targets. Needs a clang that ships libFuzzer (Apple Clang doesn't); vcpkg's ports stay uninstrumented. |
 
 Every target gets `-Wall -Wextra -Wpedantic` (`/W4` on MSVC) from the root `add_compile_options`, minus `-Wmissing-designated-field-initializers` where the compiler has it (clang 23 puts it in `-Wextra`; designated initializers that leave fields at their defaults are intended); every target built in this tree is ours, and vcpkg headers are included as system headers. Optimization comes from the build type only (Release: `-O3 -DNDEBUG`). Tests are discovered when `ctest` runs (`DISCOVERY_MODE PRE_TEST`), not at build time.
+
+### Python module
+
+```bash
+cmake --workflow --preset python      # build/python/python/package/ingot.cpython-312-darwin.so
+PY=build/python/vcpkg_installed/arm64-osx/tools/python3/python3.12
+PYTHONPATH=build/python/python/package $PY -c 'import ingot; print(ingot.decompress(ingot.compress(b"x" * 100)))'
+```
+
+```python
+import ingot
+packed = ingot.compress(data, level=9, threads=0, dictionary=None)   # bytes -> ingot container
+data = ingot.decompress(packed, threads=0, dictionary=None)          # not folder archives
+ingot.compress_file("photos", "photos.ingot", level=6)               # files and folders, as the CLI
+ingot.decompress_file("photos.ingot", "photos-copy")
+dictionary = ingot.train_dictionary([sample1, sample2, ...], size=112640)
+# failures raise ingot.Error
+```
+
+The module is built against vcpkg's CPython (3.12), so it imports only into a Python 3.12, such as vcpkg's own interpreter above. The GIL is released while coding. ctest's `Python.Module` runs `python/test/test_ingot.py` (plain asserts, no pytest). clang-tidy in `tools/quality.sh` reads the debug build's compile commands, which don't have the module; check it with `$(brew --prefix llvm)/bin/clang-tidy -p build/python python/src/ingot.cpp`.
 
 ## Run tests
 

@@ -36,6 +36,26 @@ ingot decode -i some_dir.tar.ingot | tar x
 
 `ingot --help` and `ingot <command> --help` list every command and option.
 
+Many small, similar files compress about twice as well with a dictionary trained on samples of
+them:
+
+```bash
+ingot train -o configs.dict samples/
+ingot encode -D configs.dict -i app.json -o app.json.ingot
+ingot decode -D configs.dict -i app.json.ingot -o app.json
+```
+
+### Python
+
+```python
+import ingot
+packed = ingot.compress(data, level=9)
+assert ingot.decompress(packed) == data
+```
+
+Built with `cmake --workflow --preset python`; see [docs/development.md](docs/development.md),
+"Python module".
+
 ## Building
 
 macOS first, Linux (GCC and Clang) checked by hand; needs CMake 3.25+, Ninja and
