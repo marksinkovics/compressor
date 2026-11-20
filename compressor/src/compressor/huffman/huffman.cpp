@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <iterator>
+#include <span>
 #include <vector>
 
 namespace compressor
@@ -18,12 +19,12 @@ struct Item
 
 } // namespace
 
-CodeLengths code_lengths(const Frequencies& frequencies, std::size_t max_length)
+std::vector<uint8_t> code_lengths(std::span<const uint64_t> frequencies, std::size_t max_length)
 {
-    CodeLengths lengths{};
+    std::vector<uint8_t> lengths(frequencies.size());
 
     std::vector<Item> leaves;
-    for (std::size_t symbol = 0; symbol < symbol_count; ++symbol)
+    for (std::size_t symbol = 0; symbol < frequencies.size(); ++symbol)
     {
         if (frequencies[symbol] > 0)
         {
@@ -84,7 +85,7 @@ CodeLengths code_lengths(const Frequencies& frequencies, std::size_t max_length)
     return lengths;
 }
 
-Codes canonical_codes(const CodeLengths& lengths)
+std::vector<Code> canonical_codes(std::span<const uint8_t> lengths)
 {
     std::array<uint32_t, max_code_length + 1> count_per_length{};
     for (const uint8_t length : lengths)
@@ -103,8 +104,8 @@ Codes canonical_codes(const CodeLengths& lengths)
         next_code[length] = code;
     }
 
-    Codes codes{};
-    for (std::size_t symbol = 0; symbol < symbol_count; ++symbol)
+    std::vector<Code> codes(lengths.size());
+    for (std::size_t symbol = 0; symbol < lengths.size(); ++symbol)
     {
         const uint8_t length = lengths[symbol];
         if (length > 0 && length <= max_code_length)
@@ -113,6 +114,23 @@ Codes canonical_codes(const CodeLengths& lengths)
         }
     }
     return codes;
+}
+
+CodeLengths code_lengths(const Frequencies& frequencies, std::size_t max_length)
+{
+    const std::vector<uint8_t> lengths =
+        code_lengths(std::span<const uint64_t>(frequencies), max_length);
+    CodeLengths fixed{};
+    std::ranges::copy(lengths, fixed.begin());
+    return fixed;
+}
+
+Codes canonical_codes(const CodeLengths& lengths)
+{
+    const std::vector<Code> codes = canonical_codes(std::span<const uint8_t>(lengths));
+    Codes fixed{};
+    std::ranges::copy(codes, fixed.begin());
+    return fixed;
 }
 
 DecodeTable build_decode_table(const Codes& codes)

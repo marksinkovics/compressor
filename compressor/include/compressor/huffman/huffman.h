@@ -4,6 +4,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <vector>
 
 namespace compressor
@@ -32,6 +33,11 @@ CodeLengths code_lengths(const Frequencies& frequencies, std::size_t max_length 
 
 // Canonical codes (RFC 1951, 3.2.2): ordered by (length, symbol). Lengths must be valid.
 Codes canonical_codes(const CodeLengths& lengths);
+
+// The same for an alphabet of any size, such as Deflate's 286 literal/length, 30 distance and 19
+// code length symbols.
+std::vector<uint8_t> code_lengths(std::span<const uint64_t> frequencies, std::size_t max_length);
+std::vector<Code> canonical_codes(std::span<const uint8_t> lengths);
 
 struct DecodeEntry
 {
