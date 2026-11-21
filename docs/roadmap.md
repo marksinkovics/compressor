@@ -474,3 +474,18 @@ Same rules as runs 1–4 on the same branch: commits per item after the full `to
 
 - [x] 1. (done: 2.8× faster per core at level 6 for +0.12% on Silesia; `-f gzip` 1.6× faster with the same output; `docs/benchmarks.md`, "Level 6 encoding speed") Level 6 encoding speed: profile `encode -L 6 -T 1` and remove the waste (the block coded more than once, the transform decision, the match search); same output where possible, any ratio change measured; `tools/compare.py` reports CPU time.
 - [x] 2. (done: coder 14, LZT with an optimal parse and three repeat offsets, at level 7: Silesia −6.3%, Canterbury −6.7%; 6% behind `zstd -19` on independent 1 MiB pieces; `docs/benchmarks.md`, "LZT with an optimal parse") LZT ratio (levels 7–8): longer matches than Deflate's 258, more repeat offsets, a cost-based (optimal) parse, then better literal coding if it pays; a new coder id if the format changes; the goal is `zstd -19`'s ratio with fast decoding.
+
+### Autonomous run 6 (agreed 2026-11-20)
+
+Same rules as runs 1–5 on the same branch: commits per item after the full `tools/quality.sh check`, the full test suite and `finish-step`; never pushed, no co-author line; builds with `-j6`, `ctest -j4`; speed as CPU time. A blocked item gets a note in `docs/handover.md` and the run moves on.
+
+- [ ] 1. Byte-range reads: `ingot cat --range FROM:TO` (and an API) on plain ingot files and archive files, decoding only the blocks that hold the range.
+- [ ] 2. Archive order and per-file coding: order a folder archive's files so similar ones sit together (by type, then name), and pick the transform from each file's own content rather than from whatever block it lands in; measured on real folders.
+- [ ] 3. Mounting with FSKit (spike): a read-only FSKit file system extension (Swift, calling the C++ core) that mounts an ingot archive, signed locally first. If FSKit can't be used (signing, entitlements, file-backed mounts), stop, record why, and postpone mounting for separate research; no NFS fallback.
+- [ ] 4. Repair data: optional parity blocks (Reed-Solomon over groups of blocks, par2-style) so damaged blocks can be rebuilt, with `ingot repair` and `verify` reporting what is recoverable.
+- [ ] 5. Faster decoding: Huffman blocks in several interleaved streams decoded with NEON (a new method or coder id), and NEON in the CM mixer for level 9.
+
+Later, after a check-in:
+
+- Run 7: a GPU spike with Metal (suffix array for BWT, match lists for LZT, Deflate match search, Huffman encoding, multi-stream decoding, exhaustive transform search, content-defined chunking, search, CM on many blocks, image groundwork; each kept only if it wins), then long-range matching across blocks.
+- Run 8: an image track: a lossless context-model image coder, then lossy image experiments against AVIF and JPEG XL with perceptual metrics, video later.
