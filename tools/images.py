@@ -104,6 +104,10 @@ def lossless_coders(app):
                 ["djxl", "--quiet", "--num_threads=0", "{i}", "{o}.png"]),
     }
     if app:
+        coders["ingot image"] = (
+            ".ingoti",
+            [app, "image", "encode", "-T", "1", "-i", "{pam}", "-o", "{o}"],
+            [app, "image", "decode", "-T", "1", "-i", "{i}", "-o", "{o}.pam"])
         for level in (6, 9):
             coders[f"ingot -L {level}"] = (
                 ".ingot",

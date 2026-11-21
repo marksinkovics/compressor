@@ -106,6 +106,10 @@ public:
     // given, each file one sample, and writes it to `output`.
     virtual bool train(const std::vector<std::filesystem::path>& inputs,
                        const std::filesystem::path& output, std::size_t size) = 0;
+    // Codes a binary PGM, PPM or PAM image into an image file (`encode`), or an image file back
+    // into PGM, PPM or PAM.
+    virtual bool image(const std::filesystem::path& input, const std::filesystem::path& output,
+                       bool encode) = 0;
 };
 
 // Writes a regular output through a temporary file next to it and renames that on success, so a
@@ -142,6 +146,8 @@ public:
                         bool count) override;
     bool train(const std::vector<std::filesystem::path>& inputs,
                const std::filesystem::path& output, std::size_t size) override;
+    bool image(const std::filesystem::path& input, const std::filesystem::path& output,
+               bool encode) override;
 
 private:
     // Writes OUTPUT.repair for `output` when settings_.repair_percent asks for it.

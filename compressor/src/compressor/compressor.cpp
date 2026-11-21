@@ -35,6 +35,7 @@
 #include <compressor/engine/engine.h>
 #include <compressor/error.h>
 #include <compressor/fmindex/fmindex.h>
+#include <compressor/image/image.h>
 #include <compressor/lz77/lz77.h>
 #include <compressor/repair/repair.h>
 #include <compressor/search/search.h>
@@ -1285,6 +1286,46 @@ SearchResult Compressor::search(const fs::path& archive, const std::string& patt
         return SearchResult::failed;
     }
     return matched ? SearchResult::matched : SearchResult::not_matched;
+}
+
+bool Compressor::image(const fs::path& input, const fs::path& output, bool encode)
+{
+    const unsigned threads = thread_count(settings_.threads);
+    return transcode(streams_, encode ? "image encode" : "image decode", input, output,
+                     [&](std::istream& in, std::ostream& out) -> std::expected<void, Error> {
+        if (encode)
+        {
+            auto image = read_pnm(in);
+            if (!image)
+            {
+                return std::unexpected(image.error());
+            }
+            const std::vector<uint8_t> bytes = encode_image(*image, threads);
+            out.write(reinterpret_cast<const char*>(bytes.data()),
+                      static_cast<std::streamsize>(bytes.size()));
+        }
+        else
+        {
+            const std::vector<uint8_t> bytes{std::istreambuf_iterator<char>(in),
+                                             std::istreambuf_iterator<char>()};
+            if (in.bad())
+            {
+                return std::unexpected(Error::read_failed);
+            }
+            auto image = decode_image(bytes, threads);
+            if (!image)
+            {
+                return std::unexpected(image.error());
+            }
+            write_pnm(out, *image);
+        }
+        out.flush();
+        if (!out)
+        {
+            return std::unexpected(Error::write_failed);
+        }
+        return {};
+    });
 }
 
 bool Compressor::train(const std::vector<fs::path>& inputs, const fs::path& output,

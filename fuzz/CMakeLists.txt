@@ -2,7 +2,7 @@ project(fuzz)
 
 # Without COMPRESSOR_FUZZ each target replays its checked-in corpus once under ctest, so every
 # input that once crashed stays a regression test. With it, ctest fuzzes each target briefly.
-set(FUZZ_TARGETS container archive stats inflate)
+set(FUZZ_TARGETS container archive stats inflate image)
 set(CORPUS_DIR "${PROJECT_SOURCE_DIR}/corpus")
 
 foreach(name IN LISTS FUZZ_TARGETS)

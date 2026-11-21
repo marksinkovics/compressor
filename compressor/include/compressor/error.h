@@ -23,6 +23,7 @@ enum class Error : std::uint8_t
     dictionary_missing,
     dictionary_mismatch,
     bad_range,
+    not_image,
 };
 
 std::string_view describe(Error error);

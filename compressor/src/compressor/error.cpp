@@ -37,6 +37,9 @@ std::string_view describe(Error error)
         return "it was encoded with a different dictionary";
     case Error::bad_range:
         return "the range starts past the end of the data";
+    case Error::not_image:
+        return "it is not an image ingot reads: binary PGM, PPM or PAM with 8 bits per channel, or "
+               "an ingot image file";
     }
     return "unknown error";
 }

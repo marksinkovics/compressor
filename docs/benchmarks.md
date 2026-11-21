@@ -824,3 +824,29 @@ Lossy, mean bits per pixel at each SSIMULACRA2 score ("–": a coder's quality r
 | graphic | 90 | 1.136 | – | – | **0.520** |
 
 The targets for item 2: JPEG XL lossless on photos (8.55 bpp) and WebP lossless on screens (0.112). Treating the pixels as a byte stream, as ingot's general levels do, is 14% behind JPEG XL on photos even at level 9.
+
+## Image track: lossless coder (2026-11-21)
+
+Run 8, item 2: `ingot image encode/decode` (`image/image.h`, format in `docs/file_format.md`, "Image file"), lossless, PGM/PPM/PAM in and out. `tools/images.py --lossless`, mean bits per pixel (encode / decode CPU seconds per image, one thread), every round trip compared pixel for pixel; full numbers in `docs/benchmarks/images/2026-11-21-95c27d8.json`:
+
+| Class (images) | PNG | WebP lossless | JPEG XL lossless | `ingot image` | ingot `-L 9` |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| photo (25) | 13.107 | 9.323 (7.20 / 0.16) | 8.550 (0.75 / 0.11) | **8.387** (0.65 / 0.63) | 9.722 |
+| screen (3) | 0.599 | **0.112** (1.82 / 0.04) | 0.171 (0.60 / 0.11) | 0.113 (0.35 / 0.22) | 0.191 |
+| graphic (3) | 2.944 | 2.234 | **2.126** | 2.146 (1.07 / 1.01) | 2.392 |
+| alpha (2) | 1.248 | 0.735 | 0.741 | **0.684** (0.28 / 0.19) | 0.729 |
+
+Photos come out 1.9% below JPEG XL (effort 7) and 10% below WebP, screens level with WebP, the alpha images smallest. Per image, the one clear loss is the dithered gradient (6.52 bpp against JPEG XL's 6.29). Encoding is as fast as JPEG XL's; decoding is 3–6× slower, as context mixing does the same work both ways.
+
+How it got there, photos / screens in bpp:
+
+| Step | Photo | Screen |
+| --- | ---: | ---: |
+| Per-strip transform and predictors, bias correction, residuals by a mixer of 6 context models | 8.822 | 0.426 |
+| A match model (where the pixel's neighbourhood was last seen) | 8.836 | 0.187 |
+| A wider neighbourhood for it | 8.833 | 0.180 |
+| Whole-pixel copies of W, N, NE, NW or the match, coded first | 8.571 | 0.113 |
+| More contexts for the copies | 8.564 | 0.112 |
+| Slower mixer (error × 1 >> 12 instead of × 6 >> 10) and APM (rate 64 instead of 32) | 8.387 | 0.113 |
+
+Kodak's photos have exact repeats of a neighbour's colour at 10–22% of their pixels, which is why copies helped photos too. Counter limits other than 255 (direct) and 60 (hashed) were worse. The hashed tables are sized by the strip (up to 2^22 counters), so small images don't pay for clearing large tables. Strips of about 2^19 pixels code in parallel; the file doesn't depend on the thread count.

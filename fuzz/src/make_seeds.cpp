@@ -25,6 +25,7 @@
 #include <compressor/engine/engine.h>
 #include <compressor/entropy/rans.h>
 #include <compressor/entropy/tans.h>
+#include <compressor/image/image.h>
 #include <compressor/lz77/lz77.h>
 #include <compressor/lzr/lzr.h>
 #include <compressor/lzt/lzt.h>
@@ -398,6 +399,26 @@ try
         }
     }
     write(dir / "container" / "image.ingot", encode(image(40)));
+    {
+        // Image files of each channel count, and a PPM.
+        std::filesystem::create_directories(dir / "image");
+        for (uint8_t channels = 1; channels <= 4; ++channels)
+        {
+            compressor::Image picture{
+                .width = 24, .height = 16, .channels = channels, .pixels = {}};
+            const std::string bytes = text(std::size_t{24} * 16 * channels);
+            picture.pixels.assign(bytes.begin(), bytes.end());
+            const std::vector<uint8_t> coded = compressor::encode_image(picture);
+            write(dir / "image" / ("channels" + std::to_string(channels) + ".ingoti"),
+                  std::string(coded.begin(), coded.end()));
+            if (channels == 3)
+            {
+                std::ostringstream ppm;
+                compressor::write_pnm(ppm, picture);
+                write(dir / "image" / "picture.ppm", ppm.str());
+            }
+        }
+    }
     {
         // Long-range references: the same text again, 3 blocks later.
         compressor::BlockEncoder encoder([] {

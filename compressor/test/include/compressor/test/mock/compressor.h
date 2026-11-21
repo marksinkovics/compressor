@@ -46,6 +46,8 @@ public:
                 (const std::vector<std::filesystem::path>&, const std::filesystem::path&,
                  std::size_t),
                 (override));
+    MOCK_METHOD(bool, image, (const std::filesystem::path&, const std::filesystem::path&, bool),
+                (override));
 };
 
 #endif /* MockICompressor_h */

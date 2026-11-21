@@ -543,6 +543,22 @@ TEST_F(CLITests, Cat_with_a_range_or_without_a_path_reads_a_range)
     EXPECT_NE(run({"cat", "--range", "20:10", input_}), EXIT_SUCCESS);
 }
 
+TEST_F(CLITests, Image_encode_and_decode_pass_the_paths_and_the_direction)
+{
+    EXPECT_CALL(*compressor_, image(fs::path(input_), fs::path(output_), true))
+        .WillOnce(Return(true));
+    EXPECT_EQ(run({"image", "encode", "-i", input_, "-o", output_, "-T", "3"}), EXIT_SUCCESS);
+    EXPECT_EQ(threads_, 3U);
+
+    compressor_ = std::make_unique<MockICompressor>();
+    EXPECT_CALL(*compressor_, image(fs::path(input_), fs::path(output_), false))
+        .WillOnce(Return(false));
+    EXPECT_EQ(run({"image", "decode", "-i", input_, "-o", output_}), EXIT_FAILURE);
+
+    compressor_ = std::make_unique<MockICompressor>();
+    EXPECT_NE(run({"image"}), EXIT_SUCCESS);
+}
+
 TEST_F(CLITests, Encode_long_passes_the_window)
 {
     EXPECT_CALL(*compressor_, encode(::testing::_, ::testing::_)).WillOnce(Return(true));

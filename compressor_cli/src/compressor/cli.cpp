@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -283,6 +284,27 @@ int CLI::run(std::span<const char* const> args)
                      "Largest dictionary in bytes (default 112640, at most 1 MiB)")
         ->check(::CLI::Range(std::size_t{256}, max_dictionary_bytes));
 
+    Settings image_encode_settings;
+    Settings image_decode_settings;
+    auto* image = app.add_subcommand("image", "Lossless image coding (PGM, PPM, PAM)");
+    image->require_subcommand(1);
+    const auto add_image_command = [&](const std::string& name, const std::string& description,
+                                       Settings& settings) {
+        auto* command = image->add_subcommand(name, description);
+        command
+            ->add_option("-i,--input", settings.input, "Input file; - or omitted: standard input")
+            ->check(existing_input(false));
+        command->add_option("-o,--output", settings.output,
+                            "Output file; - or omitted: standard output");
+        add_threads(*command, settings);
+        return command;
+    };
+    auto* image_encode = add_image_command(
+        "encode", "Binary PGM, PPM or PAM (8 bits per channel) into an ingot image file",
+        image_encode_settings);
+    auto* image_decode = add_image_command("decode", "An ingot image file into PGM, PPM or PAM",
+                                           image_decode_settings);
+
     try
     {
         app.parse(static_cast<int>(args.size()), args.data());
@@ -331,6 +353,19 @@ int CLI::run(std::span<const char* const> args)
         return finish(compressor->repair(repair_settings.input, repair_settings.repair_file,
                                          repair_settings.output),
                       "Repairing " + repair_settings.input);
+    }
+    for (const auto& [command, settings, encoding] :
+         {std::tuple{image_encode, &image_encode_settings, true},
+          std::tuple{image_decode, &image_decode_settings, false}})
+    {
+        if (command->parsed())
+        {
+            const auto compressor =
+                make_compressor_({.threads = settings->threads, .level = default_level});
+            return finish(compressor->image(settings->input, settings->output, encoding),
+                          std::string(encoding ? "Encoding " : "Decoding ") +
+                              input_name(*settings));
+        }
     }
     if (train->parsed())
     {

@@ -252,6 +252,32 @@ Errors (`compressor::Error`):
 
 `ingot decode` reports the error on stderr, exits non-zero and doesn't create or change the output file. Decoding to standard output can't take back what is already written: the blocks before the failing one stay in the output.
 
+## Image file
+
+`ingot image encode` writes an image file of its own, not a container (`compressor/include/compressor/image/image.h`). All numbers are little-endian.
+
+| Offset | Size | Field |
+|---:|---:|---|
+| 0 | 4 | Magic `89 49 4E 49` (`\x89INI`) |
+| 4 | 1 | Version: 1 |
+| 5 | 1 | Channels: 1 grey, 2 grey and alpha, 3 RGB, 4 RGBA |
+| 6 | 1 | Bits per channel: 8 |
+| 7 | 4 | Width, 1 to 65536 |
+| 11 | 4 | Height, 1 to 65536 |
+| 15 | 4 | Rows per strip, 1 to the height. The encoder writes `min(height, max(1, 2^19 / width))`, so strips hold about half a megapixel |
+| 19 | 4 | CRC32 of the pixels, channels interleaved, rows top to bottom |
+| 23 | rest | Each strip: its byte length (4), then its payload |
+
+A reader rejects a file whose pixel count exceeds 32768 times its size: a pixel costs at least one coded decision of at least log2(4096 / 4095) bits, so no real file comes near that.
+
+Strips are coded independently (any thread can decode any strip; pixels above a strip are not used). A strip's payload: the colour transform (1 byte: 0 none, 1 subtract green: G, R − G, B − G; 2 YCoCg-R; only 0 with fewer than 3 channels; alpha is never transformed), one predictor per channel (1 byte each: 0 left, 1 up, 2 the average of the two rounded down, 3 Paeth, 4 MED as in JPEG-LS, 5 GAP as in CALIC), then the stream of the binary arithmetic coder of the CM coder (12-bit probabilities, 4 flush bytes), which decoding must use exactly. The encoder picks the transform and predictors per strip by the residual entropy given the local activity on every other row.
+
+The decoder runs the same model as the encoder, which `image.cpp` defines and which is therefore part of the format. Pixels are coded in raster order; neighbours outside the strip are replaced as in `neighbours()` (W by N, then by the middle of the range; N by W; NW, NE, NN by N; WW by W). Per pixel:
+
+- **Copies:** the pixel may equal W, N, NE, NW or a match candidate (the last pixel whose causal neighbourhood hashed the same: a 12-pixel neighbourhood if it has a candidate, else W, N, NW, NE and WW), tried in that order, skipping one whose colour equals an earlier one's. Each try is one binary decision; on a hit the pixel is that colour and nothing else is coded for it.
+- **Residuals:** otherwise each channel, in order, is predicted by its predictor plus a bias correction (the rounded mean of earlier errors in a context of the six neighbours' signs relative to the prediction and the activity, as in CALIC), and the residual, wrapped to the channel's range (8 bits, or 9 for a difference channel), is coded as a zero flag, a sign, the magnitude's bit length in unary and the bits below its leading one.
+- Every decision's probability mixes counters in contexts of the local activity, the neighbours' residuals, the texture pattern, the previous channel's residual at this pixel, the gradient shape, a hash of the neighbours' exact values, and the match candidate's value relative to the prediction; a logistic mixer selected by the channel, decision kind, activity and match strength, then an APM.
+
 ## Repair file
 
 `ingot encode --repair PERCENT` writes `OUTPUT.repair` beside the output (`compressor/include/compressor/repair/repair.h`); it protects any file, so `-f gzip` and `-f zip` outputs get one too. The protected file is cut into `k` shards of `shard size` bytes (the last padded with zeros; shards of at least 64 KiB, at most 200 of them) and `m` parity shards (`ceil(k × PERCENT / 100)`, at least 1, `k + m ≤ 255`) are computed over GF(2^8) (polynomial `0x11D`) as `parity[p] = Σ_i C[p][i] · data[i]` byte by byte, with the Cauchy matrix `C[p][i] = 1 / ((k + p) XOR i)`. Any `k` intact shards of the `k + m` rebuild the file, so up to `m` damaged shards are recoverable.
