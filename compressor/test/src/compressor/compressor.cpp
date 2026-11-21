@@ -657,11 +657,15 @@ TEST_F(CompressorArchiveCommandTests, Image_encodes_a_pnm_file_and_decodes_it_ba
         ppm.push_back(static_cast<char>(i * 13));
     }
     write_file(dir_ / "a.ppm", ppm);
-    ASSERT_TRUE(make_compressor().image(dir_ / "a.ppm", dir_ / "a.ingoti", true)) << err_.str();
-    ASSERT_TRUE(make_compressor().image(dir_ / "a.ingoti", dir_ / "b.ppm", false)) << err_.str();
+    ASSERT_TRUE(make_compressor().image(dir_ / "a.ppm", dir_ / "a.ingoti", true, 0)) << err_.str();
+    ASSERT_TRUE(make_compressor().image(dir_ / "a.ingoti", dir_ / "b.ppm", false, 0)) << err_.str();
     EXPECT_EQ(read_file(dir_ / "b.ppm"), ppm);
+    // Lossy: decodes to an image of the same size.
+    ASSERT_TRUE(make_compressor().image(dir_ / "a.ppm", dir_ / "a.ingotl", true, 90)) << err_.str();
+    ASSERT_TRUE(make_compressor().image(dir_ / "a.ingotl", dir_ / "c.ppm", false, 0)) << err_.str();
+    EXPECT_EQ(read_file(dir_ / "c.ppm").size(), ppm.size());
 
-    EXPECT_FALSE(make_compressor().image(folder_ / "a.txt", dir_ / "x", true));
+    EXPECT_FALSE(make_compressor().image(folder_ / "a.txt", dir_ / "x", true, 0));
     EXPECT_THAT(err_.str(), HasSubstr("not an image"));
     EXPECT_FALSE(fs::exists(dir_ / "x"));
 }

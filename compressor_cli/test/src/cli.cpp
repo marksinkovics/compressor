@@ -545,13 +545,22 @@ TEST_F(CLITests, Cat_with_a_range_or_without_a_path_reads_a_range)
 
 TEST_F(CLITests, Image_encode_and_decode_pass_the_paths_and_the_direction)
 {
-    EXPECT_CALL(*compressor_, image(fs::path(input_), fs::path(output_), true))
+    EXPECT_CALL(*compressor_, image(fs::path(input_), fs::path(output_), true, 0U))
         .WillOnce(Return(true));
     EXPECT_EQ(run({"image", "encode", "-i", input_, "-o", output_, "-T", "3"}), EXIT_SUCCESS);
     EXPECT_EQ(threads_, 3U);
 
     compressor_ = std::make_unique<MockICompressor>();
-    EXPECT_CALL(*compressor_, image(fs::path(input_), fs::path(output_), false))
+    EXPECT_CALL(*compressor_, image(fs::path(input_), fs::path(output_), true, 75U))
+        .WillOnce(Return(true));
+    EXPECT_EQ(run({"image", "encode", "--quality", "75", "-i", input_, "-o", output_}),
+              EXIT_SUCCESS);
+    compressor_ = std::make_unique<MockICompressor>();
+    EXPECT_NE(run({"image", "encode", "--quality", "0", "-i", input_, "-o", output_}),
+              EXIT_SUCCESS);
+
+    compressor_ = std::make_unique<MockICompressor>();
+    EXPECT_CALL(*compressor_, image(fs::path(input_), fs::path(output_), false, 0U))
         .WillOnce(Return(false));
     EXPECT_EQ(run({"image", "decode", "-i", input_, "-o", output_}), EXIT_FAILURE);
 

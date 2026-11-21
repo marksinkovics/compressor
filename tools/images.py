@@ -46,6 +46,7 @@ SWEEPS = {
     "webp": [2, 10, 20, 35, 50, 65, 75, 85, 92, 97, 100],
     "avif": [63, 58, 52, 46, 40, 34, 28, 22, 16, 8, 2],
     "jxl": [25.0, 15.0, 10.0, 7.0, 5.0, 3.5, 2.5, 1.8, 1.2, 0.7, 0.35, 0.15],
+    "ingot": [5, 10, 20, 35, 50, 65, 75, 85, 92, 97, 100],
 }
 
 
@@ -146,7 +147,7 @@ def lossless(path, app, work, coders):
     return {"width": width, "height": height, "alpha": alpha, "lossless": results}
 
 
-def lossy_commands(coder, setting, source, out, decoded):
+def lossy_commands(coder, setting, source, out, decoded, app=None):
     if coder == "jpeg":
         return (["magick", source, "-strip", "-quality", str(setting), out],
                 ["magick", out, decoded])
@@ -158,6 +159,11 @@ def lossy_commands(coder, setting, source, out, decoded):
                  "-crf", str(setting), "-preset", "6", "-pix_fmt", "yuv420p",
                  "-svtav1-params", "lp=1", "-frames:v", "1", out],
                 ["ffmpeg", "-loglevel", "error", "-y", "-i", out, decoded])
+    if coder == "ingot":
+        pam = source[: -len(".png")] + ".pam"
+        return ([app, "image", "encode", "-T", "1", "--quality", str(setting), "-i", pam, "-o", out],
+                ["sh", "-c", f'"$0" image decode -T 1 -i "$1" -o "$2.pam" && magick "$2.pam" "$2" '
+                 f'&& rm "$2.pam"', app, out, decoded])
     return (["cjxl", "--quiet", "-d", str(setting), "-e", "7", "--num_threads=0", source, out],
             ["djxl", "--quiet", "--num_threads=0", out, decoded])
 
@@ -178,23 +184,26 @@ def at_target(points, target):
     return None
 
 
-def lossy(path, targets, work, coders):
+def lossy(path, targets, work, coders, app):
     width, height, alpha = identify(path)
     if alpha:
         return None
     source = work / (path.stem + ".src.png")
     run(["magick", str(path), "-alpha", "off", "-depth", "8", str(source)])
+    run(["magick", str(source), str(source.with_suffix(".pam"))])
     results = {}
-    extensions = {"jpeg": ".jpg", "webp": ".webp", "avif": ".avif", "jxl": ".jxl"}
+    extensions = {"jpeg": ".jpg", "webp": ".webp", "avif": ".avif", "jxl": ".jxl",
+                  "ingot": ".ingotl"}
     for coder, settings in SWEEPS.items():
-        if not selected(coder, coders):
+        if not selected(coder, coders) or (coder == "ingot" and not app):
             continue
         points = []
         encode_total = decode_total = 0.0
         for setting in settings:
             out = work / f"{path.stem}.{coder}{extensions[coder]}"
             decoded = work / f"{path.stem}.{coder}.dec.png"
-            encode, decode = lossy_commands(coder, setting, str(source), str(out), str(decoded))
+            encode, decode = lossy_commands(coder, setting, str(source), str(out), str(decoded),
+                                            app)
             encode_total += run(encode)
             decode_total += run(decode)
             points.append((score(str(source), str(decoded)),
@@ -208,6 +217,7 @@ def lossy(path, targets, work, coders):
             "decode_s": decode_total / len(settings),
         }
     source.unlink()
+    source.with_suffix(".pam").unlink()
     return results
 
 
@@ -218,7 +228,7 @@ def measure(path, app, do_lossless, do_lossy, targets, coders):
         if do_lossless:
             record.update(lossless(path, app, work, coders))
         if do_lossy:
-            record["lossy"] = lossy(path, targets, work, coders)
+            record["lossy"] = lossy(path, targets, work, coders, app)
         return record
 
 

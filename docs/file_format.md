@@ -278,6 +278,22 @@ The decoder runs the same model as the encoder, which `image.cpp` defines and wh
 - **Residuals:** otherwise each channel, in order, is predicted by its predictor plus a bias correction (the rounded mean of earlier errors in a context of the six neighbours' signs relative to the prediction and the activity, as in CALIC), and the residual, wrapped to the channel's range (8 bits, or 9 for a difference channel), is coded as a zero flag, a sign, the magnitude's bit length in unary and the bits below its leading one.
 - Every decision's probability mixes counters in contexts of the local activity, the neighbours' residuals, the texture pattern, the previous channel's residual at this pixel, the gradient shape, a hash of the neighbours' exact values, and the match candidate's value relative to the prediction; a logistic mixer selected by the channel, decision kind, activity and match strength, then an APM.
 
+## Lossy image file (experiment)
+
+`ingot image encode --quality Q` writes the lossy experiment of run 8, item 3 (`encode_lossy_image()`); `ingot image decode` tells the two kinds apart by their magic. Grey or RGB, 8 bits per channel.
+
+| Offset | Size | Field |
+|---:|---:|---|
+| 0 | 4 | Magic `89 49 4E 4C` (`\x89INL`) |
+| 4 | 1 | Version: 1 |
+| 5 | 1 | Channels: 1 or 3 |
+| 6 | 1 | Quality, 1 to 100 |
+| 7 | 4 | Width, 1 to 65536 |
+| 11 | 4 | Height, 1 to 65536 |
+| 15 | rest | One stream of the CM coder's binary arithmetic coder |
+
+RGB is converted to YCbCr (JPEG's full-range matrix) at full resolution, the image is padded to 8×8 blocks by repeating its last column and row, and each block of each channel goes through an orthonormal 8×8 DCT. The quantisers are JPEG's example tables (ITU T.81, Annex K) scaled by libjpeg's quality formula, with the chroma table first multiplied by `(120 + 9 × quality / 10) / 100`; the encoder rounds AC values with a dead zone of 0.1. Blocks are coded in raster order, each block's channels in turn: the DC as the residual of the median predictor over the DCs of the blocks to the left, above and above-left; the count of nonzero AC values (a 6-bit binary tree); then the AC values in zigzag order until that many nonzeros are coded, each as a zero flag, a sign, the magnitude's bit length in unary and its lower bits. Every decision mixes counters in contexts of the zigzag position, the nonzeros left, the neighbouring blocks' magnitudes, their signed values at that position and, for chroma, the luma value there (`CoefficientModel` in `image.cpp`, part of the format). Decoding dequantises, inverts the DCT, smooths block edges where the step is below 0.6 times the first AC quantiser (`deblock()`), and converts back to RGB with rounding and clamping.
+
 ## Repair file
 
 `ingot encode --repair PERCENT` writes `OUTPUT.repair` beside the output (`compressor/include/compressor/repair/repair.h`); it protects any file, so `-f gzip` and `-f zip` outputs get one too. The protected file is cut into `k` shards of `shard size` bytes (the last padded with zeros; shards of at least 64 KiB, at most 200 of them) and `m` parity shards (`ceil(k × PERCENT / 100)`, at least 1, `k + m ≤ 255`) are computed over GF(2^8) (polynomial `0x11D`) as `parity[p] = Σ_i C[p][i] · data[i]` byte by byte, with the Cauchy matrix `C[p][i] = 1 / ((k + p) XOR i)`. Any `k` intact shards of the `k + m` rebuild the file, so up to `m` damaged shards are recoverable.

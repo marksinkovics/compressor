@@ -46,6 +46,7 @@ struct Settings
     std::string range;
     unsigned repair = 0;
     unsigned window_log2 = 0;
+    unsigned quality = 0;
     std::string repair_file;
     std::vector<std::string> inputs;
     std::size_t size = default_dictionary_bytes;
@@ -302,6 +303,10 @@ int CLI::run(std::span<const char* const> args)
     auto* image_encode = add_image_command(
         "encode", "Binary PGM, PPM or PAM (8 bits per channel) into an ingot image file",
         image_encode_settings);
+    image_encode
+        ->add_option("--quality", image_encode_settings.quality,
+                     "Lossy, 1-100 (an experiment: 8x8 DCT, grey or RGB); omitted: lossless")
+        ->check(::CLI::Range(1U, 100U));
     auto* image_decode = add_image_command("decode", "An ingot image file into PGM, PPM or PAM",
                                            image_decode_settings);
 
@@ -362,9 +367,9 @@ int CLI::run(std::span<const char* const> args)
         {
             const auto compressor =
                 make_compressor_({.threads = settings->threads, .level = default_level});
-            return finish(compressor->image(settings->input, settings->output, encoding),
-                          std::string(encoding ? "Encoding " : "Decoding ") +
-                              input_name(*settings));
+            return finish(
+                compressor->image(settings->input, settings->output, encoding, settings->quality),
+                std::string(encoding ? "Encoding " : "Decoding ") + input_name(*settings));
         }
     }
     if (train->parsed())

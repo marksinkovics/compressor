@@ -850,3 +850,28 @@ How it got there, photos / screens in bpp:
 | Slower mixer (error × 1 >> 12 instead of × 6 >> 10) and APM (rate 64 instead of 32) | 8.387 | 0.113 |
 
 Kodak's photos have exact repeats of a neighbour's colour at 10–22% of their pixels, which is why copies helped photos too. Counter limits other than 255 (direct) and 60 (hashed) were worse. The hashed tables are sized by the strip (up to 2^22 counters), so small images don't pay for clearing large tables. Strips of about 2^19 pixels code in parallel; the file doesn't depend on the thread count.
+
+## Image track: lossy experiment (2026-11-21)
+
+Run 8, item 3: `ingot image encode --quality Q` (format in `docs/file_format.md`, "Lossy image file (experiment)"): YCbCr at full resolution, 8×8 DCT, JPEG's quantisation tables, the coefficients coded by a context mixer instead of Huffman codes, deblocking on decode. Mean bits per pixel at equal SSIMULACRA2 (`tools/images.py`, full numbers in `docs/benchmarks/images/2026-11-21-0eb812b.json`; "–": not reached on every image):
+
+| Class | Score | JPEG | WebP | AVIF | JPEG XL | ingot |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| photo | 70 | 1.125 | 0.951 | 0.942 | **0.850** | 0.855 |
+| photo | 80 | 1.792 | 1.487 | 1.517 | **1.313** | 1.336 |
+| photo | 90 | 4.095 | – | – | **2.651** | 2.721 |
+| screen | 80 | 0.603 | 0.251 | 0.238 | **0.084** | 0.387 |
+| graphic | 80 | 0.476 | 0.283 | **0.135** | 0.241 | 0.281 |
+
+On photos the experiment is 24–34% smaller than JPEG, 10% smaller than WebP and AVIF at 70 and 80, and within 0.6–2.6% of JPEG XL. On screens and graphics an 8×8 DCT is the wrong tool: sharp edges and text cost many coefficients, and JPEG XL (with its modular mode and patches) and AVIF (with its screen tools) are 2–5× smaller.
+
+Steps on photos, bpp at scores 70 / 80 / 90:
+
+| Step | 70 | 80 | 90 |
+| --- | ---: | ---: | ---: |
+| JPEG's tables and quality scale, coefficients by a 3-context mixer | 0.911 | 1.422 | 2.884 |
+| Dead zone 0.1, chroma table ×2, deblocking at 0.6 × the first AC quantiser | 0.877 | 1.354 | 2.753 |
+| Contexts for the neighbouring blocks' signed values and the luma value | 0.867 | 1.338 | 2.721 |
+| Chroma scale growing with quality, `120 + 9 × quality / 10` percent | 0.855 | 1.336 | 2.721 |
+
+Adaptive quantisation by block activity was tried both ways (coarser for busy blocks, as for masking, and the opposite), with 2 bits per block of side information: every setting was worse (by 0.4–6%), so it was removed. Closing the rest of the gap to JPEG XL would take what it has beyond this: larger and variable transform sizes, a perceptual colour space (XYB), and per-block quantisation driven by a perceptual model rather than variance; for screens, a lossless-style mode for flat regions and text.

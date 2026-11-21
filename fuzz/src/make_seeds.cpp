@@ -413,6 +413,12 @@ try
                   std::string(coded.begin(), coded.end()));
             if (channels == 3)
             {
+                const auto lossy = compressor::encode_lossy_image(picture, 60);
+                if (lossy)
+                {
+                    write(dir / "image" / "lossy.ingotl",
+                          std::string(lossy->begin(), lossy->end()));
+                }
                 std::ostringstream ppm;
                 compressor::write_pnm(ppm, picture);
                 write(dir / "image" / "picture.ppm", ppm.str());

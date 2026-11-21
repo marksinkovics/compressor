@@ -29,6 +29,7 @@ ingot encode --repair 5 -i data.tar -o data.tar.ingot  # also data.tar.ingot.rep
 ingot encode --long -i backups.tar -o backups.tar.ingot  # copy repeats up to 256 MiB back (--long=BITS)
 ingot image encode -i photo.ppm -o photo.ingoti         # lossless images: PGM, PPM or PAM in
 ingot image decode -i photo.ingoti -o photo.ppm
+ingot image encode --quality 80 -i photo.ppm -o photo.ingotl  # lossy (an experiment)
 ingot repair data.tar.ingot                           # undo damage to it, using the .repair file
 ingot encode -f gzip -i notes.txt -o notes.txt.gz     # or -f zip for a folder
 ```

@@ -41,6 +41,12 @@ std::expected<Image, Error> decode_image(std::span<const uint8_t> bytes, unsigne
 // Whether `bytes` start like an image file.
 bool is_image_file(std::span<const uint8_t> bytes);
 
+// A lossy experiment (docs/benchmarks.md, "Image track: lossy experiment"), its own file: 1 or 3
+// channels, `quality` 1 to 100 (not_image otherwise).
+std::expected<std::vector<uint8_t>, Error> encode_lossy_image(const Image& image, unsigned quality);
+std::expected<Image, Error> decode_lossy_image(std::span<const uint8_t> bytes);
+bool is_lossy_image_file(std::span<const uint8_t> bytes);
+
 } // namespace compressor
 
 #endif /* Image_h */

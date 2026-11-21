@@ -12,6 +12,7 @@
 #include <future>
 #include <istream>
 #include <limits>
+#include <numbers>
 #include <optional>
 #include <ostream>
 #include <span>
@@ -1293,7 +1294,549 @@ std::expected<void, Error> decode_strip(std::span<const uint8_t> payload, std::s
     return {};
 }
 
+// ---------------------------------------------------------------------------------------------
+// Lossy experiment (docs/benchmarks.md, "Image track: lossy experiment"): YCbCr at full
+// resolution, 8x8 DCT, JPEG's quantisation tables scaled by a quality, coefficients coded by a
+// context mixer.
+
+constexpr std::array<uint8_t, 4> lossy_magic{0x89, 'I', 'N', 'L'};
+constexpr uint8_t lossy_version = 1;
+constexpr std::size_t lossy_header_bytes = 4 + 1 + 1 + 1 + 4 + 4;
+constexpr std::size_t block = 8;
+
+constexpr std::array<uint8_t, 64> zigzag{
+    0,  1,  8,  16, 9,  2,  3,  10, 17, 24, 32, 25, 18, 11, 4,  5,  12, 19, 26, 33, 40, 48,
+    41, 34, 27, 20, 13, 6,  7,  14, 21, 28, 35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23,
+    30, 37, 44, 51, 58, 59, 52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63};
+
+// JPEG's example tables (ITU T.81, Annex K), row-major.
+constexpr std::array<uint8_t, 64> luma_table{
+    16, 11, 10, 16, 24,  40,  51,  61,  12, 12, 14, 19, 26,  58,  60,  55,
+    14, 13, 16, 24, 40,  57,  69,  56,  14, 17, 22, 29, 51,  87,  80,  62,
+    18, 22, 37, 56, 68,  109, 103, 77,  24, 35, 55, 64, 81,  104, 113, 92,
+    49, 64, 78, 87, 103, 121, 120, 101, 72, 92, 95, 98, 112, 100, 103, 99};
+constexpr std::array<uint8_t, 64> chroma_table{
+    17, 18, 24, 47, 99, 99, 99, 99, 18, 21, 26, 66, 99, 99, 99, 99, 24, 26, 56, 99, 99, 99,
+    99, 99, 47, 66, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99};
+
+std::array<int, 64> quantisers(unsigned quality, bool chroma)
+{
+    const int scale =
+        quality < 50 ? static_cast<int>(5000 / quality) : static_cast<int>(200 - (2 * quality));
+    std::array<int, 64> q{};
+    for (std::size_t i = 0; i < 64; ++i)
+    {
+        // Coarser chroma than JPEG's table, more so at high quality, where SSIMULACRA2 notices
+        // chroma least relative to the bits it costs.
+        const int chroma_percent = 120 + (9 * static_cast<int>(quality) / 10);
+        const int base = chroma ? chroma_table[i] * chroma_percent / 100 : luma_table[i];
+        q[i] = std::clamp(((base * scale) + 50) / 100, 1, 255);
+    }
+    return q;
+}
+
+const std::array<double, 64>& dct_basis()
+{
+    static const std::array<double, 64> basis = [] {
+        std::array<double, 64> b{};
+        for (std::size_t u = 0; u < block; ++u)
+        {
+            const double c = u == 0 ? std::sqrt(1.0 / block) : std::sqrt(2.0 / block);
+            for (std::size_t x = 0; x < block; ++x)
+            {
+                b[(u * block) + x] =
+                    c * std::cos((2.0 * static_cast<double>(x) + 1.0) * static_cast<double>(u) *
+                                 std::numbers::pi / (2.0 * block));
+            }
+        }
+        return b;
+    }();
+    return basis;
+}
+
+void forward_dct(std::array<double, 64>& data)
+{
+    const auto& b = dct_basis();
+    std::array<double, 64> rows{};
+    for (std::size_t y = 0; y < block; ++y)
+    {
+        for (std::size_t u = 0; u < block; ++u)
+        {
+            double sum = 0;
+            for (std::size_t x = 0; x < block; ++x)
+            {
+                sum += b[(u * block) + x] * data[(y * block) + x];
+            }
+            rows[(y * block) + u] = sum;
+        }
+    }
+    for (std::size_t u = 0; u < block; ++u)
+    {
+        for (std::size_t v = 0; v < block; ++v)
+        {
+            double sum = 0;
+            for (std::size_t y = 0; y < block; ++y)
+            {
+                sum += b[(v * block) + y] * rows[(y * block) + u];
+            }
+            data[(v * block) + u] = sum;
+        }
+    }
+}
+
+void inverse_dct(std::array<double, 64>& data)
+{
+    const auto& b = dct_basis();
+    std::array<double, 64> columns{};
+    for (std::size_t u = 0; u < block; ++u)
+    {
+        for (std::size_t y = 0; y < block; ++y)
+        {
+            double sum = 0;
+            for (std::size_t v = 0; v < block; ++v)
+            {
+                sum += b[(v * block) + y] * data[(v * block) + u];
+            }
+            columns[(y * block) + u] = sum;
+        }
+    }
+    for (std::size_t y = 0; y < block; ++y)
+    {
+        for (std::size_t x = 0; x < block; ++x)
+        {
+            double sum = 0;
+            for (std::size_t u = 0; u < block; ++u)
+            {
+                sum += b[(u * block) + x] * columns[(y * block) + u];
+            }
+            data[(y * block) + x] = sum;
+        }
+    }
+}
+
+// Smooths across block edges where the step is small enough to be a blocking artefact: the
+// two pixels on each side move toward each other, by at most a fraction of the quantiser.
+void deblock(std::vector<double>& plane, std::size_t width, std::size_t height,
+             const std::array<int, 64>& q)
+{
+    const double limit = q[1] * 0.6;
+    const auto filter = [&](double& p1, double& p0, double& q0, double& q1) {
+        const double step = q0 - p0;
+        if (std::abs(step) >= limit || std::abs(p1 - p0) >= limit / 2 ||
+            std::abs(q1 - q0) >= limit / 2)
+        {
+            return;
+        }
+        const double delta = step / 4;
+        p0 += delta;
+        q0 -= delta;
+        p1 += delta / 2;
+        q1 -= delta / 2;
+    };
+    for (std::size_t y = 0; y < height; ++y)
+    {
+        for (std::size_t x = block; x < width; x += block)
+        {
+            double* row = plane.data() + (y * width);
+            filter(row[x - 2], row[x - 1], row[x], row[x + 1]);
+        }
+    }
+    for (std::size_t y = block; y < height; y += block)
+    {
+        for (std::size_t x = 0; x < width; ++x)
+        {
+            filter(plane[((y - 2) * width) + x], plane[((y - 1) * width) + x],
+                   plane[(y * width) + x], plane[((y + 1) * width) + x]);
+        }
+    }
+}
+
+// The coefficient model: every decision mixes counters in a few contexts.
+class CoefficientModel
+{
+public:
+    static constexpr std::size_t kinds = 164; // see the decision ids below
+
+    CoefficientModel()
+        : position_(std::size_t{3} * 64 * 16 * kinds)
+        , neighbours_(std::size_t{3} * 64 * 16 * kinds)
+        , count_(std::size_t{3} * 64 * 8 * kinds)
+        , left_(std::size_t{3} * 64 * 16 * kinds)
+        , up_(std::size_t{3} * 64 * 16 * kinds)
+        , luma_(std::size_t{3} * 64 * 16 * kinds)
+        , mixer_(std::size_t{3} * 16 * 4)
+        , apm_(std::size_t{3} * kinds * 4)
+    {
+    }
+
+    // `k`: zigzag position (0 for DC and the count); `remaining`: nonzeros left to code,
+    // bucketed; `around`: the neighbouring blocks' magnitude at `k`, bucketed (0-15).
+    // `left`, `up`: those blocks' signed value at `k`; `luma`: for chroma, the first channel's
+    // signed value at `k` in this block.
+    void start(unsigned channel, unsigned k, unsigned remaining, unsigned around, int left = 0,
+               int up = 0, int luma = 0)
+    {
+        const auto signed_bucket = [](int v) {
+            const auto m = std::min(7U, bit_length(static_cast<unsigned>(std::abs(v))));
+            return v < 0 ? 7 - m : 7 + m;
+        };
+        left_index_ = (((channel * 64) + k) * 16 + signed_bucket(left)) * kinds;
+        up_index_ = (((channel * 64) + k) * 16 + signed_bucket(up)) * kinds;
+        luma_index_ = (((channel * 64) + k) * 16 + signed_bucket(luma)) * kinds;
+        channel_ = channel;
+        position_index_ = (((channel * 64) + k) * 16 + std::min(remaining, 15U)) * kinds;
+        neighbours_index_ = (((channel * 64) + k) * 16 + std::min(around, 15U)) * kinds;
+        count_index_ = (((channel * 64) + k) * 8 + std::min(around / 2, 7U)) * kinds;
+        mixer_base_ = (std::size_t{channel} * 16 + std::min(k, 15U)) * 4;
+    }
+
+    int p(std::size_t decision)
+    {
+        counters_ = {&position_[position_index_ + decision],
+                     &neighbours_[neighbours_index_ + decision],
+                     &count_[count_index_ + decision],
+                     &left_[left_index_ + decision],
+                     &up_[up_index_ + decision],
+                     &luma_[luma_index_ + decision]};
+        for (std::size_t i = 0; i < counters_.size(); ++i)
+        {
+            inputs_[i] = stretch(counters_[i]->p12());
+        }
+        inputs_[6] = 256;
+        for (std::size_t i = 7; i < Mixer::inputs; ++i)
+        {
+            inputs_[i] = 0;
+        }
+        const std::size_t group = decision == 0 ? 0 : (decision == 1 ? 1 : (decision < 32 ? 2 : 3));
+        const int mixed = mixer_.mix(inputs_, mixer_base_ + group);
+        const int refined = apm_.p(mixed, ((channel_ * kinds) + decision) * 4 + group);
+        return std::clamp((mixed + (3 * refined)) / 4, 1, 4095);
+    }
+
+    void update(unsigned bit)
+    {
+        for (Counter* counter : counters_)
+        {
+            counter->update(bit, direct_limit);
+        }
+        mixer_.update(inputs_, bit);
+        apm_.update(bit);
+    }
+
+private:
+    std::vector<Counter> position_;
+    std::vector<Counter> neighbours_;
+    std::vector<Counter> count_;
+    std::vector<Counter> left_;
+    std::vector<Counter> up_;
+    std::vector<Counter> luma_;
+    Mixer mixer_;
+    Apm apm_;
+    unsigned channel_ = 0;
+    std::size_t left_index_ = 0;
+    std::size_t up_index_ = 0;
+    std::size_t luma_index_ = 0;
+    std::size_t position_index_ = 0;
+    std::size_t neighbours_index_ = 0;
+    std::size_t count_index_ = 0;
+    std::size_t mixer_base_ = 0;
+    std::array<Counter*, 6> counters_{};
+    std::array<int, Mixer::inputs> inputs_{};
+};
+
+// Decision ids: 0 zero, 1 sign, 2-17 the magnitude's bit length (unary), 32 + 8 * k + i its
+// mantissa bit i with bit length k + 1 (k < 8); 100-163 the block's nonzero count, a binary tree.
+unsigned bucket(int v)
+{
+    return std::min(15U, bit_length(static_cast<unsigned>(std::abs(v))) * 2);
+}
+
+template <class Coder>
+void code_coefficients(std::vector<std::vector<int>>& levels, std::size_t blocks_x,
+                       std::size_t blocks_y, Coder& coder)
+{
+    constexpr bool encoding = requires(Coder& c) { c.encode(0U, 0); };
+    CoefficientModel model;
+    const auto code = [&](std::size_t decision, unsigned bit) -> unsigned {
+        const int p = model.p(decision);
+        if constexpr (encoding)
+        {
+            coder.encode(bit, p);
+        }
+        else
+        {
+            bit = coder.decode(p);
+        }
+        model.update(bit);
+        return bit;
+    };
+    const auto code_value = [&](int value) -> int {
+        const unsigned zero = code(0, value == 0 ? 1U : 0U);
+        if (zero != 0)
+        {
+            return 0;
+        }
+        const unsigned negative = code(1, value < 0 ? 1U : 0U);
+        const auto magnitude = static_cast<unsigned>(std::abs(value));
+        const unsigned length = encoding ? bit_length(magnitude) : 0;
+        unsigned k = 0;
+        while (k < 15 && code(2 + k, length > k + 1 ? 1U : 0U) != 0)
+        {
+            ++k;
+        }
+        unsigned result = 1;
+        for (unsigned b = k; b-- > 0;)
+        {
+            result = (result << 1U) |
+                     code(32 + (std::min(k, 7U) * 8) + std::min(b, 7U), (magnitude >> b) & 1U);
+        }
+        return negative != 0 ? -static_cast<int>(result) : static_cast<int>(result);
+    };
+    const std::size_t channels = levels.size();
+    for (std::size_t by = 0; by < blocks_y; ++by)
+    {
+        for (std::size_t bx = 0; bx < blocks_x; ++bx)
+        {
+            const std::size_t b = (by * blocks_x) + bx;
+            for (std::size_t c = 0; c < channels; ++c)
+            {
+                std::vector<int>& level = levels[c];
+                int* coefficients = level.data() + (b * 64);
+                const int* left = bx > 0 ? coefficients - 64 : nullptr;
+                const int* up = by > 0 ? coefficients - (blocks_x * 64) : nullptr;
+                const auto around = [&](std::size_t k) {
+                    const int l = left != nullptr ? std::abs(left[zigzag[k]]) : 0;
+                    const int u = up != nullptr ? std::abs(up[zigzag[k]]) : 0;
+                    return bucket((l + u + 1) / 2);
+                };
+                const auto count_of = [](const int* block_levels) {
+                    unsigned n = 0;
+                    for (std::size_t k = 1; k < 64; ++k)
+                    {
+                        n += block_levels[zigzag[k]] != 0 ? 1U : 0U;
+                    }
+                    return n;
+                };
+                // DC: the residual of the median predictor over the neighbouring blocks' DCs.
+                const int dc_left = left != nullptr ? left[0] : (up != nullptr ? up[0] : 0);
+                const int dc_up = up != nullptr ? up[0] : dc_left;
+                const int dc_corner = left != nullptr && up != nullptr
+                                          ? (coefficients - (blocks_x * 64) - 64)[0]
+                                          : dc_up;
+                const int most = std::max(dc_left, dc_up);
+                const int least = std::min(dc_left, dc_up);
+                const int dc_prediction =
+                    dc_corner >= most ? least
+                                      : (dc_corner <= least ? most : dc_left + dc_up - dc_corner);
+                model.start(static_cast<unsigned>(c), 0, 0,
+                            bucket(std::abs(dc_left - dc_corner) + std::abs(dc_up - dc_corner)));
+                const int dc = code_value(encoding ? coefficients[0] - dc_prediction : 0);
+                coefficients[0] = dc + dc_prediction;
+
+                // The AC count, as a 6-bit binary tree.
+                const unsigned neighbour_count = ((left != nullptr ? count_of(left) : 0) +
+                                                  (up != nullptr ? count_of(up) : 0) + 1) /
+                                                 2;
+                model.start(static_cast<unsigned>(c), 0, 0, std::min(15U, neighbour_count / 4));
+                const unsigned count = encoding ? count_of(coefficients) : 0;
+                unsigned node = 1;
+                for (unsigned bit = 6; bit-- > 0;)
+                {
+                    node = (node << 1U) | code(100 + std::min(node, 63U), (count >> bit) & 1U);
+                }
+                unsigned remaining = node - 64;
+                for (std::size_t k = 1; k < 64 && remaining > 0; ++k)
+                {
+                    const std::size_t at = zigzag[k];
+                    model.start(static_cast<unsigned>(c), static_cast<unsigned>(k),
+                                std::min(remaining, 15U), around(k), left != nullptr ? left[at] : 0,
+                                up != nullptr ? up[at] : 0, c > 0 ? levels[0][(b * 64) + at] : 0);
+                    const int value = code_value(encoding ? coefficients[zigzag[k]] : 0);
+                    coefficients[zigzag[k]] = value;
+                    remaining -= value != 0 ? 1U : 0U;
+                }
+            }
+        }
+    }
+}
+
 } // namespace
+
+bool is_lossy_image_file(std::span<const uint8_t> bytes)
+{
+    return bytes.size() >= lossy_magic.size() &&
+           std::equal(lossy_magic.begin(), lossy_magic.end(), bytes.begin());
+}
+
+std::expected<std::vector<uint8_t>, Error> encode_lossy_image(const Image& image, unsigned quality)
+{
+    if ((image.channels != 1 && image.channels != 3) || quality < 1 || quality > 100)
+    {
+        return std::unexpected(Error::not_image);
+    }
+    const std::size_t width = image.width;
+    const std::size_t height = image.height;
+    const std::size_t channels = image.channels;
+    const std::size_t blocks_x = (width + block - 1) / block;
+    const std::size_t blocks_y = (height + block - 1) / block;
+    std::vector<std::vector<int>> levels(channels, std::vector<int>(blocks_x * blocks_y * 64, 0));
+    const std::array<std::array<int, 64>, 2> tables{quantisers(quality, false),
+                                                    quantisers(quality, true)};
+    for (std::size_t by = 0; by < blocks_y; ++by)
+    {
+        for (std::size_t bx = 0; bx < blocks_x; ++bx)
+        {
+            std::array<std::array<double, 64>, 3> data{};
+            for (std::size_t y = 0; y < block; ++y)
+            {
+                for (std::size_t x = 0; x < block; ++x)
+                {
+                    const std::size_t px = std::min(width - 1, (bx * block) + x);
+                    const std::size_t py = std::min(height - 1, (by * block) + y);
+                    const uint8_t* pixel = image.pixels.data() + (((py * width) + px) * channels);
+                    if (channels == 1)
+                    {
+                        data[0][(y * block) + x] = pixel[0] - 128.0;
+                        continue;
+                    }
+                    const double r = pixel[0];
+                    const double g = pixel[1];
+                    const double b = pixel[2];
+                    data[0][(y * block) + x] = (0.299 * r) + (0.587 * g) + (0.114 * b) - 128.0;
+                    data[1][(y * block) + x] = (-0.168736 * r) - (0.331264 * g) + (0.5 * b);
+                    data[2][(y * block) + x] = (0.5 * r) - (0.418688 * g) - (0.081312 * b);
+                }
+            }
+            for (std::size_t c = 0; c < channels; ++c)
+            {
+                forward_dct(data[c]);
+            }
+            for (std::size_t c = 0; c < channels; ++c)
+            {
+                const std::array<int, 64>& q = tables[c == 0 ? 0 : 1];
+                int* out = levels[c].data() + (((by * blocks_x) + bx) * 64);
+                for (std::size_t i = 0; i < 64; ++i)
+                {
+                    const double scaled = std::abs(data[c][i]) / q[i];
+                    // A dead zone: AC values round down a little, which saves more bits than it
+                    // costs.
+                    const double dead = i == 0 ? 0.0 : 0.1;
+                    const auto magnitude = static_cast<int>(std::floor(scaled + 0.5 - dead));
+                    out[i] = data[c][i] < 0 ? -std::max(0, magnitude) : std::max(0, magnitude);
+                }
+            }
+        }
+    }
+    std::vector<uint8_t> out(lossy_magic.begin(), lossy_magic.end());
+    out.push_back(lossy_version);
+    out.push_back(static_cast<uint8_t>(channels));
+    out.push_back(static_cast<uint8_t>(quality));
+    put32(out, image.width);
+    put32(out, image.height);
+    BitEncoder encoder(out);
+    code_coefficients(levels, blocks_x, blocks_y, encoder);
+    encoder.finish();
+    return out;
+}
+
+std::expected<Image, Error> decode_lossy_image(std::span<const uint8_t> bytes)
+{
+    if (!is_lossy_image_file(bytes))
+    {
+        return std::unexpected(Error::not_image);
+    }
+    if (bytes.size() < lossy_header_bytes)
+    {
+        return std::unexpected(Error::truncated);
+    }
+    if (bytes[4] != lossy_version)
+    {
+        return std::unexpected(Error::unsupported_version);
+    }
+    Image image;
+    image.channels = bytes[5];
+    const unsigned quality = bytes[6];
+    image.width = get32(bytes, 7);
+    image.height = get32(bytes, 11);
+    const std::size_t width = image.width;
+    const std::size_t height = image.height;
+    const std::size_t channels = image.channels;
+    if ((channels != 1 && channels != 3) || quality < 1 || quality > 100 || width == 0 ||
+        height == 0 || width > max_image_side || height > max_image_side ||
+        width * height > max_pixels_per_byte * bytes.size())
+    {
+        return std::unexpected(Error::corrupt_header);
+    }
+    const std::size_t blocks_x = (width + block - 1) / block;
+    const std::size_t blocks_y = (height + block - 1) / block;
+    std::vector<std::vector<int>> levels(channels, std::vector<int>(blocks_x * blocks_y * 64, 0));
+    BitDecoder decoder(bytes.subspan(lossy_header_bytes));
+    code_coefficients(levels, blocks_x, blocks_y, decoder);
+    if (!decoder.consumed_exactly())
+    {
+        return std::unexpected(Error::corrupt_payload);
+    }
+    const std::array<std::array<int, 64>, 2> tables{quantisers(quality, false),
+                                                    quantisers(quality, true)};
+    const std::size_t padded_width = blocks_x * block;
+    const std::size_t padded_height = blocks_y * block;
+    std::vector<std::vector<double>> planes(channels,
+                                            std::vector<double>(padded_width * padded_height));
+    for (std::size_t by = 0; by < blocks_y; ++by)
+    {
+        for (std::size_t bx = 0; bx < blocks_x; ++bx)
+        {
+            for (std::size_t c = 0; c < channels; ++c)
+            {
+                const std::array<int, 64>& q = tables[c == 0 ? 0 : 1];
+                const int* in = levels[c].data() + (((by * blocks_x) + bx) * 64);
+                std::array<double, 64> data{};
+                for (std::size_t i = 0; i < 64; ++i)
+                {
+                    data[i] = static_cast<double>(in[i]) * q[i];
+                }
+                inverse_dct(data);
+                for (std::size_t y = 0; y < block; ++y)
+                {
+                    for (std::size_t x = 0; x < block; ++x)
+                    {
+                        planes[c][(((by * block) + y) * padded_width) + (bx * block) + x] =
+                            data[(y * block) + x];
+                    }
+                }
+            }
+        }
+    }
+    for (std::size_t c = 0; c < channels; ++c)
+    {
+        deblock(planes[c], padded_width, padded_height, tables[c == 0 ? 0 : 1]);
+    }
+    image.pixels.resize(width * height * channels);
+    const auto store = [](double v) {
+        return static_cast<uint8_t>(std::clamp(std::lround(v), 0L, 255L));
+    };
+    for (std::size_t y = 0; y < height; ++y)
+    {
+        for (std::size_t x = 0; x < width; ++x)
+        {
+            uint8_t* pixel = image.pixels.data() + (((y * width) + x) * channels);
+            const std::size_t at = (y * padded_width) + x;
+            const double luma = planes[0][at] + 128.0;
+            if (channels == 1)
+            {
+                pixel[0] = store(luma);
+                continue;
+            }
+            const double cb = planes[1][at];
+            const double cr = planes[2][at];
+            pixel[0] = store(luma + (1.402 * cr));
+            pixel[1] = store(luma - (0.344136 * cb) - (0.714136 * cr));
+            pixel[2] = store(luma + (1.772 * cb));
+        }
+    }
+    return image;
+}
 
 std::expected<Image, Error> read_pnm(std::istream& in)
 {

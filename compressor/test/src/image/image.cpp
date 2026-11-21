@@ -1,9 +1,12 @@
+#include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <span>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -172,5 +175,111 @@ TEST(ImageTests, Damaged_files_fail_cleanly)
         flipped[at] ^= static_cast<uint8_t>(1U << (next(state) % 8));
         const auto decoded = compressor::decode_image(flipped);
         EXPECT_TRUE(!decoded || *decoded == image) << at;
+    }
+}
+
+namespace
+{
+
+double psnr(const Image& a, const Image& b)
+{
+    double error = 0;
+    for (std::size_t i = 0; i < a.pixels.size(); ++i)
+    {
+        const double d = static_cast<double>(a.pixels[i]) - b.pixels[i];
+        error += d * d;
+    }
+    const double mse = error / static_cast<double>(a.pixels.size());
+    return mse == 0 ? 99.0 : 10.0 * std::log10(255.0 * 255.0 / mse);
+}
+
+// Smooth, as photos mostly are.
+Image smooth(uint32_t width, uint32_t height, uint8_t channels)
+{
+    Image image{.width = width, .height = height, .channels = channels, .pixels = {}};
+    uint32_t state = 4;
+    for (uint32_t y = 0; y < height; ++y)
+    {
+        for (uint32_t x = 0; x < width; ++x)
+        {
+            for (uint8_t c = 0; c < channels; ++c)
+            {
+                const double v = 128 + (60 * std::sin((x + (c * 7.0)) / 9.0)) +
+                                 (40 * std::cos(y / 13.0)) + (next(state) % 5);
+                image.pixels.push_back(static_cast<uint8_t>(std::clamp(v, 0.0, 255.0)));
+            }
+        }
+    }
+    return image;
+}
+
+} // namespace
+
+TEST(LossyImageTests, Quality_trades_size_for_fidelity)
+{
+    for (const uint8_t channels : {uint8_t{1}, uint8_t{3}})
+    {
+        const Image image = smooth(77, 53, channels);
+        std::size_t previous_size = 0;
+        double previous_psnr = 0;
+        for (const unsigned quality : {20U, 60U, 95U})
+        {
+            const auto encoded = compressor::encode_lossy_image(image, quality);
+            ASSERT_TRUE(encoded);
+            EXPECT_TRUE(compressor::is_lossy_image_file(*encoded));
+            EXPECT_FALSE(compressor::is_image_file(*encoded));
+            const auto decoded = compressor::decode_lossy_image(*encoded);
+            ASSERT_TRUE(decoded);
+            EXPECT_EQ(decoded->width, image.width);
+            EXPECT_EQ(decoded->height, image.height);
+            EXPECT_EQ(decoded->channels, image.channels);
+            const double fidelity = psnr(image, *decoded);
+            EXPECT_GT(encoded->size(), previous_size) << quality;
+            EXPECT_GT(fidelity, previous_psnr) << quality;
+            previous_size = encoded->size();
+            previous_psnr = fidelity;
+        }
+        EXPECT_GT(previous_psnr, 38.0);
+        EXPECT_LT(previous_size, image.pixels.size());
+    }
+}
+
+TEST(LossyImageTests, Only_grey_and_rgb_with_a_valid_quality_are_coded)
+{
+    EXPECT_FALSE(compressor::encode_lossy_image(smooth(8, 8, 2), 50));
+    EXPECT_FALSE(compressor::encode_lossy_image(smooth(8, 8, 4), 50));
+    EXPECT_FALSE(compressor::encode_lossy_image(smooth(8, 8, 3), 0));
+    EXPECT_FALSE(compressor::encode_lossy_image(smooth(8, 8, 3), 101));
+    for (const auto& [width, height] : {std::pair{1U, 1U}, std::pair{9U, 1U}, std::pair{1U, 17U}})
+    {
+        const auto encoded = compressor::encode_lossy_image(smooth(width, height, 3), 100);
+        ASSERT_TRUE(encoded);
+        const auto decoded = compressor::decode_lossy_image(*encoded);
+        ASSERT_TRUE(decoded) << width << 'x' << height;
+        EXPECT_EQ(decoded->pixels.size(), std::size_t{width} * height * 3);
+    }
+}
+
+TEST(LossyImageTests, Damaged_files_fail_cleanly)
+{
+    const auto encoded = compressor::encode_lossy_image(smooth(40, 30, 3), 70);
+    ASSERT_TRUE(encoded);
+    EXPECT_EQ(compressor::decode_lossy_image(compressor::encode_image(smooth(4, 4, 3))),
+              std::unexpected(compressor::Error::not_image));
+    for (std::size_t length = 4; length < encoded->size(); length += 5)
+    {
+        EXPECT_FALSE(compressor::decode_lossy_image(std::span(*encoded).first(length))) << length;
+    }
+    std::vector<uint8_t> bad = *encoded;
+    bad[6] = 0; // quality
+    EXPECT_EQ(compressor::decode_lossy_image(bad),
+              std::unexpected(compressor::Error::corrupt_header));
+    uint32_t state = 8;
+    for (int round = 0; round < 60; ++round)
+    {
+        std::vector<uint8_t> flipped = *encoded;
+        flipped[15 + (next(state) % (flipped.size() - 15))] ^=
+            static_cast<uint8_t>(1U << (next(state) % 8));
+        (void)compressor::decode_lossy_image(flipped).has_value();
     }
 }
