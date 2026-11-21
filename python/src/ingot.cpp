@@ -22,6 +22,7 @@
 #include <compressor/dictionary/dictionary.h>
 #include <compressor/engine/engine.h>
 #include <compressor/error.h>
+#include <compressor/longrange/longrange.h>
 #include <compressor/stream/decoder.h>
 #include <compressor/stream/encoder.h>
 
@@ -443,11 +444,12 @@ private:
     {
         if (!header_)
         {
-            if (buffer_.size() < compressor::frame_header_bytes)
+            if (buffer_.size() < compressor::frame_header_bytes + 1)
             {
                 return std::nullopt;
             }
-            std::istringstream in(buffer_.substr(0, compressor::frame_header_bytes));
+            // The window byte after the header too, for a long-range frame.
+            std::istringstream in(buffer_.substr(0, compressor::frame_header_bytes + 1));
             compressor::FrameReader reader(in);
             const auto log2 = reader.read_header();
             if (!log2)
@@ -465,7 +467,12 @@ private:
                 single_ = true;
                 return std::nullopt; // the whole buffer is decoded by flush()
             }
-            buffer_.erase(0, compressor::frame_header_bytes);
+            if ((reader.flags() & compressor::long_range_flag) != 0)
+            {
+                history_.emplace(compressor::window_blocks(block_size_log2_, reader.window_log2()));
+            }
+            flags_ = reader.flags();
+            buffer_.erase(0, compressor::frame_header_size(flags_));
         }
         if (single_)
         {
@@ -504,7 +511,7 @@ private:
             }
             std::istringstream in(buffer_.substr(0, static_cast<std::size_t>(length)));
             compressor::FrameReader reader(in);
-            reader.start_blocks(block_size_log2_);
+            reader.start_blocks(block_size_log2_, flags_);
             compressor::EncodedBlock block;
             const auto read = reader.read_block(block);
             if (!read || !*read)
@@ -513,7 +520,9 @@ private:
                     compressor::describe(read ? compressor::Error::corrupt_header : read.error()));
             }
             std::vector<uint8_t> decoded;
-            if (auto result = engine_.decode_block(block, decoded); !result)
+            if (auto result = history_ ? history_->decode(engine_, block, decoded)
+                                       : engine_.decode_block(block, decoded);
+                !result)
             {
                 return std::string(compressor::describe(result.error()));
             }
@@ -526,6 +535,8 @@ private:
     }
 
     compressor::Engine engine_;
+    std::optional<compressor::LongRangeHistory> history_;
+    uint16_t flags_ = 0;
     std::string buffer_;
     std::string unused_;
     uint64_t total_ = 0;

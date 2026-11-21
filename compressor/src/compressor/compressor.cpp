@@ -520,7 +520,7 @@ Compressor::Compressor(CompressorSettings settings)
                                                          dictionary);
                      }, default_block_size_log2, thread_count(settings.threads),
                      // Dictionaries are for small files, where every header byte counts.
-                     settings.dictionary != nullptr),
+                     settings.dictionary != nullptr, settings.window_log2),
                  std::make_unique<BlockDecoder>(
                      [dictionary = settings.dictionary] {
                          return std::make_unique<Engine>(default_block_size_log2, 1, dictionary);

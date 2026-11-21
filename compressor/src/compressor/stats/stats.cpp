@@ -11,6 +11,7 @@
 #include <istream>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <utility>
@@ -21,6 +22,7 @@
 #include <compressor/engine/engine.h>
 #include <compressor/error.h>
 #include <compressor/huffman/huffman.h>
+#include <compressor/longrange/longrange.h>
 
 namespace compressor
 {
@@ -111,6 +113,8 @@ std::string_view method_name(Method method)
         return "huffman";
     case Method::pipeline:
         return "pipeline";
+    case Method::references:
+        return "references";
     }
     return "unknown";
 }
@@ -153,6 +157,11 @@ std::expected<Stats, Error> collect_stats(std::istream& in,
     stats.ingot = true;
     stats.block_size_log2 = *header;
     Engine engine(*header, 1, std::move(dictionary));
+    std::optional<LongRangeHistory> history;
+    if ((reader.flags() & long_range_flag) != 0)
+    {
+        history.emplace(window_blocks(*header, reader.window_log2()));
+    }
     EncodedBlock block;
     std::vector<uint8_t> bytes;
     while (true)
@@ -167,7 +176,9 @@ std::expected<Stats, Error> collect_stats(std::istream& in,
             break;
         }
         bytes.clear();
-        if (auto decoded = engine.decode_block(block, bytes); !decoded)
+        if (auto decoded =
+                history ? history->decode(engine, block, bytes) : engine.decode_block(block, bytes);
+            !decoded)
         {
             return std::unexpected(decoded.error());
         }
@@ -247,6 +258,10 @@ void print_stats(const Stats& stats, const StatsReport& report, std::ostream& ou
         if (count(Method::pipeline) > 0)
         {
             out << std::format(", {} pipeline", count(Method::pipeline));
+        }
+        if (count(Method::references) > 0)
+        {
+            out << std::format(", {} with long-range references", count(Method::references));
         }
         out << '\n';
         if (stats.content_bytes > 0 && stats.input_bytes > 0)

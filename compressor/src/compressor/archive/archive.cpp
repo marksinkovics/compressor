@@ -437,6 +437,22 @@ private:
     std::optional<Failure> failure_;
 };
 
+// The block table with where the last block ends.
+std::vector<uint64_t> block_offsets_with_end(const ArchiveInfo& info)
+{
+    std::vector<uint64_t> offsets = info.index.block_offsets;
+    offsets.push_back(info.index_offset - end_block_bytes);
+    return offsets;
+}
+
+FrameBlocks frame_blocks(const ArchiveInfo& info, std::span<const uint64_t> offsets)
+{
+    return {.offsets = offsets,
+            .block_size_log2 = info.block_size_log2,
+            .flags = info.flags,
+            .window_log2 = info.window_log2};
+}
+
 // Decodes only the blocks that hold the targets.
 std::expected<void, Failure> decode_targets(IBlockDecoder& decoder, std::istream& in,
                                             const ArchiveInfo& info, std::vector<Target> targets,
@@ -445,26 +461,26 @@ std::expected<void, Failure> decode_targets(IBlockDecoder& decoder, std::istream
 {
     targets = group_shared(std::move(targets));
     const uint8_t log2 = info.block_size_log2;
-    const std::vector<uint64_t>& table = info.index.block_offsets;
     uint64_t start = targets.empty() ? 0 : targets.front().offset;
     uint64_t end = start;
-    std::vector<uint64_t> offsets;
+    std::size_t first_block = 0;
+    std::size_t end_block = 0;
     const uint64_t data_end = targets.empty() ? 0 : targets.back().offset + targets.back().size;
     if (start < data_end)
     {
         const uint64_t first = start >> log2;
         const uint64_t last = (data_end - 1) >> log2;
-        offsets.assign(table.begin() + static_cast<std::ptrdiff_t>(first),
-                       table.begin() + static_cast<std::ptrdiff_t>(last + 1));
-        offsets.push_back(last + 1 < table.size() ? table[last + 1]
-                                                  : info.index_offset - end_block_bytes);
+        first_block = static_cast<std::size_t>(first);
+        end_block = static_cast<std::size_t>(last + 1);
         start = first << log2;
         end = std::min(info.total_size, (last + 1) << log2);
     }
 
     SplitOutputBuf split(std::move(targets), start, sink, stream, visitor);
     std::ostream out(&split);
-    const auto decoded = decoder.decode_blocks(in, out, log2, offsets);
+    const std::vector<uint64_t> offsets = block_offsets_with_end(info);
+    const auto decoded =
+        decoder.decode_blocks(in, out, frame_blocks(info, offsets), first_block, end_block);
     if (split.failure())
     {
         return std::unexpected(*split.failure());
@@ -1004,18 +1020,17 @@ std::expected<void, Failure> extract_range(IBlockDecoder& decoder, std::istream&
         return {};
     }
     const uint8_t log2 = info.block_size_log2;
-    const std::vector<uint64_t>& table = info.index.block_offsets;
     const uint64_t start = file.offset + range.from;
     const uint64_t end = file.offset + to;
     const uint64_t first = start >> log2;
     const uint64_t last = (end - 1) >> log2;
-    std::vector<uint64_t> offsets(table.begin() + static_cast<std::ptrdiff_t>(first),
-                                  table.begin() + static_cast<std::ptrdiff_t>(last + 1));
-    offsets.push_back(last + 1 < table.size() ? table[last + 1]
-                                              : info.index_offset - end_block_bytes);
     SliceBuf slice(out.rdbuf(), start - (first << log2), end - start);
     std::ostream sliced(&slice);
-    if (auto decoded = decoder.decode_blocks(in, sliced, log2, offsets); !decoded)
+    const std::vector<uint64_t> offsets = block_offsets_with_end(info);
+    if (auto decoded = decoder.decode_blocks(in, sliced, frame_blocks(info, offsets),
+                                             static_cast<std::size_t>(first),
+                                             static_cast<std::size_t>(last + 1));
+        !decoded)
     {
         return std::unexpected(Failure{.error = decoded.error(), .detail = file.path});
     }

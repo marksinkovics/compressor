@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <sstream>
 #include <string>
@@ -14,6 +15,7 @@
 #include <compressor/engine/engine.h>
 #include <compressor/error.h>
 #include <compressor/huffman/huffman.h>
+#include <compressor/longrange/longrange.h>
 
 namespace
 {
@@ -86,6 +88,8 @@ std::string method_name(const compressor::EncodedBlock& block)
         return "stored";
     case compressor::Method::huffman:
         return "Huffman";
+    case compressor::Method::references:
+        return "long-range references";
     case compressor::Method::pipeline:
         break;
     }
@@ -179,20 +183,42 @@ std::string decode(const emscripten::val& file)
 {
     const auto bytes = emscripten::convertJSArrayToNumberVector<uint8_t>(file);
     std::istringstream in(std::string(bytes.begin(), bytes.end()));
-    const auto encoded = compressor::read_encoded(in);
-    if (!encoded)
+    const auto failed = [](compressor::Error error) {
+        return R"({"ok":false,"error":")" + std::string(compressor::describe(error)) + "\"}";
+    };
+    compressor::FrameReader reader(in);
+    const auto log2 = reader.read_header();
+    if (!log2)
     {
-        return R"({"ok":false,"error":")" + std::string(compressor::describe(encoded.error())) +
-               "\"}";
+        return failed(log2.error());
     }
-    compressor::Engine engine;
-    const auto decoded = engine.decode(*encoded);
-    if (!decoded)
+    std::optional<compressor::LongRangeHistory> history;
+    if ((reader.flags() & compressor::long_range_flag) != 0)
     {
-        return R"({"ok":false,"error":")" + std::string(compressor::describe(decoded.error())) +
-               "\"}";
+        history.emplace(compressor::window_blocks(*log2, reader.window_log2()));
     }
-    return R"({"ok":true,"size":)" + std::to_string(decoded->data_.size()) + "}";
+    compressor::Engine engine(*log2);
+    compressor::EncodedBlock block;
+    std::vector<uint8_t> out;
+    while (true)
+    {
+        const auto more = reader.read_block(block);
+        if (!more)
+        {
+            return failed(more.error());
+        }
+        if (!*more)
+        {
+            break;
+        }
+        if (auto decoded =
+                history ? history->decode(engine, block, out) : engine.decode_block(block, out);
+            !decoded)
+        {
+            return failed(decoded.error());
+        }
+    }
+    return R"({"ok":true,"size":)" + std::to_string(out.size()) + "}";
 }
 
 EMSCRIPTEN_BINDINGS(ingot_demo)

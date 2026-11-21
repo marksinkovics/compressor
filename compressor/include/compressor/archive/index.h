@@ -64,15 +64,18 @@ struct ArchiveInfo
     ArchiveIndex index;
     // Where the search index section starts and ends (its trailer follows), if there is one.
     std::optional<std::pair<uint64_t, uint64_t>> search_index;
+    uint16_t flags = 0;
+    uint8_t window_log2 = 0; // with long_range_flag
 };
 
 // Seeks around a whole archive file to read its frame header, end block and index, and checks
 // every index rule that needs no decoding.
 std::expected<ArchiveInfo, Error> read_archive_index(std::istream& istream);
 
-// The index rules; `end_offset` is where the end block starts.
+// The index rules; `end_offset` is where the end block starts, `flags` the frame header's.
 std::expected<void, Error> validate_index(const ArchiveIndex& index, uint8_t block_size_log2,
-                                          uint64_t total_size, uint64_t end_offset);
+                                          uint64_t total_size, uint64_t end_offset,
+                                          uint16_t flags = 0);
 
 } // namespace compressor
 

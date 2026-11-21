@@ -9,7 +9,7 @@ An ingot file (`.ingot`) is a frame header, a sequence of independently coded bl
 | 0 | 4 | Magic `89 49 4E 47` (`\x89ING`). The high first byte catches transfers that strip the 8th bit, as in PNG |
 | 4 | 1 | Format version: 2. Version 1 files (no pipeline blocks) are still read |
 | 5 | 1 | log2 of the block size, 12–26 (4 KiB–64 MiB). The encoder writes 20 (1 MiB) |
-| 6 | 2 | Flags. Bit 0: folder archive (see "Archive"). Bit 1: a search index follows the archive (see "Search index"; only with bit 0). Bit 2: a single-block frame (see below; not with bit 0, version 2 only). The other bits must be 0 |
+| 6 | 2 | Flags. Bit 0: folder archive (see "Archive"). Bit 1: a search index follows the archive (see "Search index"; only with bit 0). Bit 2: a single-block frame (see below; not with bit 0, version 2 only). Bit 3: long-range references (see "Long-range references"; not with bit 2, version 2 only); the header is then followed by one byte, log2 of the window in bytes, from the block size's log2 to 32. The other bits must be 0 |
 
 ### Single-block frame
 
@@ -19,7 +19,7 @@ With flag bit 2 the frame holds exactly one block of 1 to `2^log2` bytes, in a s
 
 | Offset | Size | Field |
 |---:|---:|---|
-| 0 | 1 | Method: 0 = stored, 1 = Huffman, 2 = pipeline (version 2 only). 0xFF is the end block; the rest are reserved and rejected |
+| 0 | 1 | Method: 0 = stored, 1 = Huffman, 2 = pipeline (version 2 only), 3 = references (only with frame flag bit 3). 0xFF is the end block; the rest are reserved and rejected |
 | 1 | 4 | Decoded size: 1 to the block size. Every block but the last is exactly the block size |
 | 5 | 4 | Encoded size: the bytes after this 13-byte header (code lengths and payload), so a reader can skip the block |
 | 9 | 4 | CRC32 of the decoded bytes (CRC-32/ISO-HDLC, as in gzip and zip) |
@@ -107,6 +107,24 @@ LZ77 + Huffman is a raw Deflate stream (RFC 1951) of the block: matches reach ba
 
 Empty input is the frame header followed directly by the end block, 17 bytes in all. Without the archive flag, nothing may follow the end block.
 
+## Long-range references
+
+With frame flag bit 3, a block can copy bytes from the blocks before it, which a block's own coder can't reach (`compressor/include/compressor/longrange/longrange.h`). Each block has *literals*: for a references block (method 3), the bytes of its own that aren't copied; for any other block, all of its bytes. Copies point only at the literals of earlier blocks, never at copied bytes, so decoding a block needs nothing but the literals of the blocks it copies from: random access (`extract`, `cat`, `cat --range`) decodes those blocks too and nothing further back. A copy may reach at most `2^window / 2^block size` blocks back, where `window` is the byte after the frame header, so a reader decoding a frame in order keeps that many blocks' literals; the encoder holds the same.
+
+A references block's payload (its encoded size is at most `3 × size + 4096`):
+
+| Field | Contents |
+|---|---|
+| varint | Reference count, at least 1 (LEB128, as all varints here) |
+| per reference | 4 varints: the count of the block's own literal bytes before the copy; the source block, counted back from this one (1 is the block before; at most the window's block count); the offset into the source block's literals; the length, at least 1, within the source's literals |
+| 1 | The literals' method: 0, 1 or 2, as for a block |
+| varint | The literals' size; it equals the block's size minus the copies' lengths |
+| 4 | CRC32 of the literals |
+| 128 | Huffman only: the literals' code lengths, as in a block |
+| rest | The literals' payload, as for a block of that method; an empty literals stream is stored with size 0 |
+
+Decoding appends, for each reference in order, that many of the block's literals and then the copy, and then the rest of the literals; the result must be the block's size and match the block's CRC32. The encoder (`LongRangeMatcher`) splits each block into content-defined chunks of about 512 bytes (`chunk_ends()`), looks each up by hash among the earlier blocks' literal chunks, checks the bytes, extends the match both ways, and keeps copies of at least 32 bytes; blocks with none are written as before. `ingot encode --long[=BITS]` turns it on (window 2^28, 256 MiB, by default).
+
 ## Archive
 
 A folder archive is the container above with flag bit 0 set. Its decoded data is the contents of every regular file, back to back in entry order, so blocks span file boundaries and small files share blocks. A file identical to an earlier one is stored once: its entry points at the earlier file's data. The end block is followed by the index and a fixed-size trailer. Implemented in `compressor/src/compressor/archive/`.
@@ -120,7 +138,7 @@ A reader seeks to the trailer, then reads the end block just before the index of
 
 ### Block table
 
-One 8-byte offset per block, `ceil(total size / block size)` of them: where the block's header starts, from the start of the file. The first is 8, each is at least 14 bytes after the one before, and the last is at least 14 bytes before the end block. Data byte `x` is in block `x >> log2(block size)`.
+One 8-byte offset per block, `ceil(total size / block size)` of them: where the block's header starts, from the start of the file. The first is 8 (9 with long-range references), each is at least 14 bytes after the one before, and the last is at least 14 bytes before the end block. Data byte `x` is in block `x >> log2(block size)`.
 
 ### Entries
 

@@ -192,11 +192,11 @@ void write_index(std::ostream& ostream, const ArchiveIndex& index, uint64_t inde
 }
 
 std::expected<void, Error> validate_index(const ArchiveIndex& index, uint8_t block_size_log2,
-                                          uint64_t total_size, uint64_t end_offset)
+                                          uint64_t total_size, uint64_t end_offset, uint16_t flags)
 {
     const std::vector<uint64_t>& blocks = index.block_offsets;
     if (blocks.size() != block_count(total_size, block_size_log2) ||
-        (!blocks.empty() && blocks.front() != frame_header_bytes))
+        (!blocks.empty() && blocks.front() != frame_header_size(flags)))
     {
         return std::unexpected(Error::corrupt_index);
     }
@@ -345,7 +345,9 @@ std::expected<ArchiveInfo, Error> read_archive_index(std::istream& istream)
                      .total_size = Cursor(std::span(end_block).subspan(1)).get<8>(),
                      .index_offset = index_offset,
                      .index = {},
-                     .search_index = search_index};
+                     .search_index = search_index,
+                     .flags = reader.flags(),
+                     .window_log2 = reader.window_log2()};
 
     std::vector<uint8_t> bytes(archive_end - trailer_bytes - index_offset);
     if (auto read = read_at(istream, index_offset, bytes); !read)
@@ -405,7 +407,7 @@ std::expected<ArchiveInfo, Error> read_archive_index(std::istream& istream)
         return std::unexpected(Error::corrupt_index);
     }
     if (auto valid = validate_index(info.index, info.block_size_log2, info.total_size,
-                                    index_offset - end_block_bytes);
+                                    index_offset - end_block_bytes, info.flags);
         !valid)
     {
         return std::unexpected(valid.error());

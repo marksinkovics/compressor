@@ -445,7 +445,10 @@ protected:
         compressor::BlockDecoder decoder(engine_factory(), GetParam());
         std::istringstream in(bytes_);
         std::ostringstream out;
-        if (auto decoded = decoder.decode_blocks(in, out, block_size_log2, offsets); !decoded)
+        const compressor::FrameBlocks blocks{
+            .offsets = offsets, .block_size_log2 = block_size_log2, .flags = 0, .window_log2 = 0};
+        const std::size_t end = offsets.empty() ? 0 : offsets.size() - 1;
+        if (auto decoded = decoder.decode_blocks(in, out, blocks, 0, end); !decoded)
         {
             return std::unexpected(decoded.error());
         }

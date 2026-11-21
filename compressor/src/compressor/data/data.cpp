@@ -133,14 +133,28 @@ uint64_t max_huffman_payload(uint64_t size)
     return ((size * max_code_length) + 7) / 8;
 }
 
+// Generous for the references and the literals' block; read_references() checks the rest.
+uint64_t max_references_payload(uint64_t size)
+{
+    return (3 * size) + 4096;
+}
+
+// The reference count, a reference, the literals' method, size and CRC.
+constexpr uint64_t min_references_payload = 10;
+
 } // namespace
 
-void write_frame_header(std::ostream& ostream, uint8_t block_size_log2, uint16_t flags)
+void write_frame_header(std::ostream& ostream, uint8_t block_size_log2, uint16_t flags,
+                        uint8_t window_log2)
 {
     std::string header(magic.begin(), magic.end());
     header.push_back(static_cast<char>(format_version));
     header.push_back(static_cast<char>(block_size_log2));
     put_le<2>(header, flags);
+    if ((flags & long_range_flag) != 0)
+    {
+        header.push_back(static_cast<char>(window_log2));
+    }
     ostream.write(header.data(), static_cast<std::streamsize>(header.size()));
 }
 
@@ -264,6 +278,13 @@ std::expected<void, Error> read_block_body(std::istream& istream, uint64_t block
             return std::unexpected(Error::corrupt_header);
         }
     }
+    else if (block.method_ == Method::references)
+    {
+        if (encoded < min_references_payload || encoded > max_references_payload(block.size_))
+        {
+            return std::unexpected(Error::corrupt_header);
+        }
+    }
     else
     {
         if (encoded < code_lengths_bytes ||
@@ -325,12 +346,28 @@ std::expected<uint8_t, Error> FrameReader::read_header()
     const uint8_t block_size_log2 = header[5];
     const auto flags = static_cast<uint16_t>(get_le<2>(std::span(header).subspan(6)));
     if (block_size_log2 < min_block_size_log2 || block_size_log2 > max_block_size_log2 ||
-        (flags & ~(unsigned{archive_flag} | search_index_flag | single_block_flag)) != 0U ||
+        (flags & ~(unsigned{archive_flag} | search_index_flag | single_block_flag |
+                   long_range_flag)) != 0U ||
+        ((flags & long_range_flag) != 0 && ((flags & single_block_flag) != 0 || header[4] < 2)) ||
         ((flags & search_index_flag) != 0 && (flags & archive_flag) == 0) ||
         ((flags & single_block_flag) != 0 && (flags & archive_flag) != 0) ||
         ((flags & single_block_flag) != 0 && header[4] < 2))
     {
         return std::unexpected(Error::corrupt_header);
+    }
+    window_log2_ = 0;
+    if ((flags & long_range_flag) != 0)
+    {
+        std::array<unsigned char, 1> window{};
+        if (auto read = read_exactly(istream_, window); !read)
+        {
+            return std::unexpected(read.error());
+        }
+        if (window[0] < block_size_log2 || window[0] > max_window_log2)
+        {
+            return std::unexpected(Error::corrupt_header);
+        }
+        window_log2_ = window[0];
     }
     flags_ = flags;
     single_done_ = false;
@@ -340,10 +377,10 @@ std::expected<uint8_t, Error> FrameReader::read_header()
     return block_size_log2;
 }
 
-void FrameReader::start_blocks(uint8_t block_size_log2)
+void FrameReader::start_blocks(uint8_t block_size_log2, uint16_t flags)
 {
     version_ = format_version;
-    flags_ = archive_flag;
+    flags_ = static_cast<uint16_t>(unsigned{archive_flag} | (flags & unsigned{long_range_flag}));
     block_size_ = uint64_t{1} << block_size_log2;
     total_ = 0;
     last_size_.reset();
@@ -468,7 +505,9 @@ std::expected<bool, Error> FrameReader::read_block(EncodedBlock& block)
         return false;
     }
     const auto last_method =
-        static_cast<unsigned char>(version_ >= 2 ? Method::pipeline : Method::huffman);
+        static_cast<unsigned char>((flags_ & long_range_flag) != 0 ? Method::references
+                                   : version_ >= 2                 ? Method::pipeline
+                                                                   : Method::huffman);
     if (method[0] > last_method)
     {
         return std::unexpected(Error::corrupt_header);
@@ -496,6 +535,16 @@ uint16_t FrameReader::flags() const
 uint64_t FrameReader::total_size() const
 {
     return total_;
+}
+
+uint8_t FrameReader::window_log2() const
+{
+    return window_log2_;
+}
+
+uint64_t frame_header_size(uint16_t flags)
+{
+    return frame_header_bytes + ((flags & long_range_flag) != 0 ? 1 : 0);
 }
 
 std::expected<EncodedData, Error> read_encoded(std::istream& istream)

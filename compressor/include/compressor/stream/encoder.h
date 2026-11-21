@@ -42,9 +42,11 @@ public:
     // Engine, the default block size and default_thread_count() threads.
     BlockEncoder();
     // `single_block`: encode() writes an input that fits one block as a single-block frame
-    // (write_single_block_frame()); it reads one byte past the block to know.
+    // (write_single_block_frame()); it reads one byte past the block to know. `window_log2` above
+    // 0: blocks copy repeats from the earlier blocks in a window of 2^window_log2 bytes
+    // (long_range_flag, LongRangeMatcher), which a decoder must hold in memory.
     BlockEncoder(const EngineFactory& make_engine, uint8_t block_size_log2, unsigned threads,
-                 bool single_block = false);
+                 bool single_block = false, uint8_t window_log2 = 0);
     // One thread.
     explicit BlockEncoder(std::unique_ptr<IEngine> engine,
                           uint8_t block_size_log2 = default_block_size_log2);
@@ -62,6 +64,7 @@ private:
     std::vector<std::unique_ptr<IEngine>> engines_; // one per worker
     uint8_t block_size_log2_;
     bool single_block_ = false;
+    uint8_t window_log2_ = 0;
     ThreadPool pool_; // after engines_, so it finishes its tasks before they are destroyed
 };
 

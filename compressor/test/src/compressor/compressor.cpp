@@ -616,6 +616,39 @@ TEST_F(CompressorArchiveCommandTests, Gzip_takes_the_level_and_any_thread_count)
     EXPECT_EQ(read_file(decoded), input);
 }
 
+TEST_F(CompressorArchiveCommandTests, A_long_range_archive_copies_across_blocks_and_extracts_files)
+{
+    // Three versions of 1.5 MiB of noise, a few edits apart: only copies from earlier blocks help.
+    std::string version(std::size_t{3} << 19U, '\0');
+    uint32_t state = 3;
+    for (char& byte : version)
+    {
+        state = (state * 1103515245U) + 12345U;
+        byte = static_cast<char>(state >> 16U);
+    }
+    for (const char* name : {"v1", "v2", "v3"})
+    {
+        fs::create_directories(folder_ / name);
+        write_file(folder_ / name / "data.bin", version);
+        version.insert(std::size_t{700'000}, "an edit");
+        version[1'200'000] = static_cast<char>(static_cast<unsigned char>(version[1'200'000]) ^ 1U);
+        version.resize(std::size_t{3} << 19U);
+    }
+    const auto encode = [&](uint8_t window_log2, const fs::path& archive) {
+        compressor::Compressor compressor({.threads = 2, .level = 2, .window_log2 = window_log2});
+        EXPECT_TRUE(compressor.encode(folder_, archive));
+        return fs::file_size(archive);
+    };
+    const fs::path archive = dir_ / "long.ingot";
+    EXPECT_LT(encode(24, archive), encode(0, dir_ / "plain.ingot") / 2);
+
+    const fs::path output = dir_ / "v3.bin";
+    ASSERT_TRUE(make_compressor().extract(archive, "v3/data.bin", output)) << err_.str();
+    EXPECT_EQ(read_file(output), read_file(folder_ / "v3" / "data.bin"));
+    ASSERT_TRUE(make_compressor().decode(archive, extracted_)) << err_.str();
+    EXPECT_EQ(read_file(extracted_ / "v2" / "data.bin"), read_file(folder_ / "v2" / "data.bin"));
+}
+
 TEST_F(CompressorArchiveCommandTests, Gzip_needs_a_file_and_zip_a_folder)
 {
     using compressor::OutputFormat;

@@ -56,6 +56,7 @@ protected:
             level_ = settings.level;
             dictionary_ = settings.dictionary;
             repair_percent_ = settings.repair_percent;
+            window_log2_ = settings.window_log2;
             return std::move(compressor_);
         }, out_, err_);
         return cli.run(argv);
@@ -69,6 +70,7 @@ protected:
     std::optional<unsigned> level_;
     std::shared_ptr<const compressor::Dictionary> dictionary_;
     unsigned repair_percent_ = 0;
+    unsigned window_log2_ = 0;
     std::ostringstream out_;
     std::ostringstream err_;
 };
@@ -539,6 +541,29 @@ TEST_F(CLITests, Cat_with_a_range_or_without_a_path_reads_a_range)
 
     compressor_ = std::make_unique<MockICompressor>();
     EXPECT_NE(run({"cat", "--range", "20:10", input_}), EXIT_SUCCESS);
+}
+
+TEST_F(CLITests, Encode_long_passes_the_window)
+{
+    EXPECT_CALL(*compressor_, encode(::testing::_, ::testing::_)).WillOnce(Return(true));
+    EXPECT_EQ(run({"encode", "-i", input_, "-o", output_}), EXIT_SUCCESS);
+    EXPECT_EQ(window_log2_, 0U);
+    for (const auto& [option, window] :
+         {std::pair{std::string("--long"), 28U}, std::pair{std::string("--long=24"), 24U}})
+    {
+        compressor_ = std::make_unique<MockICompressor>();
+        EXPECT_CALL(*compressor_, encode(::testing::_, ::testing::_)).WillOnce(Return(true));
+        EXPECT_EQ(run({"encode", option, "-i", input_, "-o", output_}), EXIT_SUCCESS) << option;
+        EXPECT_EQ(window_log2_, window) << option;
+    }
+    for (const std::string option : {"--long=12", "--long=33"})
+    {
+        compressor_ = std::make_unique<MockICompressor>();
+        EXPECT_NE(run({"encode", option, "-i", input_, "-o", output_}), EXIT_SUCCESS) << option;
+    }
+    compressor_ = std::make_unique<MockICompressor>();
+    EXPECT_EQ(run({"encode", "--long", "-f", "gzip", "-i", input_, "-o", output_}), EXIT_FAILURE);
+    EXPECT_THAT(err_.str(), ::testing::HasSubstr("--long"));
 }
 
 TEST_F(CLITests, Encode_passes_the_repair_percent_and_repair_its_files)

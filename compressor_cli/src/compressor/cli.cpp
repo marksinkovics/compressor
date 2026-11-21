@@ -44,6 +44,7 @@ struct Settings
     std::string dictionary;
     std::string range;
     unsigned repair = 0;
+    unsigned window_log2 = 0;
     std::string repair_file;
     std::vector<std::string> inputs;
     std::size_t size = default_dictionary_bytes;
@@ -154,6 +155,13 @@ int CLI::run(std::span<const char* const> args)
                      "Also write OUTPUT.repair, parity worth this percent of the output, so "
                      "that damage to it can be undone with the repair command")
         ->check(::CLI::Range(1U, 100U));
+    encode
+        ->add_option("--long", encode_settings.window_log2,
+                     "Copy repeats from up to 2^BITS bytes back, beyond a block (default 28, "
+                     "256 MiB); decoding then needs that much memory")
+        ->expected(0, 1)
+        ->default_str(std::to_string(default_window_log2))
+        ->check(::CLI::Range(unsigned{default_block_size_log2}, unsigned{max_window_log2}));
     encode
         ->add_option("-f,--format", encode_settings.format,
                      "ingot (default), gzip (a file) or zip (a folder)")
@@ -302,6 +310,7 @@ int CLI::run(std::span<const char* const> args)
         CompressorSettings result{
             .threads = threads, .level = level, .search_index = settings.search_index};
         result.repair_percent = settings.repair;
+        result.window_log2 = static_cast<uint8_t>(settings.window_log2);
         if (!settings.dictionary.empty())
         {
             auto dictionary = read_dictionary(settings.dictionary);
@@ -338,6 +347,11 @@ int CLI::run(std::span<const char* const> args)
             settings_for(encode_settings, encode_settings.threads, encode_settings.level);
         if (!settings)
         {
+            return EXIT_FAILURE;
+        }
+        if (settings->window_log2 != 0 && encode_settings.format != "ingot")
+        {
+            err_ << "--long is only for the ingot format\n";
             return EXIT_FAILURE;
         }
         const auto compressor = make_compressor_(*settings);

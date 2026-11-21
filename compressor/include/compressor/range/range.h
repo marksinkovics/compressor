@@ -55,6 +55,8 @@ struct BlockTable
     uint64_t total_size = 0;
     bool single_block = false;
     std::vector<uint64_t> offsets;
+    uint16_t flags = 0;
+    uint8_t window_log2 = 0;
 };
 
 // `in` must be able to seek; unexpected_archive for a folder archive.

@@ -398,6 +398,17 @@ try
         }
     }
     write(dir / "container" / "image.ingot", encode(image(40)));
+    {
+        // Long-range references: the same text again, 3 blocks later.
+        compressor::BlockEncoder encoder([] {
+            return std::make_unique<compressor::Engine>(block_size_log2, 6);
+        }, block_size_log2, 1, false, 16);
+        const std::string repeated = words(12'000);
+        std::istringstream in(repeated + repeated);
+        std::ostringstream out;
+        (void)encoder.encode(in, out).has_value();
+        write(dir / "container" / "long.ingot", out.str());
+    }
     write(dir / "container" / "records.ingot", encode(records(400), 8));
     write(dir / "inflate" / "text.deflate", deflate_seed(words(5000)));
     write(dir / "inflate" / "noise.deflate", deflate_seed(noise(700)));

@@ -1,5 +1,6 @@
 #include <compressor/stream/encoder.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -8,14 +9,17 @@
 #include <ios>
 #include <istream>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <span>
 #include <utility>
 #include <vector>
 
+#include <compressor/checksum/crc32.h>
 #include <compressor/data/data.h>
 #include <compressor/engine/engine.h>
 #include <compressor/error.h>
+#include <compressor/longrange/longrange.h>
 #include <compressor/thread/pool.h>
 
 #include <instrumentor/instrumentor.h>
@@ -40,6 +44,23 @@ struct Encoded
     std::vector<uint8_t> input;
 };
 
+// A references block: the copies, then the literals coded by `engine`.
+EncodedBlock encode_references(IEngine& engine, std::span<const uint8_t> input,
+                               const LongRangeMatcher::Split& split)
+{
+    EncodedBlock literals{
+        .method_ = Method::stored, .size_ = 0, .crc_ = 0, .code_lengths_ = {}, .payload_ = {}};
+    if (!split.literals.empty())
+    {
+        literals = engine.encode_block(split.literals);
+    }
+    return EncodedBlock{.method_ = Method::references,
+                        .size_ = static_cast<uint32_t>(input.size()),
+                        .crc_ = crc32(input),
+                        .code_lengths_ = {},
+                        .payload_ = write_references(split.references, literals)};
+}
+
 } // namespace
 
 BlockEncoder::BlockEncoder()
@@ -50,10 +71,11 @@ BlockEncoder::BlockEncoder()
 }
 
 BlockEncoder::BlockEncoder(const EngineFactory& make_engine, uint8_t block_size_log2,
-                           unsigned threads, bool single_block)
+                           unsigned threads, bool single_block, uint8_t window_log2)
     : engines_(make_engines(make_engine, threads))
     , block_size_log2_(block_size_log2)
     , single_block_(single_block)
+    , window_log2_(window_log2 == 0 ? 0 : std::max(window_log2, block_size_log2))
     , pool_(static_cast<unsigned>(engines_.size()))
 {
 }
@@ -79,6 +101,12 @@ std::expected<FrameLayout, Error> BlockEncoder::encode_frame(std::istream& in, s
 {
     const std::size_t block_size = std::size_t{1} << block_size_log2_;
     const std::size_t max_in_flight = 2 * pool_.size();
+    std::optional<LongRangeMatcher> matcher;
+    if (window_log2_ != 0)
+    {
+        flags |= long_range_flag;
+        matcher.emplace(window_blocks(block_size_log2_, window_log2_));
+    }
 
     // An input that fits one block gets the single-block frame, when asked for.
     std::vector<uint8_t> first;
@@ -109,8 +137,8 @@ std::expected<FrameLayout, Error> BlockEncoder::encode_frame(std::istream& in, s
         in.clear(in.rdstate() & ~std::ios::eofbit);
         have_first = true;
     }
-    write_frame_header(out, block_size_log2_, flags);
-    FrameLayout layout{.block_offsets = {}, .total_size = 0, .size = frame_header_bytes};
+    write_frame_header(out, block_size_log2_, flags, window_log2_);
+    FrameLayout layout{.block_offsets = {}, .total_size = 0, .size = frame_header_size(flags)};
 
     // Tasks left in flight after an early return still finish safely: they own their input, and
     // only this worker's engine touches it.
@@ -166,9 +194,17 @@ std::expected<FrameLayout, Error> BlockEncoder::encode_frame(std::istream& in, s
         {
             return std::unexpected(Error::write_failed);
         }
-        in_flight.push_back(
-            pool_.submit([this, input = std::move(buffer)](std::size_t worker) mutable {
-            EncodedBlock block = engines_[worker]->encode_block(input);
+        LongRangeMatcher::Split split;
+        if (matcher)
+        {
+            PROFILE_SCOPE("Long-range matches")
+            split = matcher->next(buffer);
+        }
+        in_flight.push_back(pool_.submit([this, input = std::move(buffer),
+                                          split = std::move(split)](std::size_t worker) mutable {
+            EncodedBlock block = split.references.empty()
+                                     ? engines_[worker]->encode_block(input)
+                                     : encode_references(*engines_[worker], input, split);
             return Encoded{.block = std::move(block), .input = std::move(input)};
         }));
         total += got;

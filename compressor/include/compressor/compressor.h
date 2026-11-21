@@ -42,6 +42,8 @@ struct CompressorSettings
     std::shared_ptr<const Dictionary> dictionary;
     // Above 0: encode() also writes OUTPUT.repair, with parity worth this percent of the output.
     unsigned repair_percent = 0;
+    // Above 0: long-range references within a window of 2^window_log2 bytes (BlockEncoder).
+    uint8_t window_log2 = 0;
 };
 
 // stdin and stdout through StdioInputBuf and StdioOutputBuf, and std::cerr.

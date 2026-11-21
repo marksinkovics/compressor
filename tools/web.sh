@@ -21,6 +21,7 @@ SOURCES=(
     web/src/demo.cpp
     compressor/src/compressor/bwt/bwt.cpp
     compressor/src/compressor/checksum/crc32.cpp
+    compressor/src/compressor/chunk/chunk.cpp
     compressor/src/compressor/cm/cm.cpp
     compressor/src/compressor/data/data.cpp
     compressor/src/compressor/deflate/deflate.cpp
@@ -32,6 +33,7 @@ SOURCES=(
     compressor/src/compressor/error.cpp
     compressor/src/compressor/gpu/gpu.cpp
     compressor/src/compressor/huffman/huffman.cpp
+    compressor/src/compressor/longrange/longrange.cpp
     compressor/src/compressor/lz77/lz77.cpp
     compressor/src/compressor/lzr/lzr.cpp
     compressor/src/compressor/lzt/lzt.cpp

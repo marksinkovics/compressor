@@ -742,3 +742,18 @@ That is faster than every level but 1 runs per core, so the GPU wasn't needed. H
 | The release build's test, benchmark and `ingot` binaries | 24.7 MB | 41% |
 
 On the last two, ingot level 9 gives 3,203,990 and 6,491,253 bytes, against 1,272,879 and 3,547,750 for `zstd -19 --long=27`, and 1,264,152 and 3,268,576 for `xz -9`. A prototype replaced each repeated chunk with a reference to the literal bytes of an earlier block, extending the match byte by byte in both directions. Compressing what was left at level 9 gave 1,244,978 bytes (512-byte chunks) and 4,110,671 bytes. This is the plan for item 11.
+
+## GPU spike: long-range matching (2026-11-21)
+
+Run 7, item 11, on the CPU (the chunking of item 7 needed no GPU): `encode --long[=BITS]` lets blocks copy from the literals of earlier blocks within a window (default 256 MiB), as in "Long-range references" in `docs/file_format.md`. The inputs of "GPU spike: content-defined chunking"; bytes, CPU time for encoding and for decoding the `--long` file, 6 threads, output decoded and compared:
+
+| Input, level | Without | With `--long` | `--long` decoding |
+| --- | ---: | ---: | ---: |
+| versions of the source, 6 | 3,631,492 (0.16 s) | 1,472,460 (0.08 s) | 0.03 s |
+| versions of the source, 9 | 3,203,990 (10.9 s) | 1,263,612 (4.2 s) | 2.5 s |
+| binaries, 6 | 8,660,675 (0.92 s) | 5,294,626 (0.51 s) | 0.09 s |
+| binaries, 9 | 6,491,253 (43.2 s) | 4,138,062 (22.1 s) | 9.5 s |
+| Silesia as one tar, 2 | 70,817,876 (3.2 s) | 70,461,582 (3.6 s) | 1.3 s |
+| Silesia as one tar, 6 | 66,541,811 (6.0 s) | 66,222,852 (6.3 s) | 1.2 s |
+
+On the source versions, level 9 with `--long` matches `xz -9` (1,264,152) and `zstd -19 --long=27` (1,272,879). On the binaries, `xz -9` (3,268,576) and `zstd --long` (3,547,750) are still smaller: their matches inside similar, not identical, code reach any distance, while ours only copy chunks that repeat exactly. Copying makes encoding cheaper, since less is coded; where nothing repeats (Silesia) it costs about 5% more CPU time for the chunking and hashing. As a folder archive, the source versions go from 1,659,613 to 1,584,844 bytes: whole-file deduplication and the order by extension already put most versions of a file next to each other.

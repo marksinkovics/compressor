@@ -47,6 +47,11 @@ inline constexpr uint16_t search_index_flag = 0x0002;
 // Not with archive_flag: one block in a shorter form, its payload running to the end of the file
 // and no end block (write_single_block_frame()); for small files.
 inline constexpr uint16_t single_block_flag = 0x0004;
+// Blocks may copy from earlier blocks' literals (longrange/longrange.h); the frame header is
+// followed by one byte, log2 of the window in bytes. Not with single_block_flag.
+inline constexpr uint16_t long_range_flag = 0x0008;
+inline constexpr uint8_t default_window_log2 = 28; // 256 MiB
+inline constexpr uint8_t max_window_log2 = 32;
 
 // The values are stored in the file; 0xFF marks the end block, the rest are reserved.
 enum class Method : uint8_t
@@ -54,6 +59,9 @@ enum class Method : uint8_t
     stored = 0,
     huffman = 1,
     pipeline = 2, // version 2: the payload starts with a pipeline descriptor
+    // Only with long_range_flag: references to earlier blocks, then the block's literals as an
+    // inner block (write_references()).
+    references = 3,
 };
 
 // Pipeline descriptor (docs/file_format.md, "Pipeline blocks"): a transform count, each transform's
@@ -109,7 +117,11 @@ struct EncodedData : IData
 };
 
 // The container written piece by piece; operator<< on EncodedData is the three in order.
-void write_frame_header(std::ostream& ostream, uint8_t block_size_log2, uint16_t flags = 0);
+// With long_range_flag, also the window byte.
+void write_frame_header(std::ostream& ostream, uint8_t block_size_log2, uint16_t flags = 0,
+                        uint8_t window_log2 = 0);
+// The bytes write_frame_header() writes.
+uint64_t frame_header_size(uint16_t flags);
 void write_block(std::ostream& ostream, const EncodedBlock& block);
 void write_end_block(std::ostream& ostream, uint64_t total_size);
 // The bytes write_block() writes.
@@ -129,14 +141,17 @@ public:
     // Returns the block size log2.
     std::expected<uint8_t, Error> read_header();
     // Instead of read_header(): reads blocks from the stream's position, as in a container with
-    // this block size, for decoding blocks found through an archive's block table.
-    void start_blocks(uint8_t block_size_log2);
+    // this block size and long_range_flag as in `flags`, for decoding blocks found through a
+    // block table.
+    void start_blocks(uint8_t block_size_log2, uint16_t flags = 0);
     // Fills `block`, reusing its payload's capacity, and returns true; returns false once the end
     // block's total matches and, unless this is an archive, nothing follows it. An archive's
     // stream is left just after its end block. Only after read_header().
     std::expected<bool, Error> read_block(EncodedBlock& block);
     uint16_t flags() const;
     uint64_t total_size() const;
+    // With long_range_flag.
+    uint8_t window_log2() const;
 
 private:
     std::expected<bool, Error> read_single_block(EncodedBlock& block);
@@ -144,6 +159,7 @@ private:
     std::istream& istream_;
     uint8_t version_ = format_version;
     uint16_t flags_ = 0;
+    uint8_t window_log2_ = 0;
     bool single_done_ = false;
     uint64_t block_size_ = 0;
     uint64_t total_ = 0;

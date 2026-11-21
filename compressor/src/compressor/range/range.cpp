@@ -120,8 +120,12 @@ std::expected<BlockTable, Error> read_block_table(std::istream& in)
     {
         return std::unexpected(Error::unexpected_archive);
     }
-    BlockTable table{
-        .block_size_log2 = *log2, .total_size = 0, .single_block = false, .offsets = {}};
+    BlockTable table{.block_size_log2 = *log2,
+                     .total_size = 0,
+                     .single_block = false,
+                     .offsets = {},
+                     .flags = reader.flags(),
+                     .window_log2 = reader.window_log2()};
     const uint64_t block_size = uint64_t{1} << *log2;
     if ((reader.flags() & single_block_flag) != 0)
     {
@@ -210,12 +214,13 @@ std::expected<void, Error> decode_range(IBlockDecoder& decoder, std::istream& in
     const uint8_t log2 = table->block_size_log2;
     const uint64_t first = range.from >> log2;
     const uint64_t last = (to - 1) >> log2;
-    const std::vector<uint64_t> offsets(table->offsets.begin() + static_cast<std::ptrdiff_t>(first),
-                                        table->offsets.begin() +
-                                            static_cast<std::ptrdiff_t>(last + 2));
     SliceBuf slice(out.rdbuf(), range.from - (first << log2), to - range.from);
     std::ostream sliced(&slice);
-    return decoder.decode_blocks(in, sliced, log2, offsets);
+    const FrameBlocks blocks{.offsets = table->offsets,
+                             .block_size_log2 = log2,
+                             .flags = table->flags,
+                             .window_log2 = table->window_log2};
+    return decoder.decode_blocks(in, sliced, blocks, first, last + 1);
 }
 
 } // namespace compressor

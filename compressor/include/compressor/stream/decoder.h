@@ -12,10 +12,20 @@
 #include <compressor/data/data.h>
 #include <compressor/engine/engine.h>
 #include <compressor/error.h>
+#include <compressor/longrange/longrange.h>
 #include <compressor/thread/pool.h>
 
 namespace compressor
 {
+
+// A container's blocks, for decoding some of them.
+struct FrameBlocks
+{
+    std::span<const uint64_t> offsets; // where each block starts, then where the last one ends
+    uint8_t block_size_log2 = default_block_size_log2;
+    uint16_t flags = 0;      // long_range_flag: blocks may copy from earlier ones
+    uint8_t window_log2 = 0; // with long_range_flag
+};
 
 class IBlockDecoder
 {
@@ -28,12 +38,12 @@ public:
     // just after its end block.
     virtual std::expected<void, Error> decode_frame(std::istream& in, std::ostream& out,
                                                     uint16_t flags) = 0;
-    // Decodes the blocks of an archive's block table that start at each of `offsets` but the last,
-    // which is where the last block must end; each block must end where the next one starts.
-    // Leaves the stream at offsets.back().
+    // Decodes blocks `first` to `end` - 1; each must end where the next one starts. A block that
+    // copies from blocks before `first` has them read and decoded too. Leaves the stream at
+    // blocks.offsets[end].
     virtual std::expected<void, Error> decode_blocks(std::istream& in, std::ostream& out,
-                                                     uint8_t block_size_log2,
-                                                     std::span<const uint64_t> offsets) = 0;
+                                                     const FrameBlocks& blocks, std::size_t first,
+                                                     std::size_t end) = 0;
 };
 
 // Decodes up to 2 blocks per thread at once and writes them in order.
@@ -55,14 +65,24 @@ public:
     std::expected<void, Error> decode_frame(std::istream& in, std::ostream& out,
                                             uint16_t flags) override;
     std::expected<void, Error> decode_blocks(std::istream& in, std::ostream& out,
-                                             uint8_t block_size_log2,
-                                             std::span<const uint64_t> offsets) override;
+                                             const FrameBlocks& blocks, std::size_t first,
+                                             std::size_t end) override;
+
+    // Where a long-range frame's earlier literals come from while its blocks are decoded in order.
+    class LiteralSource
+    {
+    public:
+        virtual ~LiteralSource() = default;
+        virtual std::expected<std::span<const uint8_t>, Error> earlier(uint32_t back) = 0;
+        virtual void add(std::vector<uint8_t> literals) = 0;
+    };
 
 private:
     using NextBlock = std::function<std::expected<bool, Error>(EncodedBlock&)>;
 
-    // Decodes and writes blocks until `next` returns false.
-    std::expected<void, Error> decode_all(const NextBlock& next, std::ostream& out);
+    // Decodes and writes blocks until `next` returns false; `literals` for a long-range frame.
+    std::expected<void, Error> decode_all(const NextBlock& next, std::ostream& out,
+                                          LiteralSource* literals);
 
     std::vector<std::unique_ptr<IEngine>> engines_; // one per worker
     ThreadPool pool_; // after engines_, so it finishes its tasks before they are destroyed

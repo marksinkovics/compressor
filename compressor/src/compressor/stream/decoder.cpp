@@ -4,10 +4,13 @@
 #include <cstdint>
 #include <deque>
 #include <expected>
+#include <functional>
 #include <future>
 #include <ios>
 #include <istream>
+#include <map>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <span>
 #include <utility>
@@ -16,6 +19,7 @@
 #include <compressor/data/data.h>
 #include <compressor/engine/engine.h>
 #include <compressor/error.h>
+#include <compressor/longrange/longrange.h>
 #include <compressor/thread/pool.h>
 
 #include <instrumentor/instrumentor.h>
@@ -39,6 +43,134 @@ struct Decoded
     std::expected<void, Error> result;
     EncodedBlock block;
     std::vector<uint8_t> bytes;
+    // A references block's, which become `bytes` once the blocks before it are decoded.
+    std::vector<Reference> references;
+    std::vector<uint8_t> literals;
+};
+
+// Everything of a block that doesn't need the blocks before it.
+void decode_alone(IEngine& engine, Decoded& task)
+{
+    task.bytes.clear();
+    task.references.clear();
+    task.literals.clear();
+    if (task.block.method_ != Method::references)
+    {
+        task.result = engine.decode_block(task.block, task.bytes);
+        return;
+    }
+    EncodedBlock inner;
+    task.result = read_references(task.block.payload_, task.references, inner);
+    if (task.result)
+    {
+        task.result = engine.decode_block(inner, task.literals);
+    }
+}
+
+class HistorySource : public BlockDecoder::LiteralSource
+{
+public:
+    explicit HistorySource(uint64_t window_blocks)
+        : history_(window_blocks)
+    {
+    }
+
+    std::expected<std::span<const uint8_t>, Error> earlier(uint32_t back) override
+    {
+        return history_.earlier(back);
+    }
+
+    void add(std::vector<uint8_t> literals) override
+    {
+        history_.add(std::move(literals));
+    }
+
+private:
+    LongRangeHistory history_;
+};
+
+// For decoding blocks from the middle of a frame: the blocks before the first one are read and
+// decoded when a copy needs them.
+class FetchingSource : public BlockDecoder::LiteralSource
+{
+public:
+    using DecodeAlone = std::function<Decoded(Decoded)>;
+
+    FetchingSource(std::istream& in, const FrameBlocks& blocks, std::size_t first,
+                   DecodeAlone decode)
+        : in_(in)
+        , blocks_(blocks)
+        , first_(first)
+        , window_blocks_(window_blocks(blocks.block_size_log2, blocks.window_log2))
+        , history_(window_blocks_)
+        , decode_(std::move(decode))
+    {
+    }
+
+    std::expected<std::span<const uint8_t>, Error> earlier(uint32_t back) override
+    {
+        if (back <= added_)
+        {
+            return history_.earlier(back);
+        }
+        if (back > window_blocks_ || back - added_ > first_)
+        {
+            return std::unexpected(Error::corrupt_payload);
+        }
+        return fetch(first_ - (back - added_));
+    }
+
+    void add(std::vector<uint8_t> literals) override
+    {
+        history_.add(std::move(literals));
+        ++added_;
+    }
+
+private:
+    std::expected<std::span<const uint8_t>, Error> fetch(std::size_t index)
+    {
+        if (const auto found = fetched_.find(index); found != fetched_.end())
+        {
+            return std::span<const uint8_t>(found->second);
+        }
+        const std::streampos resume = in_.tellg();
+        in_.clear();
+        in_.seekg(static_cast<std::streamoff>(blocks_.offsets[index]));
+        FrameReader reader(in_);
+        reader.start_blocks(blocks_.block_size_log2, blocks_.flags);
+        Decoded task;
+        const auto read = reader.read_block(task.block);
+        const bool ends_right =
+            std::cmp_equal(static_cast<std::streamoff>(in_.tellg()), blocks_.offsets[index + 1]);
+        in_.clear();
+        in_.seekg(resume);
+        if (!read)
+        {
+            return std::unexpected(read.error());
+        }
+        if (!*read || !ends_right)
+        {
+            return std::unexpected(Error::corrupt_index);
+        }
+        task = decode_(std::move(task));
+        if (!task.result)
+        {
+            return std::unexpected(task.result.error());
+        }
+        std::vector<uint8_t>& literals = fetched_[index];
+        literals = task.block.method_ == Method::references ? std::move(task.literals)
+                                                            : std::move(task.bytes);
+        return std::span<const uint8_t>(literals);
+    }
+
+    std::istream& in_;
+    const FrameBlocks& blocks_;
+    std::size_t first_;
+    uint64_t window_blocks_;
+    LongRangeHistory history_;
+    uint64_t added_ = 0;
+    std::map<std::size_t, std::vector<uint8_t>> fetched_;
+    DecodeAlone decode_;
 };
 
 } // namespace
@@ -71,7 +203,8 @@ std::expected<void, Error> BlockDecoder::decode_frame(std::istream& in, std::ost
                                                       uint16_t flags)
 {
     FrameReader reader(in);
-    if (auto header = reader.read_header(); !header)
+    const auto header = reader.read_header();
+    if (!header)
     {
         return std::unexpected(header.error());
     }
@@ -82,30 +215,50 @@ std::expected<void, Error> BlockDecoder::decode_frame(std::istream& in, std::ost
                                                                     : Error::corrupt_header);
     }
 
+    std::optional<HistorySource> history;
+    if ((reader.flags() & long_range_flag) != 0)
+    {
+        history.emplace(window_blocks(*header, reader.window_log2()));
+    }
     return decode_all([&reader](EncodedBlock& block) {
         return reader.read_block(block);
-    }, out);
+    }, out, history ? &*history : nullptr);
 }
 
 std::expected<void, Error> BlockDecoder::decode_blocks(std::istream& in, std::ostream& out,
-                                                       uint8_t block_size_log2,
-                                                       std::span<const uint64_t> offsets)
+                                                       const FrameBlocks& blocks, std::size_t first,
+                                                       std::size_t end)
 {
-    if (offsets.empty())
+    if (first >= end)
     {
         return {};
     }
+    if (end >= blocks.offsets.size())
+    {
+        return std::unexpected(Error::corrupt_index);
+    }
     in.clear();
-    in.seekg(static_cast<std::streamoff>(offsets.front()));
+    in.seekg(static_cast<std::streamoff>(blocks.offsets[first]));
     FrameReader reader(in);
-    reader.start_blocks(block_size_log2);
-    std::size_t next = 0;
+    reader.start_blocks(blocks.block_size_log2, blocks.flags);
+    std::optional<FetchingSource> fetching;
+    if ((blocks.flags & long_range_flag) != 0)
+    {
+        fetching.emplace(in, blocks, first, [this](Decoded task) {
+            return pool_
+                .submit([&task, this](std::size_t worker) {
+                decode_alone(*engines_[worker], task);
+                return std::move(task);
+            }).get();
+        });
+    }
+    std::size_t next = first;
     return decode_all([&](EncodedBlock& block) -> std::expected<bool, Error> {
-        if (std::cmp_not_equal(static_cast<std::streamoff>(in.tellg()), offsets[next]))
+        if (std::cmp_not_equal(static_cast<std::streamoff>(in.tellg()), blocks.offsets[next]))
         {
             return std::unexpected(Error::corrupt_index);
         }
-        if (next + 1 == offsets.size())
+        if (next == end)
         {
             return false;
         }
@@ -116,10 +269,11 @@ std::expected<void, Error> BlockDecoder::decode_blocks(std::istream& in, std::os
             return std::unexpected(Error::corrupt_index);
         }
         return more;
-    }, out);
+    }, out, fetching ? &*fetching : nullptr);
 }
 
-std::expected<void, Error> BlockDecoder::decode_all(const NextBlock& next_block, std::ostream& out)
+std::expected<void, Error> BlockDecoder::decode_all(const NextBlock& next_block, std::ostream& out,
+                                                    LiteralSource* literals)
 {
     const std::size_t max_in_flight = 2 * pool_.size();
     // Tasks left in flight after an early return still finish safely: they own their block, and
@@ -132,6 +286,26 @@ std::expected<void, Error> BlockDecoder::decode_all(const NextBlock& next_block,
         if (!decoded.result)
         {
             return decoded.result;
+        }
+        if (literals != nullptr)
+        {
+            if (decoded.block.method_ == Method::references)
+            {
+                if (auto rebuilt =
+                        rebuild_block(decoded.block, decoded.references, decoded.literals,
+                                      [literals](uint32_t back) {
+                    return literals->earlier(back);
+                }, decoded.bytes);
+                    !rebuilt)
+                {
+                    return rebuilt;
+                }
+                literals->add(std::exchange(decoded.literals, {}));
+            }
+            else
+            {
+                literals->add(decoded.bytes);
+            }
         }
         {
             PROFILE_SCOPE("Write")
@@ -191,8 +365,7 @@ std::expected<void, Error> BlockDecoder::decode_all(const NextBlock& next_block,
         }
         in_flight.push_back(
             pool_.submit([this, task = std::move(next)](std::size_t worker) mutable {
-            task.bytes.clear();
-            task.result = engines_[worker]->decode_block(task.block, task.bytes);
+            decode_alone(*engines_[worker], task);
             return std::move(task);
         }));
     }
