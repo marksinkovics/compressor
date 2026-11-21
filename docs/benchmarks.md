@@ -723,3 +723,22 @@ Run 7, item 6. A temporary mode made the level 7 engine code every delta stride 
 | abstract.bmp, photo.bmp, 16-bit speech, x-ray, sao, osdb | | same within 4 bytes |
 
 Only each file's first block changed. `choose_transforms` sampled the first 64 KiB of a block, which in the first block is the file header, so the picture's predictor wasn't found. It now samples from the middle of the block (test `TransformTests.A_header_at_the_block_start_does_not_hide_the_image`). That gets the exhaustive search's gain at no cost: icon.tiff −7.3% and mr −2.0% at level 6. Totals at level 6: Silesia 66,718,740 → 66,541,811 bytes (−0.27%), images 9,145,185 → 9,080,119 (−0.71%), Canterbury and level 1 unchanged. With middle sampling, the exhaustive search adds only 0.3% on gradient.bmp, so there is nothing to move to the GPU.
+
+## GPU spike: content-defined chunking (2026-11-21)
+
+Run 7, item 7, the front end for long-range matching (item 11). `chunk/chunk.h`: `chunk_ends()` is FastCDC (a gear hash of about the last 64 bytes, a stricter mask before the average size and a looser one after it, chunks from a quarter to 8 times the average), and `chunk_hash()` is a 64-bit hash in four lanes. On the CPU, one thread, 64 MiB of noise (`Chunk/*` benchmarks):
+
+| Average chunk | Chunking | Chunking and hashing |
+| --- | ---: | ---: |
+| 512 B | 1.87 GiB/s | 1.38 GiB/s |
+| 4 KiB | 1.91 GiB/s | 1.48 GiB/s |
+
+That is faster than every level but 1 runs per core, so the GPU wasn't needed. How much of an input repeats in *other* 1 MiB blocks, where a block's own coder can't reach (chunks of 1 KiB, a prototype):
+
+| Input | Size | Repeated in other blocks |
+| --- | ---: | ---: |
+| Silesia as one tar | 212 MB | 0.3% |
+| Three versions of this repository's source (`git archive` of commits 60 and 30 back and of `HEAD`) | 8.6 MB | 48% |
+| The release build's test, benchmark and `ingot` binaries | 24.7 MB | 41% |
+
+On the last two, ingot level 9 gives 3,203,990 and 6,491,253 bytes, against 1,272,879 and 3,547,750 for `zstd -19 --long=27`, and 1,264,152 and 3,268,576 for `xz -9`. A prototype replaced each repeated chunk with a reference to the literal bytes of an earlier block, extending the match byte by byte in both directions. Compressing what was left at level 9 gave 1,244,978 bytes (512-byte chunks) and 4,110,671 bytes. This is the plan for item 11.

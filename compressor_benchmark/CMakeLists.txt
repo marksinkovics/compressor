@@ -8,6 +8,8 @@ set(SRC_FILES
     "${SRC_DIR}/main.cpp"
     "${SRC_DIR}/checksum/crc32.cpp"
     "${SRC_DIR}/checksum/crc32.h"
+    "${SRC_DIR}/chunk/chunk.cpp"
+    "${SRC_DIR}/chunk/chunk.h"
     "${SRC_DIR}/cm/cm.cpp"
     "${SRC_DIR}/cm/cm.h"
     "${SRC_DIR}/codec/codec.cpp"
