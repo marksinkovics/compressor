@@ -29,6 +29,7 @@ set(INCLUDE_FILES
     "${COMPRESSOR_INCLUDE_DIR}/entropy/tans.h"
     "${COMPRESSOR_INCLUDE_DIR}/error.h"
     "${COMPRESSOR_INCLUDE_DIR}/fmindex/fmindex.h"
+    "${COMPRESSOR_INCLUDE_DIR}/gpu/gpu.h"
     "${COMPRESSOR_INCLUDE_DIR}/huffman/huffman.h"
     "${COMPRESSOR_INCLUDE_DIR}/search/search.h"
     "${COMPRESSOR_INCLUDE_DIR}/stats/stats.h"
@@ -70,6 +71,7 @@ set(SRC_FILES
     "${COMPRESSOR_SRC_DIR}/entropy/tans.cpp"
     "${COMPRESSOR_SRC_DIR}/error.cpp"
     "${COMPRESSOR_SRC_DIR}/fmindex/fmindex.cpp"
+    "${COMPRESSOR_SRC_DIR}/gpu/gpu.cpp"
     "${COMPRESSOR_SRC_DIR}/huffman/huffman.cpp"
     "${COMPRESSOR_SRC_DIR}/stream/encoder.cpp"
     "${COMPRESSOR_SRC_DIR}/stream/decoder.cpp"
@@ -91,6 +93,33 @@ target_include_directories(${PROJECT_NAME}
     PRIVATE
         ${SRC_DIR}
 )
+
+# The kernels, compiled to a metallib and embedded as bytes, so nothing has to be installed beside
+# the binaries.
+if(COMPRESSOR_METAL)
+    enable_language(OBJCXX)
+    set(METAL_SOURCE "${COMPRESSOR_SRC_DIR}/gpu/kernels.metal")
+    set(METAL_AIR "${CMAKE_CURRENT_BINARY_DIR}/kernels.air")
+    set(METAL_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/kernels.metallib")
+    set(METAL_EMBEDDED "${CMAKE_CURRENT_BINARY_DIR}/metallib.cpp")
+    add_custom_command(OUTPUT "${METAL_AIR}"
+        COMMAND xcrun -sdk macosx metal -std=metal3.1 -O3 -Werror -c "${METAL_SOURCE}"
+                -o "${METAL_AIR}"
+        DEPENDS "${METAL_SOURCE}" VERBATIM)
+    add_custom_command(OUTPUT "${METAL_LIBRARY}"
+        COMMAND xcrun -sdk macosx metallib "${METAL_AIR}" -o "${METAL_LIBRARY}"
+        DEPENDS "${METAL_AIR}" VERBATIM)
+    add_custom_command(OUTPUT "${METAL_EMBEDDED}"
+        COMMAND "${CMAKE_COMMAND}" -DINPUT=${METAL_LIBRARY} -DOUTPUT=${METAL_EMBEDDED}
+                -DSYMBOL=compressor_metallib -P "${CMAKE_SOURCE_DIR}/cmake/EmbedFile.cmake"
+        DEPENDS "${METAL_LIBRARY}" "${CMAKE_SOURCE_DIR}/cmake/EmbedFile.cmake" VERBATIM)
+    target_sources(${PROJECT_NAME} PRIVATE "${COMPRESSOR_SRC_DIR}/gpu/gpu.mm" "${METAL_EMBEDDED}"
+                                           "${METAL_SOURCE}")
+    set_source_files_properties("${COMPRESSOR_SRC_DIR}/gpu/gpu.mm" PROPERTIES
+        COMPILE_OPTIONS "-fobjc-arc")
+    target_compile_definitions(${PROJECT_NAME} PRIVATE COMPRESSOR_METAL)
+    target_link_libraries(${PROJECT_NAME} PUBLIC "-framework Metal" "-framework Foundation")
+endif()
 
 find_package(Threads REQUIRED)
 

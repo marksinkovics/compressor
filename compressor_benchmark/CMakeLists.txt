@@ -14,6 +14,8 @@ set(SRC_FILES
     "${SRC_DIR}/codec/codec.h"
     "${SRC_DIR}/entropy/entropy.cpp"
     "${SRC_DIR}/entropy/entropy.h"
+    "${SRC_DIR}/gpu/gpu.cpp"
+    "${SRC_DIR}/gpu/gpu.h"
     "${SRC_DIR}/search/search.cpp"
     "${SRC_DIR}/search/search.h"
 )

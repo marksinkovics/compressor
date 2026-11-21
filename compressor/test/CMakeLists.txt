@@ -20,6 +20,7 @@ set(SRC_FILES
     "${SRC_DIR}/entropy/rans.cpp"
     "${SRC_DIR}/entropy/tans.cpp"
     "${SRC_DIR}/fmindex/fmindex.cpp"
+    "${SRC_DIR}/gpu/gpu.cpp"
     "${SRC_DIR}/huffman/huffman.cpp"
     "${SRC_DIR}/lzr/lzr.cpp"
     "${SRC_DIR}/lzt/lzt.cpp"

@@ -29,6 +29,17 @@ option(COMPRESSOR_ASAN "Build our code with AddressSanitizer (needs an -asan tri
 option(COMPRESSOR_PROFILING "Make the PROFILE_* macros write result.json." OFF)
 option(COMPRESSOR_FUZZ "Build the fuzz targets with libFuzzer and ASan (needs a clang with libFuzzer)." OFF)
 option(COMPRESSOR_PYTHON "Build the ingot Python module (python/; vcpkg builds CPython for it)." OFF)
+# Metal kernels for the GPU paths (run 7), on by default where Apple's Metal compiler exists.
+set(COMPRESSOR_METAL_DEFAULT OFF)
+if(APPLE)
+    execute_process(COMMAND xcrun -sdk macosx -f metal RESULT_VARIABLE metal_missing
+                    OUTPUT_QUIET ERROR_QUIET)
+    if(metal_missing EQUAL 0)
+        set(COMPRESSOR_METAL_DEFAULT ON)
+    endif()
+endif()
+option(COMPRESSOR_METAL "Build the Metal GPU paths (macOS; needs the Metal toolchain)."
+       ${COMPRESSOR_METAL_DEFAULT})
 # The static libraries go into the Python module, a shared library.
 if(COMPRESSOR_PYTHON)
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)

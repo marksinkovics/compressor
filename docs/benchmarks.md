@@ -645,3 +645,14 @@ Autonomous run 6, item 5, CPU time of `ingot decode -T 1`.
 
 - **Huffman in four streams** (coder 15, for blocks of 64 KiB and up): Silesia at level 1 decodes in 0.38 CPU seconds instead of 1.00 for the same data as Huffman blocks (2.6×, about 560 MB per CPU second), for 3,094 bytes more on 212 MB; encoding is unchanged (1.0 CPU second). Four independent table lookups per step overlap; one stream is a chain of load, table lookup and shift per symbol (about 13 cycles). Rewriting the single-stream loop first (an unaligned 64-bit load per symbol, or per three symbols) gained nothing (0.81–1.15 against 0.79 seconds), so method 1 kept its loop.
 - **CM mixer** (level 9): making the mixer's input count a template parameter, so the compiler unrolls and vectorizes its int64 dot product and update, gave the same time within noise (1.88–2.00 against 1.97 CPU seconds for 3 MB of dickens). Level 9 decoding is spent waiting on its hashed-context lines (`find_lines` about 20%), counters and APMs bit by bit, not on the mixer's arithmetic; the model's arithmetic is part of the format, so a faster mixer would mean new CM files. Not kept.
+
+## GPU spike: Metal plumbing (2026-11-21)
+
+Run 7, item 0: `gpu/gpu.h` (`gpu::device()`, shared buffers, kernels by name, `run()` waits), Metal behind `COMPRESSOR_METAL`, kernels embedded as a metallib. GPU benchmarks use wall time (`UseRealTime()`): the calling thread mostly waits, so its CPU time would flatter the GPU. A byte histogram (threadgroup atomics), Apple M3 Max (30-core GPU), the input copied into a shared buffer each time:
+
+| Input | CPU, 1 thread | GPU |
+| --- | ---: | ---: |
+| 1 MiB | 0.30 ms (3.2 GiB/s) | 0.36 ms |
+| 64 MiB | 19.7 ms (3.2 GiB/s) | 7.8 ms (8 GiB/s) |
+
+A GPU round trip (encode, commit, wait) costs about 0.25 ms, as much as the CPU needs for 1 MiB of simple work: GPU paths have to give the GPU much more work per dispatch than one simple pass over one block, or batch blocks.
