@@ -7,6 +7,7 @@
 #include <memory>
 #include <span>
 #include <string_view>
+#include <utility>
 
 namespace compressor::gpu
 {
@@ -63,6 +64,14 @@ Device* device();
 // The byte histogram of `bytes`, on the GPU when there is one: the first kernel, for tests and
 // benchmarks of the plumbing.
 void histogram(std::span<const uint8_t> bytes, std::span<uint32_t, 256> counts);
+
+// LZT's match lists for every position of `bytes` (kernels.metal, lzt_matches): `previous` holds
+// each position's previous position with the same hash, plus 1. `matches` gets `slots` pairs per
+// position and `counts` their number, or 255 where the CPU must search itself. False without a GPU.
+inline constexpr unsigned no_gpu_matches = 255;
+bool lzt_matches(std::span<const uint8_t> bytes, std::span<const uint32_t> previous, unsigned depth,
+                 unsigned nice, unsigned good, unsigned slots,
+                 std::span<std::pair<uint32_t, uint32_t>> matches, std::span<uint8_t> counts);
 
 } // namespace compressor::gpu
 

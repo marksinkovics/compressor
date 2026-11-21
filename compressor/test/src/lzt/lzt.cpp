@@ -10,6 +10,7 @@
 
 #include <compressor/deflate/deflate.h>
 #include <compressor/error.h>
+#include <compressor/gpu/gpu.h>
 #include <compressor/lz77/lz77.h>
 #include <compressor/lzt/lzt.h>
 
@@ -220,4 +221,31 @@ TEST(LztOptimalTests, Damaged_payloads_fail_and_leave_the_output_alone)
     Bytes as_coder_13;
     const auto other = compressor::lzt_decode(coded, as_coder_13, input.size());
     EXPECT_TRUE(!other || as_coder_13 != input);
+}
+
+TEST(LztOptimalTests, Gpu_match_lists_give_the_same_output_as_the_cpu)
+{
+    if (compressor::gpu::device() == nullptr)
+    {
+        GTEST_SKIP() << "no GPU";
+    }
+    // Text, a long run (capped on the GPU, searched on the CPU), noise, many equal matches.
+    Bytes runs(300'000, 'r');
+    const Bytes tail = words(100'000);
+    runs.insert(runs.end(), tail.begin(), tail.end());
+    Bytes periodic;
+    for (int i = 0; i < 40'000; ++i)
+    {
+        periodic.push_back(static_cast<uint8_t>("abcdefgh"[i % 8]));
+        periodic.push_back(static_cast<uint8_t>(i % 7));
+    }
+    for (const Bytes& input : {words(600'000), runs, noise(300'000, 4), periodic})
+    {
+        const Bytes cpu = compressor::lzt_optimal_encode(input, 2, 64, 128, false);
+        const Bytes gpu = compressor::lzt_optimal_encode(input, 2, 64, 128, true);
+        EXPECT_EQ(gpu, cpu) << input.size();
+        Bytes out;
+        ASSERT_TRUE(compressor::lzt_optimal_decode(gpu, out, input.size()));
+        EXPECT_EQ(out, input);
+    }
 }

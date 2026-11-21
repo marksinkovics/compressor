@@ -669,3 +669,18 @@ Run 7, item 1. The BWT coders' suffix array, by prefix doubling with radix passe
 SA-IS is 2.5–3.8× faster on text and about 10% slower on binary data, where prefix doubling ends after a few rounds; its worst case is linear. The suffix array is unique, so every output stays byte for byte the same (the fuzz seeds regenerate identically). The BWT coder per MiB of dickens: 93 → 47 ms; BWT + CM: 257 → 208 ms.
 
 The GPU version wasn't built. A GPU radix sort's scatter pass over 1M 64-bit keys took 0.39 ms (2.7 G keys/s at 16M keys); with histogram and scan a pass costs about 0.6 ms, prefix doubling needs about 8 passes per round and some 12 rounds on text, so about 60 ms per MiB, and batching blocks would give the whole GPU about 20 MB/s against about 500 MB/s for SA-IS on 14 cores.
+
+## GPU spike: match lists for LZT (2026-11-21)
+
+Run 7, item 2. Coder 14's encoder (level 7) spent about 75% in its match finder and 23% in the cost-based parse, and ran the finder once per pass on the same data. Two changes, both with byte-identical output (checked against the previous binary on Silesia, Canterbury and the images, and GPU against CPU by `LztOptimalTests.Gpu_match_lists_give_the_same_output_as_the_cpu`):
+
+- **Match lists kept between passes** (`MatchCache`): the finder doesn't depend on prices, so the second pass reuses the first's lists and searches only where the first skipped.
+- **Match lists from the GPU** (`kernels.metal`, `lzt_matches`), for blocks of 256 KiB and up: the CPU builds the hash chains (one cheap pass), one GPU thread per position walks its chain with the finder's rules and writes up to 8 matches; lengths are compared only up to `nice + 1`, and a position that reaches that cap or has more matches is left to the CPU, which searches it only if the parse asks (long runs are skipped by the parse anyway).
+
+| Level 7, Silesia as one tar, 6 threads | CPU time | Wall time |
+| --- | ---: | ---: |
+| before | 105.7 s | 39.0 s |
+| match lists kept between passes | 71.5 s | 29.0 s |
+| plus the GPU's match lists | 39.8 s | 19.0 s |
+
+Canterbury: 1.09 → 0.81 → 0.50 CPU seconds. Level 7 needs 2.7× less CPU time and finishes 2.05× sooner. While adding this, the CPU finder was found to read one byte past the block when a match reached its end; it now stops there (the output doesn't change).

@@ -30,6 +30,7 @@ SOURCES=(
     compressor/src/compressor/entropy/rans.cpp
     compressor/src/compressor/entropy/tans.cpp
     compressor/src/compressor/error.cpp
+    compressor/src/compressor/gpu/gpu.cpp
     compressor/src/compressor/huffman/huffman.cpp
     compressor/src/compressor/lz77/lz77.cpp
     compressor/src/compressor/lzr/lzr.cpp

@@ -14,6 +14,7 @@
 
 #include <compressor/entropy/tans.h>
 #include <compressor/error.h>
+#include <compressor/gpu/gpu.h>
 #include <compressor/lz77/lz77.h>
 
 namespace compressor
@@ -278,6 +279,8 @@ constexpr uint32_t bit = 16;
 constexpr uint32_t unreachable = 0xFFFFFFFFU;
 constexpr unsigned parse_hash_bits = 18;
 constexpr std::size_t good_length = 24;
+// Below this a GPU round trip costs more than the CPU's search.
+constexpr std::size_t min_gpu_block = std::size_t{256} * 1024;
 
 // What one sequence or literal costs, from how often each symbol was used: -log2 of its share,
 // every symbol counted once more so unseen ones stay possible.
@@ -418,7 +421,8 @@ public:
                     best = length;
                     matches.emplace_back(static_cast<uint32_t>(length),
                                          static_cast<uint32_t>(at - from));
-                    if (length >= nice)
+                    // Nothing longer can follow a match to the end (and reading past it would).
+                    if (length >= nice || length == limit)
                     {
                         break;
                     }
@@ -460,13 +464,82 @@ private:
 // The cheapest way through the block by `prices`: forward, every position tries a literal, the
 // repeat offsets and every length of every match found, keeping per position the cheapest arrival
 // and the repeat offsets it leaves; a match of `nice` or more is taken as it is.
-Parsed parse(std::span<const uint8_t> bytes, const Prices& prices, unsigned depth, std::size_t nice)
+// The matches found at each position, kept from one pass to the next: the finder doesn't depend on
+// prices, so a later pass reuses them, and searches only where the earlier one skipped.
+class MatchCache
+{
+public:
+    explicit MatchCache(std::size_t size)
+        : first_(size, unset)
+        , count_(size, 0)
+    {
+    }
+
+    bool has(std::size_t at) const
+    {
+        return first_[at] != unset;
+    }
+
+    std::span<const std::pair<uint32_t, uint32_t>> at(std::size_t at) const
+    {
+        return std::span(matches_).subspan(first_[at], count_[at]);
+    }
+
+    void store(std::size_t at, std::span<const std::pair<uint32_t, uint32_t>> matches)
+    {
+        first_[at] = static_cast<uint32_t>(matches_.size());
+        count_[at] = static_cast<uint16_t>(matches.size());
+        matches_.insert(matches_.end(), matches.begin(), matches.end());
+    }
+
+private:
+    static constexpr uint32_t unset = 0xFFFFFFFFU;
+    std::vector<uint32_t> first_;
+    std::vector<uint16_t> count_;
+    std::vector<std::pair<uint32_t, uint32_t>> matches_;
+};
+
+// The GPU finds every position's matches at once, exactly as ChainFinder would; positions it
+// leaves to the CPU (count 255) stay unset, so parse() searches them if it needs them.
+void fill_from_gpu(std::span<const uint8_t> bytes, unsigned depth, std::size_t nice,
+                   MatchCache& cache)
+{
+    constexpr unsigned slots = 8;
+    const std::size_t n = bytes.size();
+    std::vector<uint32_t> head(std::size_t{1} << parse_hash_bits, 0);
+    std::vector<uint32_t> previous(n, 0);
+    for (std::size_t at = 0; at + 4 <= n; ++at)
+    {
+        uint32_t key = 0;
+        std::memcpy(&key, bytes.data() + at, 4);
+        uint32_t& slot = head[(key * 0x9E3779B1U) >> (32U - parse_hash_bits)];
+        previous[at] = slot;
+        slot = static_cast<uint32_t>(at + 1);
+    }
+    std::vector<std::pair<uint32_t, uint32_t>> matches(n * slots);
+    std::vector<uint8_t> counts(n);
+    if (!gpu::lzt_matches(bytes, previous, depth, static_cast<unsigned>(nice),
+                          static_cast<unsigned>(good_length), slots, matches, counts))
+    {
+        return;
+    }
+    for (std::size_t at = 0; at < n; ++at)
+    {
+        if (counts[at] != gpu::no_gpu_matches)
+        {
+            cache.store(at, std::span(matches).subspan(at * slots, counts[at]));
+        }
+    }
+}
+
+Parsed parse(std::span<const uint8_t> bytes, const Prices& prices, unsigned depth, std::size_t nice,
+             MatchCache& cache)
 {
     const std::size_t n = bytes.size();
     std::vector<Node> nodes(n + 1);
     nodes[0].price = 0;
     ChainFinder finder(bytes, depth);
-    std::vector<std::pair<uint32_t, uint32_t>> matches;
+    std::vector<std::pair<uint32_t, uint32_t>> found;
     std::size_t skip_until = 0;
     const auto relax = [&](std::size_t from, std::size_t length, uint64_t offset,
                            std::size_t repeat, uint32_t price) {
@@ -534,9 +607,13 @@ Parsed parse(std::span<const uint8_t> bytes, const Prices& prices, unsigned dept
             longest = std::max(longest, length);
         }
         // New matches.
-        finder.find(i, nice, matches);
+        if (!cache.has(i))
+        {
+            finder.find(i, nice, found);
+            cache.store(i, found);
+        }
         std::size_t shorter = lz77_min_match - 1;
-        for (const auto& [length, offset] : matches)
+        for (const auto& [length, offset] : cache.at(i))
         {
             const uint32_t base = before + prices.offset(offset);
             for (std::size_t l = shorter + 1; l <= std::min<std::size_t>(length, nice); ++l)
@@ -617,14 +694,19 @@ Streams code_sequences(std::span<const Sequence> sequences)
 } // namespace
 
 std::vector<uint8_t> lzt_optimal_encode(std::span<const uint8_t> bytes, unsigned passes,
-                                        unsigned depth, std::size_t nice)
+                                        unsigned depth, std::size_t nice, bool use_gpu)
 {
     // The first prices are rough guesses; each pass learns them from the parse before.
     Prices prices;
     Parsed parsed;
+    MatchCache cache(bytes.size());
+    if (use_gpu && bytes.size() >= min_gpu_block)
+    {
+        fill_from_gpu(bytes, depth, nice, cache);
+    }
     for (unsigned pass = 0; pass < std::max(passes, 1U); ++pass)
     {
-        parsed = parse(bytes, prices, depth, nice);
+        parsed = parse(bytes, prices, depth, nice, cache);
         const Streams streams = code_sequences(parsed.sequences);
         prices.learn(parsed.literals, streams.runs, streams.lengths, streams.offsets);
     }
