@@ -768,3 +768,16 @@ Run 7, item 8, settled by splitting `grep`'s time between decoding and matching.
 | 6 | 1.07 s | 1.10 s | 1.14 s |
 
 Matching takes 3–15% of the time and decoding the rest, so a GPU matcher could save at most that share, far from the ≥10× criterion. Scanning compressed bits works only on Huffman blocks, not on the LZ77 blocks of the default level, and is only a filter: exact line numbers and counts still need each block decoded ("GPU spike" notes under BitScan above). For reference, the system `grep` takes 2.79 s on the uncompressed tar.
+
+## GPU spike: CM over many blocks (2026-11-21, not kept)
+
+Run 7, item 9. CM codes a block bit by bit, each prediction depending on all earlier updates, so a GPU can only run one block per thread. A standalone microbenchmark ran the same CM-like loop on both: per bit, 6 hashed context lookups into a 16 MiB table per block, a stretch table, one mixer and the updates, on slices of Silesia; Apple M3 Max, wall time:
+
+| | Throughput |
+| --- | ---: |
+| CPU, 1 thread | 5.0 MB/s |
+| GPU, 32 blocks at once | 2.6 MB/s (0.08 MB/s per block) |
+| GPU, 256 blocks | 16 MB/s |
+| GPU, 1024 blocks | 20 MB/s |
+
+One GPU thread is about 60× slower than a CPU core on this loop: every lookup is a dependent random memory access, which a GPU hides only with many independent threads. Even with 1024 blocks in flight (1 GiB of input) it stays below 6 CPU threads (about 30 MB/s). A port would also need integer-only arithmetic to be bit-exact with the CPU (the microbenchmark's float `exp` already differed). The real CM coder wasn't ported.
