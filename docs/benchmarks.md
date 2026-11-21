@@ -781,3 +781,18 @@ Run 7, item 9. CM codes a block bit by bit, each prediction depending on all ear
 | GPU, 1024 blocks | 20 MB/s |
 
 One GPU thread is about 60× slower than a CPU core on this loop: every lookup is a dependent random memory access, which a GPU hides only with many independent threads. Even with 1024 blocks in flight (1 GiB of input) it stays below 6 CPU threads (about 30 MB/s). A port would also need integer-only arithmetic to be bit-exact with the CPU (the microbenchmark's float `exp` already differed). The real CM coder wasn't ported.
+
+## GPU spike: image groundwork (2026-11-21)
+
+Run 7, item 10, for run 8's lossless coder: which pixel predictor and reversible colour transform suit which pictures, and whether the image work needs the GPU. Residual entropy over `corpus/pictures` (run 8, item 1), bits per pixel for the three colour channels, mean per class. "Context" conditions each residual on the local activity `|W − NW| + |N − NW| + |N − NE|` in 12 log-spaced buckets, a rough stand-in for a context-modelling coder; residuals are taken modulo each channel's range. Predictors: left, up, the average of the two, Paeth (PNG), MED (JPEG-LS), GAP (CALIC). Transforms: none, subtract green (WebP: R − G, B − G), RCT (JPEG 2000: (R + 2G + B) / 4, R − G, B − G), YCoCg-R.
+
+| Class (images) | Best order-0 | Best with context | Without a transform, best with context |
+| --- | --- | --- | --- |
+| photo (25) | RCT + MED, 10.14 | subtract green + GAP, 9.39 | GAP, 12.81 |
+| screen (3) | YCoCg + Paeth, 0.95 | YCoCg + Paeth, 0.60 | Paeth, 1.02 |
+| graphic (3) | YCoCg + MED, 2.84 | YCoCg + average, 2.47 | MED, 2.58 |
+| alpha (2, colour only) | none + MED, 1.18 | none + MED, 0.77 | MED, 0.77 |
+
+- On photos a decorrelating colour transform saves about 3.5 of 13 bits per pixel; subtract green and RCT are within 0.02 of each other, YCoCg-R about 0.1 behind. On screens and graphics YCoCg-R is best; on the icons a transform loses slightly.
+- No predictor wins everywhere: GAP on photos (MED 0.12 behind with context), Paeth on screens, the average or GAP on graphics, MED on the icons. Run 8's coder should pick the transform and predictor per image or per tile by an estimate like this one, which costs one pass per candidate on the CPU: that is item 6's exhaustive search, and it needs no GPU at these sizes.
+- The GPU isn't needed for the image experiments either: `ssimulacra2` takes 0.05 CPU s on a 0.4-megapixel Kodak image and 0.41 s on a 4-megapixel one, so a rate search with ten evaluations per image costs about a second per megapixel. A DCT per 8×8 block is cheaper than one pass of the metric.

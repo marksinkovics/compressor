@@ -34,7 +34,8 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 - Run 7: item 0, the Metal plumbing (`gpu/`, `COMPRESSOR_METAL`), and item 1, the suffix array (SA-IS on the CPU, 2.5–3.8× on text; the GPU version estimated slower), and item 2, LZT match lists (kept between passes, computed on the GPU: level 7 2.05× faster), are done; item 3, Deflate match search on the GPU, was measured and not kept (1.8× less CPU time, not faster in wall time); items 4 and 5 (level 1 Huffman on the GPU) were not built, because level 1 is already at the I/O floor with 6 threads; item 6 found that the transform chooser sampled file headers and now samples mid-block (Silesia −0.27%, images −0.71%); item 7, content-defined chunking (`chunk/`, on the CPU), and item 11, long-range references (`encode --long`, `longrange/`, block method 3; source versions −59%), are done; 437/437 pass.
 - Run 7 item 8, `grep` on the GPU, was not built: decoding is 85–97% of its time.
 - Run 7 item 9, CM over many blocks on the GPU, was not kept (20 MB/s at best with 1024 blocks, below 6 CPU threads).
-- **Next:** run 7 item 10, image groundwork for run 8.
+- Run 7 item 10, image groundwork, is done on the CPU (per-class predictor and colour transform choice; no GPU needed). Run 7 is finished: of the GPU experiments only item 2 (LZT match lists) kept GPU code.
+- **Next:** run 8 item 1, image corpus and `tools/images.py`.
 
 ## Commands
 
