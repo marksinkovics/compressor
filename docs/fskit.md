@@ -1,6 +1,6 @@
 # Mounting archives with FSKit: spike notes (2026-11-20)
 
-Autonomous run 6, item 3, stopped at the signing step and postponed for separate research (no NFS or macFUSE fallback, by decision).
+Autonomous run 6, item 3, stopped at the signing step and postponed for separate research (no NFS or macFUSE fallback, by decision). The work is planned as the roadmap milestone "Mounting with FSKit"; the user has a developer account for the signing set-up.
 
 ## What was checked
 
