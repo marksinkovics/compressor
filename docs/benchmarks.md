@@ -757,3 +757,14 @@ Run 7, item 11, on the CPU (the chunking of item 7 needed no GPU): `encode --lon
 | Silesia as one tar, 6 | 66,541,811 (6.0 s) | 66,222,852 (6.3 s) | 1.2 s |
 
 On the source versions, level 9 with `--long` matches `xz -9` (1,264,152) and `zstd -19 --long=27` (1,272,879). On the binaries, `xz -9` (3,268,576) and `zstd --long` (3,547,750) are still smaller: their matches inside similar, not identical, code reach any distance, while ours only copy chunks that repeat exactly. Copying makes encoding cheaper, since less is coded; where nothing repeats (Silesia) it costs about 5% more CPU time for the chunking and hashing. As a folder archive, the source versions go from 1,659,613 to 1,584,844 bytes: whole-file deduplication and the order by extension already put most versions of a file next to each other.
+
+## GPU spike: `grep` (2026-11-21, not built)
+
+Run 7, item 8, settled by splitting `grep`'s time between decoding and matching. All of Silesia archived as a folder, one thread, CPU time, best of 3; `verify` decodes every block and writes nothing:
+
+| Level | `verify` | `grep -c zzzqqq` (no match) | `grep -c the` |
+| --- | ---: | ---: | ---: |
+| 1 | 0.30 s | 0.35 s | 0.39 s |
+| 6 | 1.07 s | 1.10 s | 1.14 s |
+
+Matching takes 3–15% of the time and decoding the rest, so a GPU matcher could save at most that share, far from the ≥10× criterion. Scanning compressed bits works only on Huffman blocks, not on the LZ77 blocks of the default level, and is only a filter: exact line numbers and counts still need each block decoded ("GPU spike" notes under BitScan above). For reference, the system `grep` takes 2.79 s on the uncompressed tar.
