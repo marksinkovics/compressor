@@ -30,6 +30,8 @@ ingot encode --long -i backups.tar -o backups.tar.ingot  # copy repeats up to 25
 ingot image encode -i photo.ppm -o photo.ingoti         # lossless images: PGM, PPM or PAM in
 ingot image decode -i photo.ingoti -o photo.ppm
 ingot image encode --quality 80 -i photo.ppm -o photo.ingotl  # lossy (an experiment)
+ingot image decode --region 512,512,256,256 -i photo.ingotl -o part.ppm  # decodes only what covers it
+ingot image decode --partial -i cut-short.ingotl -o coarse.ppm  # a lossy file's prefix, coarser
 ingot repair data.tar.ingot                           # undo damage to it, using the .repair file
 ingot encode -f gzip -i notes.txt -o notes.txt.gz     # or -f zip for a folder
 ```

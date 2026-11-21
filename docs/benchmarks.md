@@ -875,3 +875,33 @@ Steps on photos, bpp at scores 70 / 80 / 90:
 | Chroma scale growing with quality, `120 + 9 × quality / 10` percent | 0.855 | 1.336 | 2.721 |
 
 Adaptive quantisation by block activity was tried both ways (coarser for busy blocks, as for masking, and the opposite), with 2 bits per block of side information: every setting was worse (by 0.4–6%), so it was removed. Closing the rest of the gap to JPEG XL would take what it has beyond this: larger and variable transform sizes, a perceptual colour space (XYB), and per-block quantisation driven by a perceptual model rather than variance; for screens, a lossless-style mode for flat regions and text.
+
+## Image track: progressive and region decoding (2026-11-21)
+
+Run 8, item 4. The lossy format (version 2) codes tiles of 512 × 512 pixels independently, each in 4 passes by frequency band (DC, AC 1–5, 6–20, 21–63), stored pass-major; the lossless format already had strips of rows. `ingot image decode --region X,Y,W,H` decodes only the tiles or strips that cover the region, `--partial` a lossy file cut short.
+
+What tiles and passes cost, photos, bpp at SSIMULACRA2 70 / 80 / 90 (version 1 was one stream):
+
+| Layout | 70 | 80 | 90 |
+| --- | ---: | ---: | ---: |
+| Version 1, one stream | 0.855 | 1.336 | 2.721 |
+| Tiles of 256 pixels, a fresh model per pass | 0.888 | 1.381 | 2.788 |
+| The same, the model kept across a tile's passes | 0.887 | 1.378 | 2.784 |
+| Tiles of 512 pixels, model kept (kept) | 0.861 | 1.345 | 2.732 |
+
+Most of the cost is what each tile has to learn again; 512-pixel tiles cost 0.4–0.7%. Progression, quality 75, share of the file read and SSIMULACRA2 of what it decodes to:
+
+| Image | After the DCs | After AC 1–5 | After AC 6–20 | Whole |
+| --- | --- | --- | --- | --- |
+| kodim01 | 8.7%, −62.8 | 35.7%, 22.5 | 80.8%, 63.7 | 74.7 |
+| kodim23 | 20.5%, −21.2 | 63.8%, 50.2 | 94.2%, 72.8 | 79.1 |
+| Sonoma (2048²) | 52.1%, 54.9 | 85.1%, 77.3 | 98.1%, 81.7 | 82.1 |
+
+A DC-only tile is shown as its block means interpolated (bilinear), which scored 54.9 on Sonoma against 46.6 for flat blocks and about the same on Kodak, where a DC image is too coarse either way. Region decoding on Sonoma (2048², one thread, CPU time), a 256 × 256 region at (900, 900), its pixels equal to the crop of a whole decode:
+
+| File | Whole image | Region |
+| --- | ---: | ---: |
+| Lossy, quality 75 (4 of 16 tiles) | 0.18 s | 0.06 s |
+| Lossless (2 of 8 strips) | 2.15 s | 0.55 s |
+
+A lossless region isn't checked against the file's CRC32, which covers the whole image; a later format version could add one per strip.

@@ -38,7 +38,8 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 - Run 8 (list at the end of `docs/roadmap.md`, same branch, Claude commits): item 1, the image corpus (`tools/fetch-corpus.sh pictures`) and `tools/images.py`, is done.
 - Run 8 item 2, the lossless image coder (`ingot image`, `image/`), is done: photos 1.9% below JPEG XL lossless, screens level with WebP lossless; 448/448 pass.
 - Run 8 item 3, the lossy experiment (`image encode --quality`), is done: photos within 0.6–2.6% of JPEG XL, screens 2–5× behind; 451/451 pass.
-- **Next:** run 8 item 4, progressive and region-of-interest decoding.
+- Run 8 item 4, progressive and region decoding (`image decode --partial`, `--region`), is done; 454/454 pass.
+- **Next:** run 8 item 5, notes on video (`docs/video.md`).
 
 ## Commands
 

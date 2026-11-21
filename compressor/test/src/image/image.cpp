@@ -134,7 +134,7 @@ TEST(ImageTests, A_large_image_codes_in_strips_the_same_on_any_thread_count)
     const Image image = picture(1100, 500, 1, 3);
     const std::vector<uint8_t> one = compressor::encode_image(image, 1);
     EXPECT_EQ(compressor::encode_image(image, 4), one);
-    const auto decoded = compressor::decode_image(one, 4);
+    const auto decoded = compressor::decode_image(one, {.threads = 4});
     ASSERT_TRUE(decoded);
     EXPECT_EQ(*decoded, image);
 }
@@ -281,5 +281,88 @@ TEST(LossyImageTests, Damaged_files_fail_cleanly)
         flipped[15 + (next(state) % (flipped.size() - 15))] ^=
             static_cast<uint8_t>(1U << (next(state) % 8));
         (void)compressor::decode_lossy_image(flipped).has_value();
+    }
+}
+
+namespace
+{
+
+Image crop(const Image& image, compressor::ImageRegion region)
+{
+    Image part{
+        .width = region.width, .height = region.height, .channels = image.channels, .pixels = {}};
+    for (uint32_t y = region.y; y < region.y + region.height; ++y)
+    {
+        const auto row =
+            image.pixels.begin() +
+            static_cast<std::ptrdiff_t>((std::size_t{y} * image.width + region.x) * image.channels);
+        part.pixels.insert(
+            part.pixels.end(), row,
+            row + static_cast<std::ptrdiff_t>(std::size_t{region.width} * image.channels));
+    }
+    return part;
+}
+
+} // namespace
+
+TEST(LossyImageTests, A_region_decodes_to_the_crop_of_the_whole_image)
+{
+    // Two tiles across; regions inside one, across the boundary and just short of it.
+    const Image image = smooth(600, 40, 3);
+    const auto encoded = compressor::encode_lossy_image(image, 60);
+    ASSERT_TRUE(encoded);
+    const auto whole = compressor::decode_lossy_image(*encoded);
+    ASSERT_TRUE(whole);
+    for (const compressor::ImageRegion region :
+         {compressor::ImageRegion{.x = 3, .y = 5, .width = 50, .height = 20},
+          compressor::ImageRegion{.x = 500, .y = 0, .width = 30, .height = 40},
+          compressor::ImageRegion{.x = 480, .y = 1, .width = 31, .height = 9},
+          compressor::ImageRegion{.x = 513, .y = 0, .width = 87, .height = 40}})
+    {
+        const auto part = compressor::decode_lossy_image(
+            *encoded, {.threads = 2, .region = region, .partial = false});
+        ASSERT_TRUE(part) << region.x;
+        EXPECT_EQ(*part, crop(*whole, region)) << region.x;
+    }
+    EXPECT_EQ(compressor::decode_lossy_image(
+                  *encoded,
+                  {.threads = 1,
+                   .region = compressor::ImageRegion{.x = 590, .y = 0, .width = 20, .height = 1},
+                   .partial = false}),
+              std::unexpected(compressor::Error::bad_range));
+}
+
+TEST(LossyImageTests, A_prefix_decodes_coarser_with_partial)
+{
+    const Image image = smooth(96, 64, 3);
+    const auto encoded = compressor::encode_lossy_image(image, 80);
+    ASSERT_TRUE(encoded);
+    const auto whole = compressor::decode_lossy_image(*encoded);
+    ASSERT_TRUE(whole);
+    // One tile: the size table is 4 numbers after the 15-byte header; cut after the DC pass.
+    const std::size_t dc_bytes = std::size_t{(*encoded)[15]} | (std::size_t{(*encoded)[16]} << 8U);
+    const std::span<const uint8_t> prefix = std::span(*encoded).first(15 + 16 + dc_bytes);
+    EXPECT_FALSE(compressor::decode_lossy_image(prefix));
+    const auto coarse =
+        compressor::decode_lossy_image(prefix, {.threads = 1, .region = {}, .partial = true});
+    ASSERT_TRUE(coarse);
+    EXPECT_EQ(coarse->pixels.size(), image.pixels.size());
+    EXPECT_LT(psnr(image, *coarse), psnr(image, *whole));
+    EXPECT_GT(psnr(image, *coarse), 15.0);
+}
+
+TEST(ImageTests, A_region_of_a_lossless_image_decodes_exactly)
+{
+    const Image image = picture(1100, 500, 1, 6); // two strips
+    const std::vector<uint8_t> encoded = compressor::encode_image(image);
+    for (const compressor::ImageRegion region :
+         {compressor::ImageRegion{.x = 0, .y = 0, .width = 1100, .height = 1},
+          compressor::ImageRegion{.x = 17, .y = 470, .width = 300, .height = 30},
+          compressor::ImageRegion{.x = 1099, .y = 499, .width = 1, .height = 1}})
+    {
+        const auto part =
+            compressor::decode_image(encoded, {.threads = 2, .region = region, .partial = false});
+        ASSERT_TRUE(part) << region.y;
+        EXPECT_EQ(*part, crop(image, region)) << region.y;
     }
 }

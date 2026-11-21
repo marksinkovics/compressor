@@ -1300,7 +1300,7 @@ std::expected<void, Error> decode_strip(std::span<const uint8_t> payload, std::s
 // context mixer.
 
 constexpr std::array<uint8_t, 4> lossy_magic{0x89, 'I', 'N', 'L'};
-constexpr uint8_t lossy_version = 1;
+constexpr uint8_t lossy_version = 2;
 constexpr std::size_t lossy_header_bytes = 4 + 1 + 1 + 1 + 4 + 4;
 constexpr std::size_t block = 8;
 
@@ -1458,37 +1458,42 @@ class CoefficientModel
 public:
     static constexpr std::size_t kinds = 164; // see the decision ids below
 
-    CoefficientModel()
-        : position_(std::size_t{3} * 64 * 16 * kinds)
-        , neighbours_(std::size_t{3} * 64 * 16 * kinds)
-        , count_(std::size_t{3} * 64 * 8 * kinds)
-        , left_(std::size_t{3} * 64 * 16 * kinds)
-        , up_(std::size_t{3} * 64 * 16 * kinds)
-        , luma_(std::size_t{3} * 64 * 16 * kinds)
+    // For a band of `positions` zigzag positions.
+    explicit CoefficientModel(std::size_t positions)
+        : position_(std::size_t{3} * positions * 16 * kinds)
+        , neighbours_(std::size_t{3} * positions * 16 * kinds)
+        , count_(std::size_t{3} * positions * 8 * kinds)
+        , left_(std::size_t{3} * positions * 16 * kinds)
+        , up_(std::size_t{3} * positions * 16 * kinds)
+        , luma_(std::size_t{3} * positions * 16 * kinds)
+        , lower_(std::size_t{3} * positions * 16 * kinds)
+        , positions_(positions)
         , mixer_(std::size_t{3} * 16 * 4)
         , apm_(std::size_t{3} * kinds * 4)
     {
     }
 
-    // `k`: zigzag position (0 for DC and the count); `remaining`: nonzeros left to code,
-    // bucketed; `around`: the neighbouring blocks' magnitude at `k`, bucketed (0-15).
-    // `left`, `up`: those blocks' signed value at `k`; `luma`: for chroma, the first channel's
-    // signed value at `k` in this block.
-    void start(unsigned channel, unsigned k, unsigned remaining, unsigned around, int left = 0,
-               int up = 0, int luma = 0)
+    // `k`: zigzag position; `slot`: its place in the band; `remaining`: nonzeros left to code;
+    // `around`: the neighbouring blocks' magnitude at `k`, bucketed (0-15); `left`, `up`: those
+    // blocks' signed value at `k`; `luma`: for chroma, the first channel's signed value at `k` in
+    // this block; `lower`: this block's energy in the bands before, bucketed (0-15).
+    void start(unsigned channel, unsigned k, std::size_t slot, unsigned remaining, unsigned around,
+               int left, int up, int luma, unsigned lower)
     {
         const auto signed_bucket = [](int v) {
             const auto m = std::min(7U, bit_length(static_cast<unsigned>(std::abs(v))));
             return v < 0 ? 7 - m : 7 + m;
         };
-        left_index_ = (((channel * 64) + k) * 16 + signed_bucket(left)) * kinds;
-        up_index_ = (((channel * 64) + k) * 16 + signed_bucket(up)) * kinds;
-        luma_index_ = (((channel * 64) + k) * 16 + signed_bucket(luma)) * kinds;
+        const std::size_t base = (channel * positions_) + slot;
+        left_index_ = ((base * 16) + signed_bucket(left)) * kinds;
+        up_index_ = ((base * 16) + signed_bucket(up)) * kinds;
+        luma_index_ = ((base * 16) + signed_bucket(luma)) * kinds;
+        lower_index_ = ((base * 16) + std::min(lower, 15U)) * kinds;
         channel_ = channel;
-        position_index_ = (((channel * 64) + k) * 16 + std::min(remaining, 15U)) * kinds;
-        neighbours_index_ = (((channel * 64) + k) * 16 + std::min(around, 15U)) * kinds;
-        count_index_ = (((channel * 64) + k) * 8 + std::min(around / 2, 7U)) * kinds;
-        mixer_base_ = (std::size_t{channel} * 16 + std::min(k, 15U)) * 4;
+        position_index_ = ((base * 16) + std::min(remaining, 15U)) * kinds;
+        neighbours_index_ = ((base * 16) + std::min(around, 15U)) * kinds;
+        count_index_ = ((base * 8) + std::min(around / 2, 7U)) * kinds;
+        mixer_base_ = ((std::size_t{channel} * 16) + std::min(k, 15U)) * 4;
     }
 
     int p(std::size_t decision)
@@ -1498,16 +1503,14 @@ public:
                      &count_[count_index_ + decision],
                      &left_[left_index_ + decision],
                      &up_[up_index_ + decision],
-                     &luma_[luma_index_ + decision]};
+                     &luma_[luma_index_ + decision],
+                     &lower_[lower_index_ + decision]};
         for (std::size_t i = 0; i < counters_.size(); ++i)
         {
             inputs_[i] = stretch(counters_[i]->p12());
         }
-        inputs_[6] = 256;
-        for (std::size_t i = 7; i < Mixer::inputs; ++i)
-        {
-            inputs_[i] = 0;
-        }
+        inputs_[7] = 256;
+        inputs_[8] = 0;
         const std::size_t group = decision == 0 ? 0 : (decision == 1 ? 1 : (decision < 32 ? 2 : 3));
         const int mixed = mixer_.mix(inputs_, mixer_base_ + group);
         const int refined = apm_.p(mixed, ((channel_ * kinds) + decision) * 4 + group);
@@ -1531,33 +1534,69 @@ private:
     std::vector<Counter> left_;
     std::vector<Counter> up_;
     std::vector<Counter> luma_;
+    std::vector<Counter> lower_;
+    std::size_t positions_;
     Mixer mixer_;
     Apm apm_;
     unsigned channel_ = 0;
     std::size_t left_index_ = 0;
     std::size_t up_index_ = 0;
     std::size_t luma_index_ = 0;
+    std::size_t lower_index_ = 0;
     std::size_t position_index_ = 0;
     std::size_t neighbours_index_ = 0;
     std::size_t count_index_ = 0;
     std::size_t mixer_base_ = 0;
-    std::array<Counter*, 6> counters_{};
+    std::array<Counter*, 7> counters_{};
     std::array<int, Mixer::inputs> inputs_{};
 };
 
 // Decision ids: 0 zero, 1 sign, 2-17 the magnitude's bit length (unary), 32 + 8 * k + i its
-// mantissa bit i with bit length k + 1 (k < 8); 100-163 the block's nonzero count, a binary tree.
+// mantissa bit i with bit length k + 1 (k < 8); 100-163 the block's nonzero count in the band, a
+// binary tree.
 unsigned bucket(int v)
 {
     return std::min(15U, bit_length(static_cast<unsigned>(std::abs(v))) * 2);
 }
 
+// Tiles of 64 x 64 blocks (512 pixels) are coded independently, each in 4 passes by frequency band,
+// so a region decodes only its tiles and a prefix of the passes gives a coarser image.
+constexpr std::size_t tile_blocks = 64;
+constexpr std::array<std::pair<std::size_t, std::size_t>, 4> bands{
+    {{0, 1}, {1, 6}, {6, 21}, {21, 64}}};
+
+struct Tile
+{
+    std::size_t x = 0; // in blocks
+    std::size_t y = 0;
+    std::size_t width = 0;
+    std::size_t height = 0;
+};
+
+std::vector<Tile> tiles_of(std::size_t blocks_x, std::size_t blocks_y)
+{
+    std::vector<Tile> tiles;
+    for (std::size_t y = 0; y < blocks_y; y += tile_blocks)
+    {
+        for (std::size_t x = 0; x < blocks_x; x += tile_blocks)
+        {
+            tiles.push_back({.x = x,
+                             .y = y,
+                             .width = std::min(tile_blocks, blocks_x - x),
+                             .height = std::min(tile_blocks, blocks_y - y)});
+        }
+    }
+    return tiles;
+}
+
+// Codes one band of one tile's blocks; neighbours outside the tile count as missing.
+// `model` carries over from the tile's earlier passes.
 template <class Coder>
-void code_coefficients(std::vector<std::vector<int>>& levels, std::size_t blocks_x,
-                       std::size_t blocks_y, Coder& coder)
+void code_band(std::vector<std::vector<int>>& levels, std::size_t blocks_x, const Tile& tile,
+               std::size_t band, CoefficientModel& model, Coder& coder)
 {
     constexpr bool encoding = requires(Coder& c) { c.encode(0U, 0); };
-    CoefficientModel model;
+    const auto [first, last] = bands[band];
     const auto code = [&](std::size_t decision, unsigned bit) -> unsigned {
         const int p = model.p(decision);
         if constexpr (encoding)
@@ -1593,65 +1632,78 @@ void code_coefficients(std::vector<std::vector<int>>& levels, std::size_t blocks
         }
         return negative != 0 ? -static_cast<int>(result) : static_cast<int>(result);
     };
+    const auto count_bits = static_cast<unsigned>(std::bit_width(last - first));
     const std::size_t channels = levels.size();
-    for (std::size_t by = 0; by < blocks_y; ++by)
+    for (std::size_t ty = 0; ty < tile.height; ++ty)
     {
-        for (std::size_t bx = 0; bx < blocks_x; ++bx)
+        for (std::size_t tx = 0; tx < tile.width; ++tx)
         {
-            const std::size_t b = (by * blocks_x) + bx;
+            const std::size_t b = ((tile.y + ty) * blocks_x) + tile.x + tx;
             for (std::size_t c = 0; c < channels; ++c)
             {
-                std::vector<int>& level = levels[c];
-                int* coefficients = level.data() + (b * 64);
-                const int* left = bx > 0 ? coefficients - 64 : nullptr;
-                const int* up = by > 0 ? coefficients - (blocks_x * 64) : nullptr;
-                const auto around = [&](std::size_t k) {
-                    const int l = left != nullptr ? std::abs(left[zigzag[k]]) : 0;
-                    const int u = up != nullptr ? std::abs(up[zigzag[k]]) : 0;
-                    return bucket((l + u + 1) / 2);
+                int* coefficients = levels[c].data() + (b * 64);
+                const int* left = tx > 0 ? coefficients - 64 : nullptr;
+                const int* up = ty > 0 ? coefficients - (blocks_x * 64) : nullptr;
+                const auto value_at = [](const int* block_levels, std::size_t k) {
+                    return block_levels != nullptr ? block_levels[zigzag[k]] : 0;
                 };
-                const auto count_of = [](const int* block_levels) {
+                if (band == 0)
+                {
+                    // The residual of the median predictor over the neighbouring blocks' DCs.
+                    const int dc_left = left != nullptr ? left[0] : (up != nullptr ? up[0] : 0);
+                    const int dc_up = up != nullptr ? up[0] : dc_left;
+                    const int dc_corner = left != nullptr && up != nullptr
+                                              ? (coefficients - (blocks_x * 64) - 64)[0]
+                                              : dc_up;
+                    const int most = std::max(dc_left, dc_up);
+                    const int least = std::min(dc_left, dc_up);
+                    const int prediction =
+                        dc_corner >= most
+                            ? least
+                            : (dc_corner <= least ? most : dc_left + dc_up - dc_corner);
+                    model.start(static_cast<unsigned>(c), 0, 0, 0,
+                                bucket(std::abs(dc_left - dc_corner) + std::abs(dc_up - dc_corner)),
+                                dc_left - dc_corner, dc_up - dc_corner,
+                                c > 0 ? levels[0][b * 64] - (levels[0][(b * 64)] / 2) : 0, 0);
+                    coefficients[0] =
+                        code_value(encoding ? coefficients[0] - prediction : 0) + prediction;
+                    continue;
+                }
+                int energy = 0;
+                for (std::size_t k = 1; k < first; ++k)
+                {
+                    energy += std::abs(coefficients[zigzag[k]]);
+                }
+                const unsigned lower = bucket(energy);
+                const auto count_in = [&](const int* block_levels) {
                     unsigned n = 0;
-                    for (std::size_t k = 1; k < 64; ++k)
+                    for (std::size_t k = first; k < last && block_levels != nullptr; ++k)
                     {
                         n += block_levels[zigzag[k]] != 0 ? 1U : 0U;
                     }
                     return n;
                 };
-                // DC: the residual of the median predictor over the neighbouring blocks' DCs.
-                const int dc_left = left != nullptr ? left[0] : (up != nullptr ? up[0] : 0);
-                const int dc_up = up != nullptr ? up[0] : dc_left;
-                const int dc_corner = left != nullptr && up != nullptr
-                                          ? (coefficients - (blocks_x * 64) - 64)[0]
-                                          : dc_up;
-                const int most = std::max(dc_left, dc_up);
-                const int least = std::min(dc_left, dc_up);
-                const int dc_prediction =
-                    dc_corner >= most ? least
-                                      : (dc_corner <= least ? most : dc_left + dc_up - dc_corner);
-                model.start(static_cast<unsigned>(c), 0, 0,
-                            bucket(std::abs(dc_left - dc_corner) + std::abs(dc_up - dc_corner)));
-                const int dc = code_value(encoding ? coefficients[0] - dc_prediction : 0);
-                coefficients[0] = dc + dc_prediction;
-
-                // The AC count, as a 6-bit binary tree.
-                const unsigned neighbour_count = ((left != nullptr ? count_of(left) : 0) +
-                                                  (up != nullptr ? count_of(up) : 0) + 1) /
-                                                 2;
-                model.start(static_cast<unsigned>(c), 0, 0, std::min(15U, neighbour_count / 4));
-                const unsigned count = encoding ? count_of(coefficients) : 0;
+                const unsigned neighbour_count = (count_in(left) + count_in(up) + 1) / 2;
+                model.start(static_cast<unsigned>(c), static_cast<unsigned>(first), first, 0,
+                            std::min(15U, neighbour_count), 0, 0,
+                            c > 0 ? static_cast<int>(count_in(levels[0].data() + (b * 64))) : 0,
+                            lower);
+                const unsigned count = encoding ? count_in(coefficients) : 0;
                 unsigned node = 1;
-                for (unsigned bit = 6; bit-- > 0;)
+                for (unsigned bit = count_bits; bit-- > 0;)
                 {
                     node = (node << 1U) | code(100 + std::min(node, 63U), (count >> bit) & 1U);
                 }
-                unsigned remaining = node - 64;
-                for (std::size_t k = 1; k < 64 && remaining > 0; ++k)
+                unsigned remaining = std::min<unsigned>(node - (1U << count_bits),
+                                                        static_cast<unsigned>(last - first));
+                for (std::size_t k = first; k < last && remaining > 0; ++k)
                 {
-                    const std::size_t at = zigzag[k];
-                    model.start(static_cast<unsigned>(c), static_cast<unsigned>(k),
-                                std::min(remaining, 15U), around(k), left != nullptr ? left[at] : 0,
-                                up != nullptr ? up[at] : 0, c > 0 ? levels[0][(b * 64) + at] : 0);
+                    const int l = value_at(left, k);
+                    const int u = value_at(up, k);
+                    model.start(static_cast<unsigned>(c), static_cast<unsigned>(k), k,
+                                std::min(remaining, 15U),
+                                bucket((std::abs(l) + std::abs(u) + 1) / 2), l, u,
+                                c > 0 ? levels[0][(b * 64) + zigzag[k]] : 0, lower);
                     const int value = code_value(encoding ? coefficients[zigzag[k]] : 0);
                     coefficients[zigzag[k]] = value;
                     remaining -= value != 0 ? 1U : 0U;
@@ -1669,7 +1721,8 @@ bool is_lossy_image_file(std::span<const uint8_t> bytes)
            std::equal(lossy_magic.begin(), lossy_magic.end(), bytes.begin());
 }
 
-std::expected<std::vector<uint8_t>, Error> encode_lossy_image(const Image& image, unsigned quality)
+std::expected<std::vector<uint8_t>, Error> encode_lossy_image(const Image& image, unsigned quality,
+                                                              unsigned threads)
 {
     if ((image.channels != 1 && image.channels != 3) || quality < 1 || quality > 100)
     {
@@ -1711,9 +1764,6 @@ std::expected<std::vector<uint8_t>, Error> encode_lossy_image(const Image& image
             for (std::size_t c = 0; c < channels; ++c)
             {
                 forward_dct(data[c]);
-            }
-            for (std::size_t c = 0; c < channels; ++c)
-            {
                 const std::array<int, 64>& q = tables[c == 0 ? 0 : 1];
                 int* out = levels[c].data() + (((by * blocks_x) + bx) * 64);
                 for (std::size_t i = 0; i < 64; ++i)
@@ -1728,19 +1778,59 @@ std::expected<std::vector<uint8_t>, Error> encode_lossy_image(const Image& image
             }
         }
     }
+
+    const std::vector<Tile> tiles = tiles_of(blocks_x, blocks_y);
+    // coded[pass][tile]
+    std::vector<std::vector<std::vector<uint8_t>>> coded(
+        bands.size(), std::vector<std::vector<uint8_t>>(tiles.size()));
+    {
+        ThreadPool pool(
+            std::max(1U, std::min<unsigned>(threads, static_cast<unsigned>(tiles.size()))));
+        std::vector<std::future<void>> done;
+        done.reserve(tiles.size());
+        for (std::size_t t = 0; t < tiles.size(); ++t)
+        {
+            done.push_back(pool.submit([&, t](std::size_t) {
+                CoefficientModel model(64);
+                for (std::size_t pass = 0; pass < bands.size(); ++pass)
+                {
+                    BitEncoder encoder(coded[pass][t]);
+                    code_band(levels, blocks_x, tiles[t], pass, model, encoder);
+                    encoder.finish();
+                }
+            }));
+        }
+        for (auto& future : done)
+        {
+            future.get();
+        }
+    }
+
     std::vector<uint8_t> out(lossy_magic.begin(), lossy_magic.end());
     out.push_back(lossy_version);
     out.push_back(static_cast<uint8_t>(channels));
     out.push_back(static_cast<uint8_t>(quality));
     put32(out, image.width);
     put32(out, image.height);
-    BitEncoder encoder(out);
-    code_coefficients(levels, blocks_x, blocks_y, encoder);
-    encoder.finish();
+    for (const auto& pass : coded)
+    {
+        for (const std::vector<uint8_t>& stream : pass)
+        {
+            put32(out, static_cast<uint32_t>(stream.size()));
+        }
+    }
+    for (const auto& pass : coded)
+    {
+        for (const std::vector<uint8_t>& stream : pass)
+        {
+            out.insert(out.end(), stream.begin(), stream.end());
+        }
+    }
     return out;
 }
 
-std::expected<Image, Error> decode_lossy_image(std::span<const uint8_t> bytes)
+std::expected<Image, Error> decode_lossy_image(std::span<const uint8_t> bytes,
+                                               const ImageDecodeOptions& options)
 {
     if (!is_lossy_image_file(bytes))
     {
@@ -1754,55 +1844,192 @@ std::expected<Image, Error> decode_lossy_image(std::span<const uint8_t> bytes)
     {
         return std::unexpected(Error::unsupported_version);
     }
-    Image image;
-    image.channels = bytes[5];
+    const std::size_t channels = bytes[5];
     const unsigned quality = bytes[6];
-    image.width = get32(bytes, 7);
-    image.height = get32(bytes, 11);
-    const std::size_t width = image.width;
-    const std::size_t height = image.height;
-    const std::size_t channels = image.channels;
+    const std::size_t width = get32(bytes, 7);
+    const std::size_t height = get32(bytes, 11);
     if ((channels != 1 && channels != 3) || quality < 1 || quality > 100 || width == 0 ||
-        height == 0 || width > max_image_side || height > max_image_side ||
-        width * height > max_pixels_per_byte * bytes.size())
+        height == 0 || width > max_image_side || height > max_image_side)
     {
         return std::unexpected(Error::corrupt_header);
     }
     const std::size_t blocks_x = (width + block - 1) / block;
     const std::size_t blocks_y = (height + block - 1) / block;
-    std::vector<std::vector<int>> levels(channels, std::vector<int>(blocks_x * blocks_y * 64, 0));
-    BitDecoder decoder(bytes.subspan(lossy_header_bytes));
-    code_coefficients(levels, blocks_x, blocks_y, decoder);
-    if (!decoder.consumed_exactly())
+    const std::vector<Tile> tiles = tiles_of(blocks_x, blocks_y);
+    const std::size_t table_bytes = bands.size() * tiles.size() * 4;
+    if (bytes.size() - lossy_header_bytes < table_bytes)
     {
-        return std::unexpected(Error::corrupt_payload);
+        return std::unexpected(Error::truncated);
     }
+    // streams[pass][tile]; an empty span for one not entirely in `bytes`.
+    std::vector<std::vector<std::span<const uint8_t>>> streams(
+        bands.size(), std::vector<std::span<const uint8_t>>(tiles.size()));
+    std::vector<std::vector<bool>> present(bands.size(), std::vector<bool>(tiles.size(), false));
+    uint64_t at = lossy_header_bytes + table_bytes;
+    for (std::size_t pass = 0; pass < bands.size(); ++pass)
+    {
+        for (std::size_t t = 0; t < tiles.size(); ++t)
+        {
+            const uint32_t size =
+                get32(bytes, lossy_header_bytes + (((pass * tiles.size()) + t) * 4));
+            if (at + size <= bytes.size())
+            {
+                streams[pass][t] = bytes.subspan(static_cast<std::size_t>(at), size);
+                present[pass][t] = true;
+            }
+            else if (!options.partial)
+            {
+                return std::unexpected(Error::truncated);
+            }
+            at += size;
+        }
+    }
+    if (!options.partial && at != bytes.size())
+    {
+        return std::unexpected(Error::corrupt_header);
+    }
+
+    // The region, and the tiles it touches.
+    const ImageRegion region =
+        options.region.value_or(ImageRegion{.x = 0,
+                                            .y = 0,
+                                            .width = static_cast<uint32_t>(width),
+                                            .height = static_cast<uint32_t>(height)});
+    if (region.width == 0 || region.height == 0 || region.x >= width || region.y >= height ||
+        region.width > width - region.x || region.height > height - region.y)
+    {
+        return std::unexpected(Error::bad_range);
+    }
+    if (std::size_t{region.width} * region.height > max_pixels_per_byte * bytes.size())
+    {
+        return std::unexpected(Error::corrupt_header);
+    }
+    // Deblocking reaches 2 pixels across a block edge: the tiles within that of the region are
+    // decoded too, so the region's pixels are those of a whole decode.
+    const auto touches = [&](const Tile& tile) {
+        constexpr std::size_t reach = 2;
+        const std::size_t left = tile.x * block;
+        const std::size_t top = tile.y * block;
+        return left < std::size_t{region.x} + region.width + reach &&
+               left + (tile.width * block) + reach > region.x &&
+               top < std::size_t{region.y} + region.height + reach &&
+               top + (tile.height * block) + reach > region.y;
+    };
+
+    std::vector<std::vector<int>> levels(channels, std::vector<int>(blocks_x * blocks_y * 64, 0));
+    std::vector<std::expected<void, Error>> results(tiles.size());
+    std::vector<std::size_t> decoded_passes(tiles.size(), 0);
+    {
+        ThreadPool pool(
+            std::max(1U, std::min<unsigned>(options.threads, static_cast<unsigned>(tiles.size()))));
+        std::vector<std::future<void>> done;
+        done.reserve(tiles.size());
+        for (std::size_t t = 0; t < tiles.size(); ++t)
+        {
+            if (!touches(tiles[t]))
+            {
+                continue;
+            }
+            done.push_back(pool.submit([&, t](std::size_t) {
+                // Each pass needs the passes before it: stop at the first one missing.
+                CoefficientModel model(64);
+                for (std::size_t pass = 0; pass < bands.size() && present[pass][t]; ++pass)
+                {
+                    BitDecoder decoder(streams[pass][t]);
+                    code_band(levels, blocks_x, tiles[t], pass, model, decoder);
+                    if (!decoder.consumed_exactly())
+                    {
+                        results[t] = std::unexpected(Error::corrupt_payload);
+                        return;
+                    }
+                    decoded_passes[t] = pass + 1;
+                }
+            }));
+        }
+        for (auto& future : done)
+        {
+            future.get();
+        }
+    }
+    for (const auto& result : results)
+    {
+        if (!result)
+        {
+            return std::unexpected(result.error());
+        }
+    }
+
     const std::array<std::array<int, 64>, 2> tables{quantisers(quality, false),
                                                     quantisers(quality, true)};
     const std::size_t padded_width = blocks_x * block;
     const std::size_t padded_height = blocks_y * block;
     std::vector<std::vector<double>> planes(channels,
                                             std::vector<double>(padded_width * padded_height));
-    for (std::size_t by = 0; by < blocks_y; ++by)
+    for (std::size_t t = 0; t < tiles.size(); ++t)
     {
-        for (std::size_t bx = 0; bx < blocks_x; ++bx)
+        const Tile& tile = tiles[t];
+        if (!touches(tile))
         {
+            continue;
+        }
+        if (decoded_passes[t] == 1)
+        {
+            // Only the DCs: the block means, interpolated, look better than flat blocks.
             for (std::size_t c = 0; c < channels; ++c)
             {
-                const std::array<int, 64>& q = tables[c == 0 ? 0 : 1];
-                const int* in = levels[c].data() + (((by * blocks_x) + bx) * 64);
-                std::array<double, 64> data{};
-                for (std::size_t i = 0; i < 64; ++i)
+                const double scale = tables[c == 0 ? 0 : 1][0] / static_cast<double>(block);
+                const auto mean = [&](std::ptrdiff_t bx, std::ptrdiff_t by) {
+                    bx = std::clamp<std::ptrdiff_t>(
+                        bx, static_cast<std::ptrdiff_t>(tile.x),
+                        static_cast<std::ptrdiff_t>(tile.x + tile.width - 1));
+                    by = std::clamp<std::ptrdiff_t>(
+                        by, static_cast<std::ptrdiff_t>(tile.y),
+                        static_cast<std::ptrdiff_t>(tile.y + tile.height - 1));
+                    return levels[c][((static_cast<std::size_t>(by) * blocks_x) +
+                                      static_cast<std::size_t>(bx)) *
+                                     64] *
+                           scale;
+                };
+                for (std::size_t y = tile.y * block; y < (tile.y + tile.height) * block; ++y)
                 {
-                    data[i] = static_cast<double>(in[i]) * q[i];
-                }
-                inverse_dct(data);
-                for (std::size_t y = 0; y < block; ++y)
-                {
-                    for (std::size_t x = 0; x < block; ++x)
+                    for (std::size_t x = tile.x * block; x < (tile.x + tile.width) * block; ++x)
                     {
-                        planes[c][(((by * block) + y) * padded_width) + (bx * block) + x] =
-                            data[(y * block) + x];
+                        // Block centres are at 3.5 + 8k.
+                        const double fx = ((static_cast<double>(x) - 3.5) / block);
+                        const double fy = ((static_cast<double>(y) - 3.5) / block);
+                        const auto x0 = static_cast<std::ptrdiff_t>(std::floor(fx));
+                        const auto y0 = static_cast<std::ptrdiff_t>(std::floor(fy));
+                        const double ax = fx - static_cast<double>(x0);
+                        const double ay = fy - static_cast<double>(y0);
+                        planes[c][(y * padded_width) + x] =
+                            ((1 - ay) * (((1 - ax) * mean(x0, y0)) + (ax * mean(x0 + 1, y0)))) +
+                            (ay * (((1 - ax) * mean(x0, y0 + 1)) + (ax * mean(x0 + 1, y0 + 1))));
+                    }
+                }
+            }
+            continue;
+        }
+        for (std::size_t by = tile.y; by < tile.y + tile.height; ++by)
+        {
+            for (std::size_t bx = tile.x; bx < tile.x + tile.width; ++bx)
+            {
+                for (std::size_t c = 0; c < channels; ++c)
+                {
+                    const std::array<int, 64>& q = tables[c == 0 ? 0 : 1];
+                    const int* in = levels[c].data() + (((by * blocks_x) + bx) * 64);
+                    std::array<double, 64> data{};
+                    for (std::size_t i = 0; i < 64; ++i)
+                    {
+                        data[i] = static_cast<double>(in[i]) * q[i];
+                    }
+                    inverse_dct(data);
+                    for (std::size_t y = 0; y < block; ++y)
+                    {
+                        for (std::size_t x = 0; x < block; ++x)
+                        {
+                            planes[c][(((by * block) + y) * padded_width) + (bx * block) + x] =
+                                data[(y * block) + x];
+                        }
                     }
                 }
             }
@@ -1812,24 +2039,29 @@ std::expected<Image, Error> decode_lossy_image(std::span<const uint8_t> bytes)
     {
         deblock(planes[c], padded_width, padded_height, tables[c == 0 ? 0 : 1]);
     }
-    image.pixels.resize(width * height * channels);
+
+    Image image{.width = region.width,
+                .height = region.height,
+                .channels = static_cast<uint8_t>(channels),
+                .pixels = {}};
+    image.pixels.resize(std::size_t{region.width} * region.height * channels);
     const auto store = [](double v) {
         return static_cast<uint8_t>(std::clamp(std::lround(v), 0L, 255L));
     };
-    for (std::size_t y = 0; y < height; ++y)
+    for (std::size_t y = 0; y < region.height; ++y)
     {
-        for (std::size_t x = 0; x < width; ++x)
+        for (std::size_t x = 0; x < region.width; ++x)
         {
-            uint8_t* pixel = image.pixels.data() + (((y * width) + x) * channels);
-            const std::size_t at = (y * padded_width) + x;
-            const double luma = planes[0][at] + 128.0;
+            uint8_t* pixel = image.pixels.data() + (((y * region.width) + x) * channels);
+            const std::size_t source = ((region.y + y) * padded_width) + region.x + x;
+            const double luma = planes[0][source] + 128.0;
             if (channels == 1)
             {
                 pixel[0] = store(luma);
                 continue;
             }
-            const double cb = planes[1][at];
-            const double cr = planes[2][at];
+            const double cb = planes[1][source];
+            const double cr = planes[2][source];
             pixel[0] = store(luma + (1.402 * cr));
             pixel[1] = store(luma - (0.344136 * cb) - (0.714136 * cr));
             pixel[2] = store(luma + (1.772 * cb));
@@ -1995,7 +2227,8 @@ std::vector<uint8_t> encode_image(const Image& image, unsigned threads)
     return out;
 }
 
-std::expected<Image, Error> decode_image(std::span<const uint8_t> bytes, unsigned threads)
+std::expected<Image, Error> decode_image(std::span<const uint8_t> bytes,
+                                         const ImageDecodeOptions& options)
 {
     if (!is_image_file(bytes))
     {
@@ -2050,14 +2283,31 @@ std::expected<Image, Error> decode_image(std::span<const uint8_t> bytes, unsigne
         return std::unexpected(Error::corrupt_header);
     }
 
+    const ImageRegion region = options.region.value_or(
+        ImageRegion{.x = 0, .y = 0, .width = image.width, .height = image.height});
+    if (region.width == 0 || region.height == 0 || region.x >= width || region.y >= height ||
+        region.width > width - region.x || region.height > height - region.y)
+    {
+        return std::unexpected(Error::bad_range);
+    }
+    const auto needed = [&](std::size_t s) {
+        const std::size_t first = s * strip_rows;
+        return first < std::size_t{region.y} + region.height && first + strip_rows > region.y;
+    };
+
     image.pixels.resize(width * height * channels);
     std::vector<std::expected<void, Error>> results(strips);
     {
-        ThreadPool pool(std::max(1U, std::min<unsigned>(threads, static_cast<unsigned>(strips))));
+        ThreadPool pool(
+            std::max(1U, std::min<unsigned>(options.threads, static_cast<unsigned>(strips))));
         std::vector<std::future<void>> done;
         done.reserve(strips);
         for (std::size_t s = 0; s < strips; ++s)
         {
+            if (!needed(s))
+            {
+                continue;
+            }
             done.push_back(pool.submit([&, s](std::size_t) {
                 const std::size_t first = s * strip_rows;
                 const std::size_t rows = std::min<std::size_t>(strip_rows, height - first);
@@ -2079,11 +2329,25 @@ std::expected<Image, Error> decode_image(std::span<const uint8_t> bytes, unsigne
             return std::unexpected(result.error());
         }
     }
-    if (crc32(image.pixels) != crc)
+    if (!options.region)
     {
-        return std::unexpected(Error::checksum_mismatch);
+        if (crc32(image.pixels) != crc)
+        {
+            return std::unexpected(Error::checksum_mismatch);
+        }
+        return image;
     }
-    return image;
+    Image part{
+        .width = region.width, .height = region.height, .channels = image.channels, .pixels = {}};
+    part.pixels.reserve(std::size_t{region.width} * region.height * channels);
+    for (std::size_t y = region.y; y < std::size_t{region.y} + region.height; ++y)
+    {
+        const auto row =
+            image.pixels.begin() + static_cast<std::ptrdiff_t>(((y * width) + region.x) * channels);
+        part.pixels.insert(part.pixels.end(), row,
+                           row + static_cast<std::ptrdiff_t>(std::size_t{region.width} * channels));
+    }
+    return part;
 }
 
 } // namespace compressor

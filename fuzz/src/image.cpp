@@ -31,6 +31,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, std::size_t size)
         std::abort();
     }
     (void)compressor::decode_lossy_image(bytes).has_value();
+    (void)compressor::decode_lossy_image(bytes, {.threads = 1, .region = {}, .partial = true})
+        .has_value();
     std::istringstream in(std::string(reinterpret_cast<const char*>(data), size));
     (void)compressor::read_pnm(in).has_value();
     return 0;

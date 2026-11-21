@@ -285,14 +285,17 @@ The decoder runs the same model as the encoder, which `image.cpp` defines and wh
 | Offset | Size | Field |
 |---:|---:|---|
 | 0 | 4 | Magic `89 49 4E 4C` (`\x89INL`) |
-| 4 | 1 | Version: 1 |
+| 4 | 1 | Version: 2 (version 1, a single stream, is no longer read) |
 | 5 | 1 | Channels: 1 or 3 |
 | 6 | 1 | Quality, 1 to 100 |
 | 7 | 4 | Width, 1 to 65536 |
 | 11 | 4 | Height, 1 to 65536 |
-| 15 | rest | One stream of the CM coder's binary arithmetic coder |
+| 15 | 16 × tiles | The byte length of every stream: pass 0 of each tile in raster order, then pass 1, 2 and 3 |
+| then | rest | The streams in the same order, each a stream of the CM coder's binary arithmetic coder, which decoding must use exactly |
 
-RGB is converted to YCbCr (JPEG's full-range matrix) at full resolution, the image is padded to 8×8 blocks by repeating its last column and row, and each block of each channel goes through an orthonormal 8×8 DCT. The quantisers are JPEG's example tables (ITU T.81, Annex K) scaled by libjpeg's quality formula, with the chroma table first multiplied by `(120 + 9 × quality / 10) / 100`; the encoder rounds AC values with a dead zone of 0.1. Blocks are coded in raster order, each block's channels in turn: the DC as the residual of the median predictor over the DCs of the blocks to the left, above and above-left; the count of nonzero AC values (a 6-bit binary tree); then the AC values in zigzag order until that many nonzeros are coded, each as a zero flag, a sign, the magnitude's bit length in unary and its lower bits. Every decision mixes counters in contexts of the zigzag position, the nonzeros left, the neighbouring blocks' magnitudes, their signed values at that position and, for chroma, the luma value there (`CoefficientModel` in `image.cpp`, part of the format). Decoding dequantises, inverts the DCT, smooths block edges where the step is below 0.6 times the first AC quantiser (`deblock()`), and converts back to RGB with rounding and clamping.
+The image is cut into tiles of 64 × 64 blocks (512 pixels; smaller at the right and bottom edges), each coded independently: neighbouring blocks outside the tile count as missing. Each tile is coded in 4 passes by zigzag band: the DCs (0), AC 1–5, 6–20 and 21–63, one stream per pass; the model carries over from one pass of a tile to the next, so a tile's passes decode in order. Because the streams are stored pass-major, a file cut after any pass of any tile still decodes (`--partial`): each tile's passes up to the first missing one, the other coefficients zero; a tile with only its DCs is shown as its block means interpolated. A region (`--region`) decodes only the tiles within 2 pixels of it (deblocking's reach), so its pixels are those of a whole decode.
+
+RGB is converted to YCbCr (JPEG's full-range matrix) at full resolution, the image is padded to 8×8 blocks by repeating its last column and row, and each block of each channel goes through an orthonormal 8×8 DCT. The quantisers are JPEG's example tables (ITU T.81, Annex K) scaled by libjpeg's quality formula, with the chroma table first multiplied by `(120 + 9 × quality / 10) / 100`; the encoder rounds AC values with a dead zone of 0.1. In each tile and pass, blocks are coded in raster order, each block's channels in turn. Pass 0: the DC as the residual of the median predictor over the DCs of the blocks to the left, above and above-left. Passes 1–3: the count of nonzero values in the band (a binary tree as wide as the band's size needs), then the band's values in zigzag order until that many nonzeros are coded, each as a zero flag, a sign, the magnitude's bit length in unary and its lower bits. Every decision mixes counters in contexts of the zigzag position, the nonzeros left, the neighbouring blocks' magnitudes, their signed values at that position, for chroma the luma value there, and the block's energy in the bands before (`CoefficientModel` in `image.cpp`, part of the format). Decoding dequantises, inverts the DCT, smooths block edges where the step is below 0.6 times the first AC quantiser (`deblock()`), and converts back to RGB with rounding and clamping.
 
 ## Repair file
 

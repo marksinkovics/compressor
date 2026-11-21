@@ -545,24 +545,50 @@ TEST_F(CLITests, Cat_with_a_range_or_without_a_path_reads_a_range)
 
 TEST_F(CLITests, Image_encode_and_decode_pass_the_paths_and_the_direction)
 {
-    EXPECT_CALL(*compressor_, image(fs::path(input_), fs::path(output_), true, 0U))
-        .WillOnce(Return(true));
+    compressor::ImageOptions seen;
+    const auto capture = [&seen](const fs::path&, const fs::path&, bool,
+                                 const compressor::ImageOptions& options) {
+        seen = options;
+        return true;
+    };
+    EXPECT_CALL(*compressor_, image(fs::path(input_), fs::path(output_), true, ::testing::_))
+        .WillOnce(capture);
     EXPECT_EQ(run({"image", "encode", "-i", input_, "-o", output_, "-T", "3"}), EXIT_SUCCESS);
     EXPECT_EQ(threads_, 3U);
+    EXPECT_EQ(seen.quality, 0U);
 
     compressor_ = std::make_unique<MockICompressor>();
-    EXPECT_CALL(*compressor_, image(fs::path(input_), fs::path(output_), true, 75U))
-        .WillOnce(Return(true));
+    EXPECT_CALL(*compressor_, image(fs::path(input_), fs::path(output_), true, ::testing::_))
+        .WillOnce(capture);
     EXPECT_EQ(run({"image", "encode", "--quality", "75", "-i", input_, "-o", output_}),
               EXIT_SUCCESS);
+    EXPECT_EQ(seen.quality, 75U);
     compressor_ = std::make_unique<MockICompressor>();
     EXPECT_NE(run({"image", "encode", "--quality", "0", "-i", input_, "-o", output_}),
               EXIT_SUCCESS);
 
     compressor_ = std::make_unique<MockICompressor>();
-    EXPECT_CALL(*compressor_, image(fs::path(input_), fs::path(output_), false, 0U))
+    EXPECT_CALL(*compressor_, image(fs::path(input_), fs::path(output_), false, ::testing::_))
         .WillOnce(Return(false));
     EXPECT_EQ(run({"image", "decode", "-i", input_, "-o", output_}), EXIT_FAILURE);
+
+    compressor_ = std::make_unique<MockICompressor>();
+    EXPECT_CALL(*compressor_, image(fs::path(input_), fs::path(output_), false, ::testing::_))
+        .WillOnce(capture);
+    EXPECT_EQ(run({"image", "decode", "--region", "8,16,32,24", "--partial", "-i", input_, "-o",
+                   output_}),
+              EXIT_SUCCESS);
+    ASSERT_TRUE(seen.region);
+    EXPECT_EQ(seen.region->x, 8U);
+    EXPECT_EQ(seen.region->height, 24U);
+    EXPECT_TRUE(seen.partial);
+    for (const std::string bad : {"1,2,3", "1,2,0,4", "a,b,c,d", "1,2,3,4,5"})
+    {
+        compressor_ = std::make_unique<MockICompressor>();
+        EXPECT_EQ(run({"image", "decode", "--region", bad, "-i", input_, "-o", output_}),
+                  EXIT_FAILURE)
+            << bad;
+    }
 
     compressor_ = std::make_unique<MockICompressor>();
     EXPECT_NE(run({"image"}), EXIT_SUCCESS);

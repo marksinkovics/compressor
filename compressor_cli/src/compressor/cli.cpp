@@ -1,10 +1,12 @@
 #include <compressor/cli.h>
 
+#include <array>
 #include <cstddef>
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -47,6 +49,8 @@ struct Settings
     unsigned repair = 0;
     unsigned window_log2 = 0;
     unsigned quality = 0;
+    std::string region;
+    bool partial = false;
     std::string repair_file;
     std::vector<std::string> inputs;
     std::size_t size = default_dictionary_bytes;
@@ -309,6 +313,11 @@ int CLI::run(std::span<const char* const> args)
         ->check(::CLI::Range(1U, 100U));
     auto* image_decode = add_image_command("decode", "An ingot image file into PGM, PPM or PAM",
                                            image_decode_settings);
+    image_decode->add_option(
+        "--region", image_decode_settings.region,
+        "Only X,Y,WIDTH,HEIGHT, decoding only the strips or tiles that hold it");
+    image_decode->add_flag("--partial", image_decode_settings.partial,
+                           "A lossy file cut short: decode what it holds, coarser");
 
     try
     {
@@ -365,11 +374,28 @@ int CLI::run(std::span<const char* const> args)
     {
         if (command->parsed())
         {
+            ImageOptions options{
+                .quality = settings->quality, .region = std::nullopt, .partial = settings->partial};
+            if (!settings->region.empty())
+            {
+                std::array<uint32_t, 4> values{};
+                std::istringstream fields(settings->region);
+                char comma = 0;
+                fields >> values[0] >> comma >> values[1] >> comma >> values[2] >> comma >>
+                    values[3];
+                if (!fields || !fields.eof() || values[2] == 0 || values[3] == 0)
+                {
+                    err_ << "--region: expected X,Y,WIDTH,HEIGHT with a positive size\n";
+                    return EXIT_FAILURE;
+                }
+                options.region = ImageRegion{
+                    .x = values[0], .y = values[1], .width = values[2], .height = values[3]};
+            }
             const auto compressor =
                 make_compressor_({.threads = settings->threads, .level = default_level});
-            return finish(
-                compressor->image(settings->input, settings->output, encoding, settings->quality),
-                std::string(encoding ? "Encoding " : "Decoding ") + input_name(*settings));
+            return finish(compressor->image(settings->input, settings->output, encoding, options),
+                          std::string(encoding ? "Encoding " : "Decoding ") +
+                              input_name(*settings));
         }
     }
     if (train->parsed())

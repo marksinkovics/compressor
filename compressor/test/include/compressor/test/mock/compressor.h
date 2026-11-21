@@ -47,7 +47,8 @@ public:
                  std::size_t),
                 (override));
     MOCK_METHOD(bool, image,
-                (const std::filesystem::path&, const std::filesystem::path&, bool, unsigned),
+                (const std::filesystem::path&, const std::filesystem::path&, bool,
+                 const compressor::ImageOptions&),
                 (override));
 };
 

@@ -6,11 +6,13 @@
 #include <filesystem>
 #include <iosfwd>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include <compressor/dictionary/dictionary.h>
+#include <compressor/image/image.h>
 #include <compressor/range/range.h>
 #include <compressor/search/search.h>
 #include <compressor/stats/stats.h>
@@ -28,6 +30,15 @@ struct StandardStreams
     std::istream& in;
     std::ostream& out;
     std::ostream& err;
+};
+
+// How `image` codes: lossless or with `quality` 1 to 100 the lossy experiment when encoding;
+// when decoding, only `region` of the image, and a lossy file that may be cut short (`partial`).
+struct ImageOptions
+{
+    unsigned quality = 0;
+    std::optional<ImageRegion> region;
+    bool partial = false;
 };
 
 // Compression level when none is given: LZ77 + Huffman with zlib's level-6 match search.
@@ -106,11 +117,10 @@ public:
     // given, each file one sample, and writes it to `output`.
     virtual bool train(const std::vector<std::filesystem::path>& inputs,
                        const std::filesystem::path& output, std::size_t size) = 0;
-    // Codes a binary PGM, PPM or PAM image into an image file (`encode`), lossless or with
-    // `quality` 1 to 100 the lossy experiment, or an image file of either kind back into PGM, PPM
-    // or PAM.
+    // Codes a binary PGM, PPM or PAM image into an image file (`encode`), or an image file of
+    // either kind back into PGM, PPM or PAM, as `options` say.
     virtual bool image(const std::filesystem::path& input, const std::filesystem::path& output,
-                       bool encode, unsigned quality) = 0;
+                       bool encode, const ImageOptions& options) = 0;
 };
 
 // Writes a regular output through a temporary file next to it and renames that on success, so a
@@ -148,7 +158,7 @@ public:
     bool train(const std::vector<std::filesystem::path>& inputs,
                const std::filesystem::path& output, std::size_t size) override;
     bool image(const std::filesystem::path& input, const std::filesystem::path& output, bool encode,
-               unsigned quality) override;
+               const ImageOptions& options) override;
 
 private:
     // Writes OUTPUT.repair for `output` when settings_.repair_percent asks for it.

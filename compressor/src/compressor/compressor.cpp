@@ -1288,8 +1288,10 @@ SearchResult Compressor::search(const fs::path& archive, const std::string& patt
     return matched ? SearchResult::matched : SearchResult::not_matched;
 }
 
-bool Compressor::image(const fs::path& input, const fs::path& output, bool encode, unsigned quality)
+bool Compressor::image(const fs::path& input, const fs::path& output, bool encode,
+                       const ImageOptions& options)
 {
+    const unsigned quality = options.quality;
     const unsigned threads = thread_count(settings_.threads);
     return transcode(streams_, encode ? "image encode" : "image decode", input, output,
                      [&](std::istream& in, std::ostream& out) -> std::expected<void, Error> {
@@ -1307,7 +1309,7 @@ bool Compressor::image(const fs::path& input, const fs::path& output, bool encod
             }
             else
             {
-                auto lossy = encode_lossy_image(*image, quality);
+                auto lossy = encode_lossy_image(*image, quality, threads);
                 if (!lossy)
                 {
                     return std::unexpected(lossy.error());
@@ -1325,8 +1327,10 @@ bool Compressor::image(const fs::path& input, const fs::path& output, bool encod
             {
                 return std::unexpected(Error::read_failed);
             }
-            auto image = is_lossy_image_file(bytes) ? decode_lossy_image(bytes)
-                                                    : decode_image(bytes, threads);
+            const ImageDecodeOptions decoding{
+                .threads = threads, .region = options.region, .partial = options.partial};
+            auto image = is_lossy_image_file(bytes) ? decode_lossy_image(bytes, decoding)
+                                                    : decode_image(bytes, decoding);
             if (!image)
             {
                 return std::unexpected(image.error());
