@@ -684,3 +684,16 @@ Run 7, item 2. Coder 14's encoder (level 7) spent about 75% in its match finder 
 | plus the GPU's match lists | 39.8 s | 19.0 s |
 
 Canterbury: 1.09 → 0.81 → 0.50 CPU seconds. Level 7 needs 2.7× less CPU time and finishes 2.05× sooner. While adding this, the CPU finder was found to read one byte past the block when a match reached its end; it now stops there (the output doesn't change).
+
+## GPU spike: Deflate match search (2026-11-21, not kept)
+
+Run 7, item 3. Level 6's match finder (`Lz77MatchFinder::longest_match`, about 77% of the time) was moved to the GPU with byte-identical output: the CPU built the hash chains, and one GPU thread per position walked its chain with the finder's rules at both depths the tokenizer uses (the full chain, and a quarter of it for the lazy look-ahead after a good match). The tokenizer then picked the result the CPU would have computed. This applied to whole blocks of 256 KiB and up without a dictionary.
+
+| Level 6, Silesia as one tar | CPU time | Wall time |
+| --- | ---: | ---: |
+| CPU, 1 thread | 5.28 s | 5.24 s |
+| GPU, 1 thread | 2.89 s | 4.2 s |
+| CPU, 6 threads | 5.68 s | 1.05 s |
+| GPU, 6 threads | 3.37 s | 1.03 s |
+
+Output was identical on Silesia and Canterbury. It needs 1.8× less CPU time but is barely faster in wall time, short of the ≥3× criterion. The rest of level 6 (building the chains, tokenizing, Huffman, the transform trial) costs as much CPU time as the GPU saves, so a free match search caps the gain near 1.8×. With 6 threads the CPU already keeps up with the GPU. The code was removed. The GPU pays off where the CPU repeats expensive searches (level 7, item 2), not for level 6's greedy-lazy finder.
