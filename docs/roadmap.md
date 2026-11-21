@@ -496,7 +496,29 @@ Same rules as runs 1–5 on the same branch: commits per item after the full `to
 - [x] 4. (done, as a sidecar file rather than a section in the container, par2-style, so a damaged header, index or trailer can still be repaired and readers are untouched) Repair data: `repair/repair.{h,cpp}` (`repair_layout()`, `write_repair()`, `check_repair()`, `repair_file()`): Reed-Solomon over GF(2^8) with a Cauchy matrix over up to 200 data shards of at least 64 KiB; `encode --repair PERCENT` writes `OUTPUT.repair` (also for `-f gzip`/`zip`), `ingot repair FILE [-r REPAIR] [-o OUTPUT]`, and `verify` reports the repair file's findings first (`docs/file_format.md`, "Repair file"). Small files pay for the 64 KiB granularity: 10% asked for on a 690 KB file gave 2 parity shards for 11, 18%. Tests: `RepairTests` (every damage pattern up to `m`, one more refused, damaged parity, a cut file, the header, tiny files, the commands), `CLITests.Encode_passes_the_repair_percent_and_repair_its_files`. Not done: parity over more than 255 shards (GF(2^16)), so scattered damage across many shards of a large file can exceed `m`.
 - [x] 5. (done: level 1 decodes 2.6× faster through coder 15, Huffman in four streams for blocks of 64 KiB and up; NEON or vectorizing the CM mixer gained nothing, level 9 is bound by memory latency; `docs/benchmarks.md`, "Faster decoding") Faster decoding: Huffman blocks in several interleaved streams decoded with NEON (a new method or coder id), and NEON in the CM mixer for level 9. Tests: `EngineTests.Large_huffman_blocks_take_four_streams_and_decode_back`, `Damaged_four_stream_blocks_are_corrupt`; fuzz seed `container/coder15.ingot` (64 KiB blocks).
 
-Later, after a check-in:
+### Autonomous run 7: GPU spike (agreed 2026-11-21)
 
-- Run 7: a GPU spike with Metal (suffix array for BWT, match lists for LZT, Deflate match search, Huffman encoding, multi-stream decoding, exhaustive transform search, content-defined chunking, search, CM on many blocks, image groundwork; each kept only if it wins), then long-range matching across blocks.
-- Run 8: an image track: a lossless context-model image coder, then lossy image experiments against AVIF and JPEG XL with perceptual metrics, video later.
+Same rules as runs 1–6 on the same branch (commits per item after `tools/quality.sh check`, the full tests and `finish-step`; never pushed; `-j6`, `ctest -j4`; speed as CPU time and, for the GPU, also wall time). Metal behind the CMake option `COMPRESSOR_METAL` (macOS only, an Objective-C++ bridge; Metal is an OS framework, so the vcpkg rule doesn't apply); the CPU path always exists, and where the format fixes the output, GPU and CPU must produce the same bytes (tested). Every experiment is time-boxed and recorded in `docs/benchmarks.md` whether it wins or not; only wins stay in the code.
+
+- [ ] 0. Metal infrastructure: device and queue, shared buffers (unified memory, no copies), shaders compiled into a metallib by the build, a CPU-vs-GPU benchmark, the identical-output test pattern.
+- [ ] 1. Suffix array for the BWT coders (prefix doubling with radix sort): kept if the BWT step gets ≥3× faster per block with identical output.
+- [ ] 2. Match lists for LZT (all matches per position; the parse stays on the CPU): kept if level 7 gets ≥2× faster end to end with identical output.
+- [ ] 3. Deflate match search (level 6): kept if ≥3× with the ratio within 0.5%.
+- [ ] 4. Level 1 Huffman encoding (histograms, prefix sums, bit packing): kept if it beats 6 CPU threads.
+- [ ] 5. Four-stream Huffman decoding (coder 15) on the GPU: kept if it beats 6 CPU threads.
+- [ ] 6. Exhaustive transform search (every delta stride, row length and predictor per block): kept for a measurable ratio gain on images, audio or numeric data.
+- [ ] 7. Content-defined chunking and hashing at GB/s, the front end for item 11.
+- [ ] 8. `grep` on the GPU (decoded blocks, and bit-offset scans of Huffman payloads): kept if ≥10× on large archives.
+- [ ] 9. CM over many blocks at once: expected to lose; one short attempt to settle it.
+- [ ] 10. Image groundwork for run 8 (prediction residuals, DCT, a SSIM-style metric): informs run 8, nothing ships unless it wins.
+- [ ] 11. Long-range matching across blocks: references from a block to data in earlier blocks for large inputs (content-defined chunks, item 7 if it won), a format change behind a new flag or coder, keeping random access workable (a block's references only point backwards, the reader decodes what they need).
+
+### Autonomous run 8: image track (agreed 2026-11-21)
+
+Same rules. Assumptions to be corrected by the user: lossless first; lossy compared against JPEG (ImageMagick), WebP (`cwebp`), AVIF (ffmpeg with SVT-AV1) and JPEG XL (`cjxl`) at equal SSIMULACRA2 scores (`ssimulacra2`), as bits per pixel over a corpus of photos, screenshots and graphics; images read from PPM/PAM and PNG (libpng through vcpkg); video only as a later step, not in this run.
+
+- [ ] 1. Image corpus and harness: `tools/fetch-corpus.sh` images extended (photos, screenshots, graphics, an alpha image), `tools/images.py` measuring lossless (PNG at maximum effort, WebP lossless, JPEG XL lossless, ingot levels) and lossy (bits per pixel at SSIMULACRA2 targets) with encode and decode CPU time.
+- [ ] 2. Lossless image coder: an image format of its own (`ingot image encode/decode`, header with width, height, channels, bit depth) with per-pixel context modelling (gradient-adjusted prediction and error contexts in the style of CALIC/LOCO-I, coded by a binary context mixer), reversible colour transform, multithreaded by tiles; the target is JPEG XL lossless's size.
+- [ ] 3. Lossy image coder experiment: a transform (DCT or wavelet) with perceptual quantisation and context-modelled coefficient coding, compared at equal SSIMULACRA2 against JPEG, WebP, AVIF and JPEG XL.
+- [ ] 4. Progressive and streaming decoding: a prefix of the file gives a lower-quality image (coefficients by band), and region-of-interest decoding by tiles.
+- [ ] 5. Notes on video for a later run: what the image coder gives inter-frame coding, motion search on the GPU (run 7, item 10), segmenting for HLS/DASH.
