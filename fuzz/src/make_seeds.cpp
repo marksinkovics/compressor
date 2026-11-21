@@ -218,6 +218,9 @@ std::string with_coder(const std::string& input, compressor::Coder coder)
         case compressor::Coder::bwt_cm:
             coded = compressor::bwt_cm_encode(bytes);
             break;
+        case compressor::Coder::lzt_optimal:
+            coded = compressor::lzt_optimal_encode(bytes);
+            break;
         case compressor::Coder::lzt:
         {
             compressor::Lz77Options options = compressor::lz77_options_for_level(7);
@@ -361,6 +364,8 @@ try
     write(dir / "container" / "coder7.ingot", with_coder(words(6000), compressor::Coder::bwt_cm));
     write(dir / "container" / "coder8.ingot", with_coder(text(6000), compressor::Coder::tans));
     write(dir / "container" / "coder13.ingot", with_coder(words(9000), compressor::Coder::lzt));
+    write(dir / "container" / "coder14.ingot",
+          with_coder(words(9000), compressor::Coder::lzt_optimal));
     {
         // A single-block frame, as files encoded with a dictionary get.
         compressor::BlockEncoder encoder([] {

@@ -1,6 +1,7 @@
 #include "entropy.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -119,6 +120,53 @@ void order0(::benchmark::State& state, const fs::path& path, unsigned stride, Co
     state.counters["size"] = static_cast<double>(size);
 }
 
+// Per 1 MiB block: LZT with the optimal parse (coder 14) against LZT as level 7 codes it (coder
+// 13) and LZR; encoding time (the benchmark's), sizes, decoding speed.
+void lzt_optimal_against_others(::benchmark::State& state, const fs::path& path, unsigned passes,
+                                unsigned depth, std::size_t nice)
+{
+    const std::vector<uint8_t> data = read_file(path);
+    std::vector<std::vector<uint8_t>> coded(((data.size() - 1) / block) + 1);
+    for (auto _ : state)
+    {
+        for (std::size_t i = 0; i < coded.size(); ++i)
+        {
+            const std::span<const uint8_t> input(data.data() + (i * block),
+                                                 std::min(data.size() - (i * block), block));
+            coded[i] = lzt_optimal_encode(input, passes, depth, nice);
+        }
+    }
+    std::size_t size = 0;
+    std::size_t lzt = 0;
+    std::size_t lzr = 0;
+    double decode_seconds = 0;
+    for (std::size_t i = 0; i < coded.size(); ++i)
+    {
+        const std::span<const uint8_t> input(data.data() + (i * block),
+                                             std::min(data.size() - (i * block), block));
+        size += coded[i].size();
+        Lz77Options whole = block_options(7);
+        whole.window = std::max(lz77_window, input.size());
+        lzt += lzt_encode(input, whole).size();
+        lzr += lzr_encode(input, block_options(7)).size();
+        std::vector<uint8_t> decoded;
+        const auto start = std::chrono::steady_clock::now();
+        const bool ok = lzt_optimal_decode(coded[i], decoded, input.size()).has_value();
+        decode_seconds +=
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+        if (!ok || !std::ranges::equal(decoded, input))
+        {
+            state.SkipWithError("LZT (optimal) did not decode to the input");
+            return;
+        }
+    }
+    state.SetBytesProcessed(state.iterations() * static_cast<int64_t>(data.size()));
+    state.counters["opt"] = static_cast<double>(size);
+    state.counters["lzt"] = static_cast<double>(lzt);
+    state.counters["lzr"] = static_cast<double>(lzr);
+    state.counters["dec_mb_s"] = static_cast<double>(data.size()) / 1e6 / decode_seconds;
+}
+
 // Per 1 MiB block: LZT's size and decoding speed against LZ77 + Huffman (Deflate) and LZR.
 void lzt_against_others(::benchmark::State& state, const fs::path& path, unsigned level)
 {
@@ -177,6 +225,27 @@ void register_entropy_benchmarks()
                                            silesia / name, 6U)
                 ->Unit(::benchmark::kMillisecond)
                 ->Iterations(3);
+            struct Setting
+            {
+                unsigned passes;
+                unsigned depth;
+                std::size_t nice;
+            };
+            // The defaults, one pass fewer, and chains half and twice as deep.
+            for (const Setting setting : {Setting{.passes = 1, .depth = 64, .nice = 128},
+                                          Setting{.passes = 2, .depth = 32, .nice = 128},
+                                          Setting{.passes = 2, .depth = 64, .nice = 128},
+                                          Setting{.passes = 2, .depth = 128, .nice = 128}})
+            {
+                ::benchmark::RegisterBenchmark(std::string("LztOptimal/") +
+                                                   std::to_string(setting.passes) + "-" +
+                                                   std::to_string(setting.depth) + "-" +
+                                                   std::to_string(setting.nice) + "/" + name,
+                                               lzt_optimal_against_others, silesia / name,
+                                               setting.passes, setting.depth, setting.nice)
+                    ->Unit(::benchmark::kMillisecond)
+                    ->Iterations(1);
+            }
         }
     }
     for (const Input input :

@@ -600,3 +600,27 @@ Autonomous run 5, item 1. Measured as CPU time (user + system, best of 3) of `in
 Level 6 is 2.8× faster per core (14 → 39 MB per CPU second); Canterbury +0.14%, the images −0.14%. Hashing 4 bytes also helped level 7 (Silesia −1.0%, Canterbury −0.7%) and left level 8 even (+0.02%, −1.1%). The gzip and zip output keep 3-byte chains: with 4, raw images (3-byte pixels) came out 4.0% larger and Silesia 0.6%. They gain the first two changes, 10.51 → 6.49 CPU seconds for `-f gzip -T 1` on Silesia, with the same output as with the 3-byte multiplicative hash (68,132,812 bytes, 0.1% below `gzip -6`). LZR's far-repeat test on pure noise came out 0.17% larger with 4-byte chains, so its 3-byte search is still what `lz77_options_for_level()` gives; the engine uses `block_options()` throughout.
 
 `tools/compare.py` now reports CPU time beside wall time (MB per CPU second, over all threads), compares runs by it, and includes level 7.
+
+## LZT with an optimal parse (2026-11-20)
+
+Autonomous run 5, item 2: coder 14, LZT with a cost-based parse (forward over the block, every position trying a literal, three repeat offsets and every length of every match a 4-byte hash chain finds, priced by the previous pass's symbol counts), three repeat offsets, matches without Deflate's 258-byte limit, and compact tANS tables. Per 1 MiB block of Silesia, against coder 13 (`LztOptimal/` benchmarks):
+
+| Setting | Size | vs coder 13 | vs LZR | Encoding, 1 thread |
+| --- | ---: | ---: | ---: | ---: |
+| 1 pass, depth 32 | 61,254,431 | −3.6% | +4.2% | 41 s |
+| 2 passes, depth 32 | 60,540,553 | −4.7% | +3.0% | 78 s |
+| 2 passes, depth 32, compact tables | 60,427,425 | −4.9% | +2.8% | |
+
+On six files (dickens, mozilla, samba, xml, ooffice, nci), deeper chains: depth 128 −0.9% for 1.9× the time, a higher `nice` (512) −0.1% more; with zlib's good-length cutoff (a quarter of the depth once a 24-byte match is found), depth 128 is −0.9% for 1.7×. Depth 64 with the cutoff is the default. Synthetic text from six words needed the depth most (−11% from 32 to 256).
+
+A fair yardstick for these numbers is zstd on the same independent 1 MiB pieces: `zstd -19` per whole file 52,895,350, with a 1 MiB window 55,128,905, on independent 1 MiB pieces 57,076,340. Most of the distance to `zstd -19` is the container's independent 1 MiB blocks, which buy parallel coding and random access.
+
+Level 7 now tries coder 14 instead of 13 (raw and with the best transform); levels 8 and 9 don't (at 8 it gained 0.24% on Silesia for 58% more encoding time):
+
+| Level 7 | before run 5 | now | Encoding (CPU, 6 threads) | Decoding (CPU, 1 thread) |
+| --- | ---: | ---: | ---: | ---: |
+| Silesia | 62,737,997 | 58,782,774 (−6.3%) | 103 s | 0.62 s (340 MB/s) |
+| Canterbury | 691,039 | 644,657 (−6.7%) | 1.1 s | 0.01 s |
+| images | 9,118,770 | 9,046,962 (−0.8%) | 44 s | 0.22 s |
+
+Level 7 sits between `zstd -19` (52.9 MB) and level 6 (66.7 MB) on Silesia, decodes about 3× faster than xz, and stays far behind zstd in encoding speed.

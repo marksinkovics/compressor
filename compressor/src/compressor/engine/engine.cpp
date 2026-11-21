@@ -415,6 +415,9 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
             case Coder::lzt:
                 stream = lzt_encode(input, lzt_options(input.size()));
                 break;
+            case Coder::lzt_optimal:
+                stream = lzt_optimal_encode(input);
+                break;
             case Coder::lz77_dictionary_codes:
                 stream = deflate_with_codes(input, dictionary, block_options(level_),
                                             *dictionary_->codes);
@@ -500,15 +503,16 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
                 best_transform = &transform;
             }
         }
-        // LZT, at auto_level only: its whole-block search made level 6 3.7x slower to encode, and
-        // from bwt_level BWT and LZR beat it. Like CM, only twice.
+        // LZT with the optimal parse, at auto_level only: its whole-block search is too slow for
+        // level 6, and at level 8 it gained 0.24% on Silesia for 58% more encoding time. Like CM,
+        // only twice.
         if (level_ == auto_level)
         {
             const Transform* const transform = best_transform;
-            consider(nullptr, Coder::lzt);
+            consider(nullptr, Coder::lzt_optimal);
             if (transform != nullptr)
             {
-                consider(transform, Coder::lzt);
+                consider(transform, Coder::lzt_optimal);
             }
         }
         // Context mixing is slow, so only twice.
@@ -671,6 +675,10 @@ std::expected<void, Error> Engine::decode_pipeline(const EncodedBlock& block,
     else if (payload[0] == static_cast<uint8_t>(Coder::lzt))
     {
         decoded = lzt_decode(payload.subspan(1), out, block.size_);
+    }
+    else if (payload[0] == static_cast<uint8_t>(Coder::lzt_optimal))
+    {
+        decoded = lzt_optimal_decode(payload.subspan(1), out, block.size_);
     }
     else if (payload[0] == static_cast<uint8_t>(Coder::lz77_huffman_dictionary) ||
              payload[0] == static_cast<uint8_t>(Coder::lzr_dictionary) ||

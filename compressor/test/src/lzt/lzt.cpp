@@ -131,3 +131,93 @@ TEST(LztTests, Damaged_payloads_fail_and_leave_the_output_alone)
     counts[0] = static_cast<uint8_t>(counts[0] + 1); // one sequence more than coded
     EXPECT_TRUE(fails(counts, input.size()));
 }
+
+namespace
+{
+
+Bytes optimal_round_trip(const Bytes& input)
+{
+    const Bytes coded = compressor::lzt_optimal_encode(input);
+    Bytes out;
+    EXPECT_TRUE(compressor::lzt_optimal_decode(coded, out, input.size()));
+    return out;
+}
+
+} // namespace
+
+TEST(LztOptimalTests, Small_and_odd_inputs_decode_back)
+{
+    for (const std::string_view text : {"", "a", "ab", "abc", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                                        "abcabcabcabcabcabcabcabcabcabc", "\xff\x00\xff\x00"})
+    {
+        const Bytes input(text.begin(), text.end());
+        EXPECT_EQ(optimal_round_trip(input), input) << text;
+    }
+    const Bytes runs(300'000, 'r'); // one long match, no 258-byte limit
+    EXPECT_EQ(optimal_round_trip(runs), runs);
+    EXPECT_LT(compressor::lzt_optimal_encode(runs).size(), 100U);
+    const Bytes random = noise(70'000, 9);
+    EXPECT_EQ(optimal_round_trip(random), random);
+    EXPECT_LT(compressor::lzt_optimal_encode(random).size(), random.size() + 600);
+}
+
+TEST(LztOptimalTests, Beats_the_lazy_parse_and_reaches_the_whole_block)
+{
+    // As deep a search as the lazy parse's (level 7 walks 256 candidates), so the parse decides.
+    const Bytes text = words(500'000);
+    EXPECT_LT(compressor::lzt_optimal_encode(text, 2, 256).size(),
+              compressor::lzt_encode(text, whole_block(text.size())).size());
+    EXPECT_EQ(optimal_round_trip(text), text);
+
+    const Bytes chunk = noise(100'000, 3);
+    Bytes far = chunk;
+    far.insert(far.end(), chunk.begin(), chunk.end());
+    EXPECT_LT(compressor::lzt_optimal_encode(far).size(), chunk.size() + 1'000);
+    EXPECT_EQ(optimal_round_trip(far), far);
+}
+
+TEST(LztOptimalTests, Alternating_offsets_take_the_repeats)
+{
+    // Records whose fields come from two places in turn: the offsets alternate, which one repeat
+    // offset can't follow but three can.
+    const Bytes a = noise(64, 5);
+    const Bytes b = noise(64, 6);
+    Bytes input = noise(4096, 7);
+    for (int i = 0; i < 2000; ++i)
+    {
+        input.insert(input.end(), a.begin(), a.begin() + 20);
+        input.push_back(static_cast<uint8_t>(i));
+        input.insert(input.end(), b.begin(), b.begin() + 20);
+        input.push_back(static_cast<uint8_t>(static_cast<unsigned>(i) >> 3U));
+    }
+    const std::size_t optimal = compressor::lzt_optimal_encode(input, 2, 256).size();
+    EXPECT_LT(optimal * 10, compressor::lzt_encode(input, whole_block(input.size())).size() * 9);
+    EXPECT_EQ(optimal_round_trip(input), input);
+}
+
+TEST(LztOptimalTests, Damaged_payloads_fail_and_leave_the_output_alone)
+{
+    const Bytes input = words(20'000);
+    const Bytes coded = compressor::lzt_optimal_encode(input);
+    const auto fails = [&](const Bytes& payload, std::size_t size) {
+        Bytes out{7};
+        const auto result = compressor::lzt_optimal_decode(payload, out, size);
+        EXPECT_EQ(out, Bytes{7});
+        return !result && result.error() == compressor::Error::corrupt_payload;
+    };
+    EXPECT_TRUE(fails({}, 1));
+    for (std::size_t cut = 0; cut < coded.size(); cut += 61)
+    {
+        EXPECT_TRUE(fails(Bytes(coded.begin(), coded.begin() + static_cast<std::ptrdiff_t>(cut)),
+                          input.size()))
+            << cut;
+    }
+    Bytes extra = coded;
+    extra.push_back(1);
+    EXPECT_TRUE(fails(extra, input.size()));
+    EXPECT_TRUE(fails(coded, input.size() + 1));
+    // Coder 13 reads the same bytes differently and must not accept them as the same data.
+    Bytes as_coder_13;
+    const auto other = compressor::lzt_decode(coded, as_coder_13, input.size());
+    EXPECT_TRUE(!other || as_coder_13 != input);
+}

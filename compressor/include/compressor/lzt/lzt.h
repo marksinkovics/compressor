@@ -23,6 +23,15 @@ std::vector<uint8_t> lzt_encode(std::span<const uint8_t> bytes, const Lz77Option
 std::expected<void, Error> lzt_decode(std::span<const uint8_t> payload, std::vector<uint8_t>& out,
                                       std::size_t size);
 
+// Coder 14: LZT with three repeat offsets (offset codes 0-2, most recent first, moved to the front
+// when used; explicit offsets from code 3) and a cost-based parse over the whole block: `passes`
+// parses, each priced by the one before, matches from hash chains `depth` deep (a quarter as far
+// once a match of 24 bytes is found), any match of `nice` or more taken as it is.
+std::vector<uint8_t> lzt_optimal_encode(std::span<const uint8_t> bytes, unsigned passes = 2,
+                                        unsigned depth = 64, std::size_t nice = 128);
+std::expected<void, Error> lzt_optimal_decode(std::span<const uint8_t> payload,
+                                              std::vector<uint8_t>& out, std::size_t size);
+
 } // namespace compressor
 
 #endif /* Lzt_h */

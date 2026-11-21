@@ -3,10 +3,13 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <expected>
 #include <span>
+#include <utility>
 #include <vector>
 
 #include <compressor/entropy/tans.h>
@@ -64,13 +67,28 @@ constexpr uint8_t repeat_offset = 0;
 constexpr unsigned max_offset_code = 32;
 constexpr unsigned max_length_code = 16 + (2 * (32 - 4)); // codes for any 32-bit value
 
-// Offsets: code 1 + floor(log2(offset)), the bits below the top one as extra bits.
+// Offsets (at least 1): code 1 + floor(log2(offset)), the bits below the top one as extra bits.
 Coded offset_code(uint32_t offset)
 {
-    const auto top = static_cast<unsigned>(std::bit_width(offset)) - 1;
+    const auto top = static_cast<unsigned>(std::bit_width(std::max(offset, 1U))) - 1;
     return {.code = static_cast<uint8_t>(1 + top),
             .extra_bits = static_cast<uint8_t>(top),
             .extra = offset - (uint32_t{1} << top)};
+}
+
+// Coder 14's repeat offsets, most recent first, as zstd starts them.
+constexpr std::size_t repeats = 3;
+constexpr std::array<uint64_t, repeats> initial_repeats{1, 4, 8};
+
+// Moves repeat `index` to the front, or with index == repeats pushes `offset` in front.
+void use_offset(std::array<uint64_t, repeats>& recent, uint64_t offset, std::size_t index)
+{
+    const std::size_t from = std::min(index, repeats - 1);
+    for (std::size_t k = from; k > 0; --k)
+    {
+        recent[k] = recent[k - 1];
+    }
+    recent[0] = offset;
 }
 
 class BitWriter
@@ -172,19 +190,20 @@ bool get_varint(std::span<const uint8_t> in, std::size_t& at, uint64_t& value)
 }
 
 // A stream's coded length, then the tANS stream (nothing for no symbols).
-void put_stream(std::vector<uint8_t>& out, std::span<const uint8_t> symbols)
+void put_stream(std::vector<uint8_t>& out, std::span<const uint8_t> symbols,
+                TansTable table = TansTable::full)
 {
     std::vector<uint8_t> coded;
     if (!symbols.empty())
     {
-        tans_encode(symbols, coded);
+        tans_encode(symbols, coded, table);
     }
     put_varint(out, coded.size());
     out.insert(out.end(), coded.begin(), coded.end());
 }
 
 bool get_stream(std::span<const uint8_t> in, std::size_t& at, std::size_t count,
-                std::vector<uint8_t>& symbols)
+                std::vector<uint8_t>& symbols, TansTable table = TansTable::full)
 {
     uint64_t length = 0;
     if (!get_varint(in, at, length) || length > in.size() - at || (count == 0) != (length == 0))
@@ -192,7 +211,8 @@ bool get_stream(std::span<const uint8_t> in, std::size_t& at, std::size_t count,
         return false;
     }
     symbols.clear();
-    if (count > 0 && !tans_decode(in.subspan(at, static_cast<std::size_t>(length)), count, symbols))
+    if (count > 0 &&
+        !tans_decode(in.subspan(at, static_cast<std::size_t>(length)), count, symbols, table))
     {
         return false;
     }
@@ -250,8 +270,383 @@ std::vector<uint8_t> lzt_encode(std::span<const uint8_t> bytes, const Lz77Option
     return out;
 }
 
-std::expected<void, Error> lzt_decode(std::span<const uint8_t> payload, std::vector<uint8_t>& out,
-                                      std::size_t size)
+namespace
+{
+
+// Prices are in 1/16 bit.
+constexpr uint32_t bit = 16;
+constexpr uint32_t unreachable = 0xFFFFFFFFU;
+constexpr unsigned parse_hash_bits = 18;
+constexpr std::size_t good_length = 24;
+
+// What one sequence or literal costs, from how often each symbol was used: -log2 of its share,
+// every symbol counted once more so unseen ones stay possible.
+class Prices
+{
+public:
+    Prices()
+    {
+        literal_.fill(8 * bit);
+        for (std::size_t c = 0; c < code_count; ++c)
+        {
+            run_[c] = length_[c] = offset_[c] = 6 * bit;
+        }
+    }
+
+    void learn(std::span<const uint8_t> literals, std::span<const uint8_t> runs,
+               std::span<const uint8_t> lengths, std::span<const uint8_t> offsets)
+    {
+        fill(literal_, literals);
+        fill(run_, runs);
+        fill(length_, lengths);
+        fill(offset_, offsets);
+    }
+
+    uint32_t literal(uint8_t byte) const
+    {
+        return literal_[byte];
+    }
+
+    uint32_t run(uint32_t value) const
+    {
+        const Coded coded = length_code(value);
+        return run_[coded.code] + (coded.extra_bits * bit);
+    }
+
+    uint32_t length(uint32_t value) const
+    {
+        const Coded coded = length_code(value - lz77_min_match);
+        return length_[coded.code] + (coded.extra_bits * bit);
+    }
+
+    uint32_t repeat(std::size_t index) const
+    {
+        return offset_[index];
+    }
+
+    uint32_t offset(uint32_t value) const
+    {
+        const auto top = static_cast<unsigned>(std::bit_width(value)) - 1;
+        return offset_[repeats + top] + (top * bit);
+    }
+
+private:
+    static constexpr std::size_t code_count = 256;
+
+    template <std::size_t N>
+    static void fill(std::array<uint32_t, N>& prices, std::span<const uint8_t> symbols)
+    {
+        std::array<uint64_t, N> counts{};
+        counts.fill(1);
+        for (const uint8_t symbol : symbols)
+        {
+            ++counts[symbol];
+        }
+        const auto total = static_cast<double>(symbols.size() + N);
+        for (std::size_t i = 0; i < N; ++i)
+        {
+            prices[i] = static_cast<uint32_t>(std::log2(total / static_cast<double>(counts[i])) *
+                                              static_cast<double>(bit));
+        }
+    }
+
+    std::array<uint32_t, 256> literal_{};
+    std::array<uint32_t, code_count> run_{};
+    std::array<uint32_t, code_count> length_{};
+    std::array<uint32_t, code_count> offset_{};
+};
+
+struct Sequence
+{
+    uint32_t run = 0;
+    uint32_t length = 0;
+    uint32_t offset = 0;
+    std::size_t repeat = repeats; // the repeat used, or repeats for an explicit offset
+};
+
+struct Parsed
+{
+    std::vector<uint8_t> literals;
+    std::vector<Sequence> sequences;
+};
+
+struct Node
+{
+    uint32_t price = unreachable;
+    uint32_t from = 0;
+    uint32_t length = 0; // 0: reached by a literal
+    uint32_t offset = 0;
+    uint32_t run = 0; // literals since the last match
+    uint8_t repeat = repeats;
+    std::array<uint64_t, repeats> recent = initial_repeats;
+};
+
+// Every match a hash chain over 4 bytes finds at a position, each longer than the one before.
+class ChainFinder
+{
+public:
+    ChainFinder(std::span<const uint8_t> bytes, unsigned depth)
+        : bytes_(bytes)
+        , depth_(depth)
+        , head_(std::size_t{1} << parse_hash_bits, 0)
+        , previous_(bytes.size(), 0)
+    {
+    }
+
+    // `matches` gets (length, offset) pairs; stops at `nice`.
+    void find(std::size_t at, std::size_t nice, std::vector<std::pair<uint32_t, uint32_t>>& matches)
+    {
+        matches.clear();
+        if (at + 4 > bytes_.size())
+        {
+            return;
+        }
+        const std::size_t limit = bytes_.size() - at;
+        uint32_t candidate = head_[hash(at)];
+        std::size_t best = lz77_min_match - 1;
+        unsigned steps = depth_;
+        for (unsigned step = 0; step < steps && candidate != 0; ++step)
+        {
+            const std::size_t from = candidate - 1;
+            const uint8_t* there = bytes_.data() + from;
+            const uint8_t* here = bytes_.data() + at;
+            if (there[best] == here[best])
+            {
+                const std::size_t length = common_length(there, here, limit);
+                if (length > best)
+                {
+                    best = length;
+                    matches.emplace_back(static_cast<uint32_t>(length),
+                                         static_cast<uint32_t>(at - from));
+                    if (length >= nice)
+                    {
+                        break;
+                    }
+                    // Like zlib's good_length: with a good match in hand, search a quarter as far.
+                    if (length >= good_length)
+                    {
+                        steps = std::min(steps, step + 1 + (depth_ / 4));
+                    }
+                }
+            }
+            candidate = previous_[from];
+        }
+    }
+
+    void insert(std::size_t at)
+    {
+        if (at + 4 <= bytes_.size())
+        {
+            const uint32_t h = hash(at);
+            previous_[at] = head_[h];
+            head_[h] = static_cast<uint32_t>(at + 1);
+        }
+    }
+
+private:
+    uint32_t hash(std::size_t at) const
+    {
+        uint32_t key = 0;
+        std::memcpy(&key, bytes_.data() + at, 4);
+        return (key * 0x9E3779B1U) >> (32U - parse_hash_bits);
+    }
+
+    std::span<const uint8_t> bytes_;
+    unsigned depth_;
+    std::vector<uint32_t> head_;     // position + 1 of the last 4 bytes with each hash, or 0
+    std::vector<uint32_t> previous_; // position + 1 of the one before it, or 0
+};
+
+// The cheapest way through the block by `prices`: forward, every position tries a literal, the
+// repeat offsets and every length of every match found, keeping per position the cheapest arrival
+// and the repeat offsets it leaves; a match of `nice` or more is taken as it is.
+Parsed parse(std::span<const uint8_t> bytes, const Prices& prices, unsigned depth, std::size_t nice)
+{
+    const std::size_t n = bytes.size();
+    std::vector<Node> nodes(n + 1);
+    nodes[0].price = 0;
+    ChainFinder finder(bytes, depth);
+    std::vector<std::pair<uint32_t, uint32_t>> matches;
+    std::size_t skip_until = 0;
+    const auto relax = [&](std::size_t from, std::size_t length, uint64_t offset,
+                           std::size_t repeat, uint32_t price) {
+        Node& to = nodes[from + length];
+        if (price >= to.price)
+        {
+            return;
+        }
+        to.price = price;
+        to.from = static_cast<uint32_t>(from);
+        to.length = static_cast<uint32_t>(length);
+        to.offset = static_cast<uint32_t>(offset);
+        to.repeat = static_cast<uint8_t>(repeat);
+        to.run = 0;
+        to.recent = nodes[from].recent;
+        use_offset(to.recent, offset, repeat);
+    };
+    for (std::size_t i = 0; i < n; ++i)
+    {
+        const Node& here = nodes[i];
+        if (i < skip_until || here.price == unreachable)
+        {
+            finder.insert(i);
+            continue;
+        }
+        // A literal.
+        {
+            const uint32_t price = here.price + prices.literal(bytes[i]);
+            Node& to = nodes[i + 1];
+            if (price < to.price)
+            {
+                to.price = price;
+                to.from = static_cast<uint32_t>(i);
+                to.length = 0;
+                to.run = here.run + 1;
+                to.recent = here.recent;
+            }
+        }
+        const uint32_t before = here.price + prices.run(here.run);
+        const std::size_t limit = n - i;
+        std::size_t longest = 0;
+        // The repeat offsets.
+        for (std::size_t k = 0; k < repeats; ++k)
+        {
+            const uint64_t offset = here.recent[k];
+            if (offset > i)
+            {
+                continue;
+            }
+            const std::size_t length =
+                common_length(bytes.data() + i - offset, bytes.data() + i, limit);
+            if (length < lz77_min_match)
+            {
+                continue;
+            }
+            const uint32_t base = before + prices.repeat(k);
+            for (std::size_t l = lz77_min_match; l <= std::min(length, nice); ++l)
+            {
+                relax(i, l, offset, k, base + prices.length(static_cast<uint32_t>(l)));
+            }
+            if (length > nice)
+            {
+                relax(i, length, offset, k, base + prices.length(static_cast<uint32_t>(length)));
+            }
+            longest = std::max(longest, length);
+        }
+        // New matches.
+        finder.find(i, nice, matches);
+        std::size_t shorter = lz77_min_match - 1;
+        for (const auto& [length, offset] : matches)
+        {
+            const uint32_t base = before + prices.offset(offset);
+            for (std::size_t l = shorter + 1; l <= std::min<std::size_t>(length, nice); ++l)
+            {
+                relax(i, l, offset, repeats, base + prices.length(static_cast<uint32_t>(l)));
+            }
+            if (length > nice)
+            {
+                relax(i, length, offset, repeats, base + prices.length(length));
+            }
+            shorter = length;
+            longest = std::max<std::size_t>(longest, length);
+        }
+        finder.insert(i);
+        if (longest > nice)
+        {
+            skip_until = i + longest;
+        }
+    }
+
+    // Back from the end, then forward into sequences.
+    std::vector<std::size_t> path;
+    for (std::size_t at = n; at > 0; at = nodes[at].from)
+    {
+        path.push_back(at);
+    }
+    Parsed parsed;
+    uint32_t run = 0;
+    for (std::size_t k = path.size(); k-- > 0;)
+    {
+        const Node& node = nodes[path[k]];
+        if (node.length == 0)
+        {
+            parsed.literals.push_back(bytes[node.from]);
+            ++run;
+            continue;
+        }
+        parsed.sequences.push_back(
+            {.run = run, .length = node.length, .offset = node.offset, .repeat = node.repeat});
+        run = 0;
+    }
+    return parsed;
+}
+
+struct Streams
+{
+    std::vector<uint8_t> runs;
+    std::vector<uint8_t> lengths;
+    std::vector<uint8_t> offsets;
+    std::vector<uint8_t> extra;
+};
+
+Streams code_sequences(std::span<const Sequence> sequences)
+{
+    Streams streams;
+    BitWriter extra;
+    for (const Sequence& sequence : sequences)
+    {
+        const Coded run = length_code(sequence.run);
+        const Coded length = length_code(sequence.length - lz77_min_match);
+        Coded offset{.code = static_cast<uint8_t>(sequence.repeat)};
+        if (sequence.repeat == repeats)
+        {
+            offset = offset_code(sequence.offset);
+            offset.code = static_cast<uint8_t>(offset.code - 1 + repeats);
+        }
+        streams.runs.push_back(run.code);
+        streams.lengths.push_back(length.code);
+        streams.offsets.push_back(offset.code);
+        extra.put(run.extra, run.extra_bits);
+        extra.put(length.extra, length.extra_bits);
+        extra.put(offset.extra, offset.extra_bits);
+    }
+    streams.extra = extra.finish();
+    return streams;
+}
+
+} // namespace
+
+std::vector<uint8_t> lzt_optimal_encode(std::span<const uint8_t> bytes, unsigned passes,
+                                        unsigned depth, std::size_t nice)
+{
+    // The first prices are rough guesses; each pass learns them from the parse before.
+    Prices prices;
+    Parsed parsed;
+    for (unsigned pass = 0; pass < std::max(passes, 1U); ++pass)
+    {
+        parsed = parse(bytes, prices, depth, nice);
+        const Streams streams = code_sequences(parsed.sequences);
+        prices.learn(parsed.literals, streams.runs, streams.lengths, streams.offsets);
+    }
+    const Streams streams = code_sequences(parsed.sequences);
+    std::vector<uint8_t> out;
+    put_varint(out, parsed.sequences.size());
+    put_varint(out, parsed.literals.size());
+    put_stream(out, parsed.literals, TansTable::compact);
+    put_stream(out, streams.runs, TansTable::compact);
+    put_stream(out, streams.lengths, TansTable::compact);
+    put_stream(out, streams.offsets, TansTable::compact);
+    out.insert(out.end(), streams.extra.begin(), streams.extra.end());
+    return out;
+}
+
+namespace
+{
+
+// Coder 13 (one repeat offset, offset codes 1 + log2) or 14 (three, codes 3 + log2).
+std::expected<void, Error> decode_sequences(std::span<const uint8_t> payload,
+                                            std::vector<uint8_t>& out, std::size_t size,
+                                            bool three_repeats)
 {
     std::size_t at = 0;
     uint64_t sequences = 0;
@@ -266,10 +661,11 @@ std::expected<void, Error> lzt_decode(std::span<const uint8_t> payload, std::vec
     std::vector<uint8_t> length_codes;
     std::vector<uint8_t> offset_codes;
     const auto count = static_cast<std::size_t>(sequences);
-    if (!get_stream(payload, at, static_cast<std::size_t>(literal_count), literals) ||
-        !get_stream(payload, at, count, literal_codes) ||
-        !get_stream(payload, at, count, length_codes) ||
-        !get_stream(payload, at, count, offset_codes))
+    const TansTable table = three_repeats ? TansTable::compact : TansTable::full;
+    if (!get_stream(payload, at, static_cast<std::size_t>(literal_count), literals, table) ||
+        !get_stream(payload, at, count, literal_codes, table) ||
+        !get_stream(payload, at, count, length_codes, table) ||
+        !get_stream(payload, at, count, offset_codes, table))
     {
         return corrupt();
     }
@@ -281,6 +677,8 @@ std::expected<void, Error> lzt_decode(std::span<const uint8_t> payload, std::vec
     std::size_t produced = 0;
     std::size_t literal_at = 0;
     uint32_t last_offset = 0;
+    std::array<uint64_t, repeats> recent = initial_repeats;
+    const unsigned first_offset_code = three_repeats ? repeats : 1;
     const auto fail = [&] {
         out.resize(start);
         return corrupt();
@@ -291,11 +689,12 @@ std::expected<void, Error> lzt_decode(std::span<const uint8_t> payload, std::vec
         uint32_t length_extra = 0;
         uint32_t offset_extra = 0;
         const uint8_t offset_code = offset_codes[i];
+        const bool explicit_offset = offset_code >= first_offset_code;
         if (literal_codes[i] > max_length_code || length_codes[i] > max_length_code ||
-            offset_code > max_offset_code ||
+            offset_code > max_offset_code + first_offset_code - 1 ||
             !extra.get(length_extra_bits(literal_codes[i]), literal_extra) ||
             !extra.get(length_extra_bits(length_codes[i]), length_extra) ||
-            !extra.get(offset_code == repeat_offset ? 0 : offset_code - 1U, offset_extra))
+            !extra.get(explicit_offset ? offset_code - first_offset_code : 0, offset_extra))
         {
             return fail();
         }
@@ -303,9 +702,14 @@ std::expected<void, Error> lzt_decode(std::span<const uint8_t> payload, std::vec
         const uint64_t length =
             uint64_t{length_value(length_codes[i], length_extra)} + lz77_min_match;
         uint64_t offset = last_offset;
-        if (offset_code != repeat_offset)
+        if (explicit_offset)
         {
-            offset = (uint64_t{1} << (offset_code - 1U)) | offset_extra;
+            offset = (uint64_t{1} << (offset_code - first_offset_code)) | offset_extra;
+        }
+        if (three_repeats)
+        {
+            offset = explicit_offset ? offset : recent[offset_code];
+            use_offset(recent, offset, explicit_offset ? repeats : offset_code);
         }
         if (run > literals.size() - literal_at || run + length > size - produced)
         {
@@ -335,6 +739,20 @@ std::expected<void, Error> lzt_decode(std::span<const uint8_t> payload, std::vec
     std::copy_n(literals.begin() + static_cast<std::ptrdiff_t>(literal_at), rest,
                 target + produced);
     return {};
+}
+
+} // namespace
+
+std::expected<void, Error> lzt_decode(std::span<const uint8_t> payload, std::vector<uint8_t>& out,
+                                      std::size_t size)
+{
+    return decode_sequences(payload, out, size, false);
+}
+
+std::expected<void, Error> lzt_optimal_decode(std::span<const uint8_t> payload,
+                                              std::vector<uint8_t>& out, std::size_t size)
+{
+    return decode_sequences(payload, out, size, true);
 }
 
 } // namespace compressor

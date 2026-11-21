@@ -219,17 +219,45 @@ struct DecodeEntry
 
 } // namespace
 
-void tans_encode(std::span<const uint8_t> bytes, std::vector<uint8_t>& out)
+void tans_encode(std::span<const uint8_t> bytes, std::vector<uint8_t>& out, TansTable kind)
 {
     if (bytes.empty())
     {
-        out.insert(out.end(), alphabet, 0);
+        if (kind == TansTable::full)
+        {
+            out.insert(out.end(), alphabet, 0);
+        }
+        else
+        {
+            out.push_back(0);
+        }
         return;
     }
     const Frequencies frequency = normalise(bytes);
-    for (const uint32_t value : frequency)
+    if (kind == TansTable::full)
     {
-        put_varint(out, value);
+        for (const uint32_t value : frequency)
+        {
+            put_varint(out, value);
+        }
+    }
+    else
+    {
+        // The used bytes only: their number, then each one's gap after the one before and count.
+        const auto used = static_cast<uint32_t>(std::ranges::count_if(frequency, [](uint32_t f) {
+            return f != 0;
+        }));
+        put_varint(out, used);
+        uint32_t next = 0;
+        for (uint32_t s = 0; s < alphabet; ++s)
+        {
+            if (frequency[s] != 0)
+            {
+                put_varint(out, s - next);
+                put_varint(out, frequency[s]);
+                next = s + 1;
+            }
+        }
     }
 
     // zstd's FSE_buildCTable: the states of each byte in table order, and per byte the numbers
@@ -281,18 +309,43 @@ void tans_encode(std::span<const uint8_t> bytes, std::vector<uint8_t>& out)
 }
 
 std::expected<void, Error> tans_decode(std::span<const uint8_t> in, std::size_t count,
-                                       std::vector<uint8_t>& out)
+                                       std::vector<uint8_t>& out, TansTable kind)
 {
     std::size_t at = 0;
     Frequencies frequency{};
     uint32_t sum = 0;
-    for (uint32_t& value : frequency)
+    if (kind == TansTable::full)
     {
-        if (!get_varint(in, at, value) || value > table_size)
+        for (uint32_t& value : frequency)
+        {
+            if (!get_varint(in, at, value) || value > table_size)
+            {
+                return corrupt();
+            }
+            sum += value;
+        }
+    }
+    else
+    {
+        uint32_t used = 0;
+        if (!get_varint(in, at, used) || used > alphabet)
         {
             return corrupt();
         }
-        sum += value;
+        uint32_t next = 0;
+        for (uint32_t i = 0; i < used; ++i)
+        {
+            uint32_t gap = 0;
+            uint32_t value = 0;
+            if (!get_varint(in, at, gap) || gap >= alphabet - next || !get_varint(in, at, value) ||
+                value == 0 || value > table_size)
+            {
+                return corrupt();
+            }
+            frequency[next + gap] = value;
+            sum += value;
+            next += gap + 1;
+        }
     }
     if (count == 0)
     {

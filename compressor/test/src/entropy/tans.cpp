@@ -136,3 +136,29 @@ TEST(TansTests, Damaged_streams_fail_and_leave_the_output_alone)
     EXPECT_TRUE(fails(encode({}), 1));
     EXPECT_TRUE(fails(coded, 0));
 }
+
+TEST(TansTests, The_compact_table_lists_only_used_bytes)
+{
+    const Bytes bytes = skewed(50'000, 0.7, 12);
+    Bytes full;
+    Bytes compact;
+    compressor::tans_encode(bytes, full);
+    compressor::tans_encode(bytes, compact, compressor::TansTable::compact);
+    EXPECT_LT(compact.size() + 200, full.size());
+    Bytes out;
+    ASSERT_TRUE(
+        compressor::tans_decode(compact, bytes.size(), out, compressor::TansTable::compact));
+    EXPECT_EQ(out, bytes);
+    Bytes empty;
+    compressor::tans_encode({}, empty, compressor::TansTable::compact);
+    EXPECT_EQ(empty, Bytes{0});
+    Bytes none;
+    EXPECT_TRUE(compressor::tans_decode(empty, 0, none, compressor::TansTable::compact));
+    // A gap past the last byte value, and a zero count.
+    Bytes damaged = compact;
+    damaged[1] = 0xFF;
+    damaged.insert(damaged.begin() + 2, 0x7F);
+    EXPECT_FALSE(
+        compressor::tans_decode(damaged, bytes.size(), none, compressor::TansTable::compact));
+    EXPECT_FALSE(compressor::tans_decode(Bytes{1, 0, 0}, 1, none, compressor::TansTable::compact));
+}

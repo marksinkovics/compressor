@@ -44,6 +44,9 @@ Lz77Options lz77_options_for_level(unsigned level);
 // zip formats keep 3 bytes, which raw RGB pixels need (images came out 4% larger with 4).
 Lz77Options block_options(unsigned level);
 
+// How many bytes from `a` and `b` agree, up to `limit`, compared 8 at a time.
+std::size_t common_length(const uint8_t* a, const uint8_t* b, std::size_t limit);
+
 // Finds matches with hash chains over 3-byte prefixes. Input comes in pieces; matches may reach
 // back into earlier pieces as far as the window.
 class Lz77MatchFinder
