@@ -624,3 +624,17 @@ Level 7 now tries coder 14 instead of 13 (raw and with the best transform); leve
 | images | 9,118,770 | 9,046,962 (−0.8%) | 44 s | 0.22 s |
 
 Level 7 sits between `zstd -19` (52.9 MB) and level 6 (66.7 MB) on Silesia, decodes about 3× faster than xz, and stays far behind zstd in encoding speed.
+
+## Archive order (2026-11-20)
+
+Autonomous run 6, item 2. Folder archives now store directories first, then symlinks, then files grouped by extension and in path order within a group (`order_for_compression()`), instead of the walk's tree order. Sizes of `ingot encode -L 6/-L 9 -i FOLDER`:
+
+| Folder | Level 6 before | after | Level 9 before | after |
+| --- | ---: | ---: | ---: | ---: |
+| 600 vcpkg ports (7.6 MB: `portfile.cmake`, `vcpkg.json`, patches) | 573,035 | 550,909 (−3.9%) | 417,491 | 410,989 (−1.6%) |
+| `docs/` (1.1 MB) | 175,608 | 174,796 (−0.5%) | 118,433 | 117,696 (−0.6%) |
+| Canterbury (2.7 MB) | 737,142 | 735,053 (−0.3%) | 425,224 | 425,026 (−0.05%) |
+| `compressor/` sources (0.95 MB) | 167,470 | 167,326 (−0.1%) | 109,579 | 110,020 (+0.4%) |
+| `fuzz/` (small seeds of many kinds) | 62,588 | 64,068 (+2.4%) | 55,359 | 55,245 (−0.2%) |
+
+Ordering by extension and then file name instead of path lost on the sources (+2.2% at level 6): it split each directory's files apart, and level 6's matches reach only 32 KiB back. Choosing the transform per file wasn't built: blocks are fixed-size and span files, so it would need variable-size blocks, a format change; large files already get blocks of their own, and the grouping makes mixed blocks rarer.

@@ -35,6 +35,11 @@ std::expected<std::vector<Entry>, Failure> scan_tree(const std::filesystem::path
 
 // The container with the archive flag, the files' bytes back to back as its data, and the index;
 // with `search_index`, an FM-index section after it (fmindex/fmindex.h), built from the same read.
+// Orders entries for a solid archive: directories first (in their order, so parents still come
+// before their contents), then symlinks, then files grouped by extension (ignoring case) and then
+// by name, so that similar files sit next to each other in the compressed stream. Stable.
+void order_for_compression(std::vector<Entry>& entries);
+
 std::expected<void, Failure> write_archive(IBlockEncoder& encoder,
                                            const std::filesystem::path& root,
                                            std::vector<Entry> entries, std::ostream& out,

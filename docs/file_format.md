@@ -139,7 +139,7 @@ Rules, checked before anything is extracted (`corrupt_index` otherwise):
 - An entry's parent directory is an earlier directory entry, or the archive root. So no entry sits under a file or a symlink, and extraction never writes through a symlink.
 - Files' offsets run back to back from 0 in entry order, and their sizes add up to the end block's total, except for duplicates: a non-empty file whose offset, size and CRC32 are exactly those of an earlier file that is not itself a duplicate. Duplicates add nothing to the total.
 
-The encoder writes each directory before its contents, siblings in byte order of their names. It finds duplicates among files of the same size by CRC32 and then byte by byte, and fails if an original changes between that comparison and the archiving. Owners, hard links, devices, pipes and sockets aren't stored; the encoder skips special files with a warning.
+The encoder writes all directories first, each before its contents and siblings in byte order of their names, then symlinks, then files grouped by extension (ignoring case) and in path order within each group, so that similar files are next to each other in the compressed stream (`order_for_compression()`); `list` still prints the tree's order. Archives from before this order read the same. It finds duplicates among files of the same size by CRC32 and then byte by byte, and fails if an original changes between that comparison and the archiving. Owners, hard links, devices, pipes and sockets aren't stored; the encoder skips special files with a warning.
 
 ### Extracting
 

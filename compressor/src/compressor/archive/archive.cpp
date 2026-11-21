@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cerrno>
 #include <chrono>
 #include <cstddef>
@@ -733,10 +734,36 @@ std::expected<std::vector<Entry>, Failure> scan_tree(const fs::path& root, const
     return entries;
 }
 
+void order_for_compression(std::vector<Entry>& entries)
+{
+    const auto rank = [](const Entry& entry) {
+        return entry.type == EntryType::directory ? 0 : entry.type == EntryType::symlink ? 1 : 2;
+    };
+    const auto key = [](const Entry& entry) {
+        const std::string_view path = entry.path;
+        const std::string_view name = path.substr(path.rfind('/') + 1);
+        const auto dot = name.rfind('.');
+        std::string extension(dot == std::string_view::npos || dot == 0 ? std::string_view{}
+                                                                        : name.substr(dot + 1));
+        std::ranges::transform(extension, extension.begin(), [](unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
+        return std::tuple(std::move(extension), std::string(path));
+    };
+    std::ranges::stable_sort(entries, [&](const Entry& a, const Entry& b) {
+        if (rank(a) != rank(b))
+        {
+            return rank(a) < rank(b);
+        }
+        return rank(a) == 2 && key(a) < key(b);
+    });
+}
+
 std::expected<void, Failure> write_archive(IBlockEncoder& encoder, const fs::path& root,
                                            std::vector<Entry> entries, std::ostream& out,
                                            bool search_index)
 {
+    order_for_compression(entries);
     const auto duplicates = find_duplicates(root, entries);
     if (!duplicates)
     {
@@ -1011,8 +1038,26 @@ std::expected<void, Failure> verify_archive(IBlockDecoder& decoder, std::istream
 
 void list_archive(const ArchiveInfo& info, bool details, std::ostream& out)
 {
+    // In tree order (each directory before its contents, siblings in byte order), whatever order
+    // the index stores: comparing paths component by component gives exactly that.
+    std::vector<const Entry*> sorted;
+    sorted.reserve(info.index.entries.size());
     for (const Entry& entry : info.index.entries)
     {
+        sorted.push_back(&entry);
+    }
+    std::ranges::stable_sort(sorted, [](const Entry* a, const Entry* b) {
+        return std::ranges::lexicographical_compare(a->path | std::views::split('/'),
+                                                    b->path | std::views::split('/'),
+                                                    [](const auto& x, const auto& y) {
+            return std::ranges::lexicographical_compare(x, y, [](char p, char q) {
+                return static_cast<unsigned char>(p) < static_cast<unsigned char>(q);
+            });
+        });
+    });
+    for (const Entry* listed : sorted)
+    {
+        const Entry& entry = *listed;
         if (details)
         {
             const uint64_t size =

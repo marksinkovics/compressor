@@ -10,11 +10,14 @@
 #include <span>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <vector>
 
 #include <gtest/gtest.h>
 
+#include <compressor/archive/archive.h>
+#include <compressor/archive/index.h>
 #include <compressor/compressor.h>
 #include <compressor/data/data.h>
 #include <compressor/engine/engine.h>
@@ -215,5 +218,54 @@ TEST(RangeTests, A_file_in_an_archive_reads_by_range)
     EXPECT_FALSE(compressor.read_range(dir / "tree.ingot", "", {}, dir / "x"));
     EXPECT_FALSE(compressor.read_range(dir / "tree.ingot", "big.txt",
                                        {.from = big.size() + 1, .to = {}}, dir / "x"));
+    fs::remove_all(dir, error);
+}
+
+TEST(ArchiveOrderTests, Files_are_grouped_by_type_and_listing_stays_in_tree_order)
+{
+    std::vector<compressor::Entry> entries;
+    for (const char* path : {"b", "b/z.TXT", "b/a.json", "a", "a/x.json", "a/y.txt", "a/c", "link",
+                             "a/c/m.json", "README"})
+    {
+        compressor::Entry entry;
+        entry.path = path;
+        const std::string_view p = path;
+        entry.type =
+            p == "a" || p == "b" || p == "a/c"
+                ? compressor::EntryType::directory
+                : (p == "link" ? compressor::EntryType::symlink : compressor::EntryType::file);
+        entries.push_back(entry);
+    }
+    compressor::order_for_compression(entries);
+    std::vector<std::string> order;
+    order.reserve(entries.size());
+    for (const auto& entry : entries)
+    {
+        order.push_back(entry.path);
+    }
+    // Directories as they were, symlinks, then files by extension (any case) and path.
+    EXPECT_EQ(order, (std::vector<std::string>{"b", "a", "a/c", "link", "README", "a/c/m.json",
+                                               "a/x.json", "b/a.json", "a/y.txt", "b/z.TXT"}));
+
+    // Archived for real, the index has that order and `list` the tree's.
+    const fs::path dir = fs::temp_directory_path() / "compressor_archive_order";
+    std::error_code error;
+    fs::remove_all(dir, error);
+    fs::create_directories(dir / "tree" / "b");
+    fs::create_directories(dir / "tree" / "a-b");
+    std::ofstream(dir / "tree" / "b" / "one.txt") << "one";
+    std::ofstream(dir / "tree" / "a-b" / "two.json") << "two";
+    std::ofstream(dir / "tree" / "three.txt") << "three";
+    compressor::Compressor compressor(compressor::CompressorSettings{.threads = 1});
+    ASSERT_TRUE(compressor.encode(dir / "tree", dir / "tree.ingot"));
+    std::ifstream file(dir / "tree.ingot", std::ios::binary);
+    const auto info = compressor::read_archive_index(file);
+    ASSERT_TRUE(info);
+    std::ostringstream listed;
+    compressor::list_archive(*info, false, listed);
+    EXPECT_EQ(listed.str(), "a-b/\na-b/two.json\nb/\nb/one.txt\nthree.txt\n");
+    ASSERT_TRUE(compressor.decode(dir / "tree.ingot", dir / "back"));
+    std::ifstream two(dir / "back" / "a-b" / "two.json");
+    EXPECT_EQ(std::string(std::istreambuf_iterator<char>(two), {}), "two");
     fs::remove_all(dir, error);
 }
