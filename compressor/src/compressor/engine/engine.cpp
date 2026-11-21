@@ -308,7 +308,7 @@ namespace
 // Level 7's search over the whole block (level 6's: 1% larger, a quarter faster).
 Lz77Options lzt_options(std::size_t block_size)
 {
-    Lz77Options options = lz77_options_for_level(auto_level);
+    Lz77Options options = block_options(auto_level);
     options.window = std::max(lz77_window, block_size);
     return options;
 }
@@ -390,7 +390,7 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
             switch (coder)
             {
             case Coder::lz77_huffman:
-                stream = deflate_bytes(input, lz77_options_for_level(level_), dictionary);
+                stream = deflate_bytes(input, block_options(level_), dictionary);
                 break;
             case Coder::bwt:
                 stream = bwt_encode(input);
@@ -401,7 +401,7 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
             case Coder::lzr:
                 // Its 1 MiB window makes long chains slow: level 9's took 17 s per MiB of a photo
                 // and gained nothing on Silesia, so every level searches like level 7.
-                stream = lzr_encode(input, lz77_options_for_level(auto_level), dictionary);
+                stream = lzr_encode(input, block_options(auto_level), dictionary);
                 break;
             case Coder::cm:
                 stream = cm_encode(input, cm_default_table_log2, dictionary);
@@ -416,7 +416,7 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
                 stream = lzt_encode(input, lzt_options(input.size()));
                 break;
             case Coder::lz77_dictionary_codes:
-                stream = deflate_with_codes(input, dictionary, lz77_options_for_level(level_),
+                stream = deflate_with_codes(input, dictionary, block_options(level_),
                                             *dictionary_->codes);
                 if (stream.empty())
                 {

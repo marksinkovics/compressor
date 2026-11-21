@@ -585,3 +585,18 @@ Autonomous run 4, item 3: PPMC with contexts of 5 bytes down to none (escape cou
 | total | 17,039,559 | −0.3% | +13.5% | +21.2% | |
 
 It ties the BWT coder overall but decodes 5–30× slower than it (the same trade that kept BWT + CM out of level 8), and at level 9 BWT + CM and CM beat it everywhere at about its decoding speed. Order 5 also misses long repeats (xml). A PPMd-style coder (information inheritance, SEE, unbounded orders) would do better, but would still have to beat CM, so PPM was not kept.
+
+## Level 6 encoding speed (2026-11-20)
+
+Autonomous run 5, item 1. Measured as CPU time (user + system, best of 3) of `ingot encode -L 6 -T 1` on Silesia as one tar, since the machine is never idle. The profile put 77–82% of level 6 in `Lz77MatchFinder::longest_match`, 14% in coding blocks a second time with a transform, and a few percent each in block writing, rANS and tANS.
+
+| Change | CPU time | Size | Output |
+| --- | ---: | ---: | --- |
+| before | 15.11 s | 66,639,224 | |
+| chain table indexed with a mask (a power of two at least the window) instead of `%` by the window | 9.35 s | 66,639,224 | identical |
+| multiplicative hash, 16 bits instead of zlib's 15-bit shift-and-xor | 8.48 s | 66,618,753 | −0.03% |
+| hash chains on 4 bytes instead of 3 (`block_options()`) | 5.39 s | 66,718,740 | +0.12% |
+
+Level 6 is 2.8× faster per core (14 → 39 MB per CPU second); Canterbury +0.14%, the images −0.14%. Hashing 4 bytes also helped level 7 (Silesia −1.0%, Canterbury −0.7%) and left level 8 even (+0.02%, −1.1%). The gzip and zip output keep 3-byte chains: with 4, raw images (3-byte pixels) came out 4.0% larger and Silesia 0.6%. They gain the first two changes, 10.51 → 6.49 CPU seconds for `-f gzip -T 1` on Silesia, with the same output as with the 3-byte multiplicative hash (68,132,812 bytes, 0.1% below `gzip -6`). LZR's far-repeat test on pure noise came out 0.17% larger with 4-byte chains, so its 3-byte search is still what `lz77_options_for_level()` gives; the engine uses `block_options()` throughout.
+
+`tools/compare.py` now reports CPU time beside wall time (MB per CPU second, over all threads), compares runs by it, and includes level 7.

@@ -251,7 +251,7 @@ DeflateCodeLengths train_codes(std::span<const std::vector<uint8_t>> samples,
 {
     std::vector<uint64_t> literals(deflate_literal_symbols, 1);
     std::vector<uint64_t> distances(deflate_distance_symbols, 1);
-    const Lz77Options options = lz77_options_for_level(6);
+    const Lz77Options options = block_options(6);
     for (const std::vector<uint8_t>& sample : samples)
     {
         count_deflate_symbols(sample, content, options, literals, distances);

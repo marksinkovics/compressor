@@ -7,7 +7,9 @@
 Each corpus (corpus/<name>, from tools/fetch-corpus.sh) is packed into one reproducible tar, so
 every tool compresses the same stream. Every tool runs from the command line with its output going
 to a file, and every round trip is checked. Results go to docs/benchmarks/history/ as JSON named
-after the date and commit, and the ingot rows are compared with the newest earlier file.
+after the date and commit, and the ingot rows are compared with the newest earlier file. Speeds
+are given as wall time and as CPU time (user + system over all threads), which load from other
+programs hardly changes.
 """
 
 import argparse
@@ -17,6 +19,7 @@ import io
 import json
 import os
 import platform
+import resource
 import shutil
 import subprocess
 import sys
@@ -34,7 +37,7 @@ def tools(app, threads):
     """Name -> (compress command, decompress command); {i} and {o} are the file paths."""
     t = str(threads)
     table = {}
-    for level in (1, 6, 9):
+    for level in (1, 6, 7, 9):
         table[f"ingot -L {level}"] = (
             [app, "encode", "-L", str(level), "-T", t, "-i", "{i}", "-o", "{o}"],
             [app, "decode", "-T", t, "-i", "{i}", "-o", "{o}"],
@@ -82,16 +85,23 @@ def pack(corpus, source):
     return target
 
 
+def cpu_seconds():
+    usage = resource.getrusage(resource.RUSAGE_CHILDREN)
+    return usage.ru_utime + usage.ru_stime
+
+
 def run(command, source, target):
-    """Wall time of one run; the output goes to `target` (through stdout if no {o})."""
+    """(wall, CPU) seconds of one run; CPU is user + system time of all its threads, which other
+    work on the machine hardly changes. The output goes to `target` (through stdout if no {o})."""
     args = [str(source) if a == "{i}" else str(target) if a == "{o}" else a for a in command]
     start = time.perf_counter()
+    cpu = cpu_seconds()
     if "{o}" in command:
         subprocess.run(args, check=True, stdout=subprocess.DEVNULL)
     else:
         with target.open("wb") as out:
             subprocess.run(args, check=True, stdout=out)
-    return time.perf_counter() - start
+    return time.perf_counter() - start, cpu_seconds() - cpu
 
 
 def same_file(a, b):
@@ -111,8 +121,10 @@ def measure(name, commands, source, runs, threads):
     for path in (packed, back):
         if path.exists():
             path.unlink()
-    encode = min(run(commands[0], source, packed) for _ in range(runs))
-    decode = min(run(commands[1], packed, back) for _ in range(runs))
+    encodes = [run(commands[0], source, packed) for _ in range(runs)]
+    decodes = [run(commands[1], packed, back) for _ in range(runs)]
+    encode, encode_cpu = min(t[0] for t in encodes), min(t[1] for t in encodes)
+    decode, decode_cpu = min(t[0] for t in decodes), min(t[1] for t in decodes)
     if not same_file(source, back):
         sys.exit(f"ERROR: {name} did not round-trip {source.name}")
     size = packed.stat().st_size
@@ -128,6 +140,11 @@ def measure(name, commands, source, runs, threads):
         "decode_s": round(decode, 4),
         "encode_mb_s": round(mb / encode, 2),
         "decode_mb_s": round(mb / decode, 2),
+        # Per second of CPU time over all threads: per-core speed, steady under load.
+        "encode_cpu_s": round(encode_cpu, 4),
+        "decode_cpu_s": round(decode_cpu, 4),
+        "encode_cpu_mb_s": round(mb / max(encode_cpu, 1e-6), 2),
+        "decode_cpu_mb_s": round(mb / max(decode_cpu, 1e-6), 2),
     }
 
 
@@ -150,18 +167,25 @@ def print_table(result, before):
                 old[(corpus, row["tool"])] = row
     for corpus, entry in result["corpora"].items():
         print(f"\n{corpus}: {entry['bytes']:,} bytes")
-        print(f"  {'tool':<14}{'size':>14}{'ratio':>8}{'enc MB/s':>10}{'dec MB/s':>10}  change")
+        print(
+            f"  {'tool':<14}{'size':>14}{'ratio':>8}{'enc MB/s':>10}{'dec MB/s':>10}"
+            f"{'enc/cpu-s':>11}{'dec/cpu-s':>11}  change"
+        )
         for row in entry["results"]:
             change = ""
             prior = old.get((corpus, row["tool"]))
             if prior and row["tool"].startswith("ingot"):
                 size = (row["size"] / prior["size"] - 1) * 100
-                enc = (row["encode_mb_s"] / prior["encode_mb_s"] - 1) * 100
-                dec = (row["decode_mb_s"] / prior["decode_mb_s"] - 1) * 100
-                change = f"size {size:+.2f}%, enc {enc:+.0f}%, dec {dec:+.0f}%"
+                # CPU time when both runs have it: wall time moves with the machine's load.
+                key = "_cpu_mb_s" if "encode_cpu_mb_s" in prior else "_mb_s"
+                enc = (row["encode" + key] / prior["encode" + key] - 1) * 100
+                dec = (row["decode" + key] / prior["decode" + key] - 1) * 100
+                clock = "cpu" if key == "_cpu_mb_s" else "wall"
+                change = f"size {size:+.2f}%, enc {enc:+.0f}%, dec {dec:+.0f}% ({clock})"
             print(
                 f"  {row['tool']:<14}{row['size']:>14,}{row['ratio']:>8.3f}"
-                f"{row['encode_mb_s']:>10.1f}{row['decode_mb_s']:>10.1f}  {change}"
+                f"{row['encode_mb_s']:>10.1f}{row['decode_mb_s']:>10.1f}"
+                f"{row['encode_cpu_mb_s']:>11.1f}{row['decode_cpu_mb_s']:>11.1f}  {change}"
             )
     if before:
         print(f"\nchanges against {before['commit'][:9]} ({before['date']})")

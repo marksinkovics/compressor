@@ -31,12 +31,18 @@ struct Lz77Options
     std::size_t max_lazy = 16;     // only look at the next position for matches shorter than this
     std::size_t good_length = 8;   // and with a quarter of the chain from this length on
     std::size_t window = lz77_window; // the farthest a match may reach back
+    // Bytes the hash chains key on: 3 finds every Deflate match; 4 skips most 3-byte ones, which
+    // rarely pay, and searched Silesia at level 6 1.6x faster for 0.15% more.
+    unsigned hash_bytes = 3;
 };
 
 // 1 means no LZ77 at all (Huffman only); 2-9 grow from greedy and short chains to zlib's level 9.
 inline constexpr unsigned min_level = 1;
 inline constexpr unsigned max_level = 9;
 Lz77Options lz77_options_for_level(unsigned level);
+// What the ingot coders search with: lz77_options_for_level() with 4-byte hashing. The gzip and
+// zip formats keep 3 bytes, which raw RGB pixels need (images came out 4% larger with 4).
+Lz77Options block_options(unsigned level);
 
 // Finds matches with hash chains over 3-byte prefixes. Input comes in pieces; matches may reach
 // back into earlier pieces as far as the window.
@@ -73,8 +79,10 @@ private:
     uint64_t base_ = 0;         // absolute position of data_[0]
     uint64_t position_ = 0;     // next byte to tokenize
     std::vector<int64_t> head_; // last position with each hash, or -1
-    std::vector<int64_t>
-        previous_; // the position before it with the same hash, by position % window
+    // The position before each one with the same hash, by position & previous_mask_: a power of
+    // two at least the window, so no division on the chain walk.
+    std::vector<int64_t> previous_;
+    std::size_t previous_mask_ = 0;
     // A match already found at position_ by the lazy look-ahead.
     bool have_next_ = false;
     std::size_t next_length_ = 0;

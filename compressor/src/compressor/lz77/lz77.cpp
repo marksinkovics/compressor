@@ -14,7 +14,7 @@ namespace compressor
 namespace
 {
 
-constexpr unsigned hash_bits = 15;
+constexpr unsigned hash_bits = 16;
 constexpr std::size_t hash_size = std::size_t{1} << hash_bits;
 
 } // namespace
@@ -54,10 +54,18 @@ Lz77Options lz77_options_for_level(unsigned level)
     }
 }
 
+Lz77Options block_options(unsigned level)
+{
+    Lz77Options options = lz77_options_for_level(level);
+    options.hash_bytes = 4;
+    return options;
+}
+
 Lz77MatchFinder::Lz77MatchFinder(Lz77Options options)
     : options_(options)
     , head_(hash_size, -1)
-    , previous_(options.window, -1)
+    , previous_(std::bit_ceil(std::max<std::size_t>(options.window, 1)), -1)
+    , previous_mask_(previous_.size() - 1)
 {
 }
 
@@ -107,17 +115,22 @@ const uint8_t* Lz77MatchFinder::at_ptr(uint64_t at) const
 uint32_t Lz77MatchFinder::hash_at(uint64_t at) const
 {
     const uint8_t* p = at_ptr(at);
-    return ((uint32_t{p[0]} << 10U) ^ (uint32_t{p[1]} << 5U) ^ p[2]) & (hash_size - 1);
+    uint32_t key = uint32_t{p[0]} | (uint32_t{p[1]} << 8U) | (uint32_t{p[2]} << 16U);
+    if (options_.hash_bytes == 4)
+    {
+        key |= uint32_t{p[3]} << 24U;
+    }
+    return (key * 0x9E3779B1U) >> (32U - hash_bits);
 }
 
 void Lz77MatchFinder::insert(uint64_t at)
 {
-    if (at + lz77_min_match > base_ + data_.size())
+    if (at + options_.hash_bytes > base_ + data_.size())
     {
         return;
     }
     const uint32_t hash = hash_at(at);
-    previous_[at % options_.window] = head_[hash];
+    previous_[at & previous_mask_] = head_[hash];
     head_[hash] = static_cast<int64_t>(at);
 }
 
@@ -147,7 +160,7 @@ std::size_t common_length(const uint8_t* a, const uint8_t* b, std::size_t limit)
 std::size_t Lz77MatchFinder::longest_match(uint64_t at, std::size_t limit, unsigned chain,
                                            uint32_t& distance) const
 {
-    if (limit < lz77_min_match)
+    if (limit < options_.hash_bytes)
     {
         return 0;
     }
@@ -175,7 +188,7 @@ std::size_t Lz77MatchFinder::longest_match(uint64_t at, std::size_t limit, unsig
                 }
             }
         }
-        const int64_t next = previous_[from % options_.window];
+        const int64_t next = previous_[from & previous_mask_];
         // A stale entry from a position that left the window, or one overwritten since.
         if (next >= candidate)
         {
