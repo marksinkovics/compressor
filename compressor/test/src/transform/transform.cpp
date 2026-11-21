@@ -182,6 +182,17 @@ TEST(TransformTests, An_image_takes_the_median_predictor_with_its_row_length)
     EXPECT_GT(small, static_cast<std::ptrdiff_t>(residuals.size() * 9 / 10));
 }
 
+TEST(TransformTests, A_header_at_the_block_start_does_not_hide_the_image)
+{
+    // A file's header (here a 64 KiB embedded thumbnail, as noise) followed by its pixels.
+    Bytes block = noise(std::size_t{64} * 1024, 4);
+    const Bytes image = rgba_image(301, 300, 1212);
+    block.insert(block.end(), image.begin(), image.end());
+    const auto chosen = compressor::choose_transforms(block);
+    ASSERT_EQ(chosen.size(), 1U);
+    EXPECT_EQ(chosen[0].id, TransformId::med);
+}
+
 TEST(TransformTests, Only_known_ids_and_parameters_parse)
 {
     using compressor::parse_transform;

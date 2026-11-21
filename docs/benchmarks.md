@@ -697,3 +697,29 @@ Run 7, item 3. Level 6's match finder (`Lz77MatchFinder::longest_match`, about 7
 | GPU, 6 threads | 3.37 s | 1.03 s |
 
 Output was identical on Silesia and Canterbury. It needs 1.8× less CPU time but is barely faster in wall time, short of the ≥3× criterion. The rest of level 6 (building the chains, tokenizing, Huffman, the transform trial) costs as much CPU time as the GPU saves, so a free match search caps the gain near 1.8×. With 6 threads the CPU already keeps up with the GPU. The code was removed. The GPU pays off where the CPU repeats expensive searches (level 7, item 2), not for level 6's greedy-lazy finder.
+
+## GPU spike: Huffman encoding and decoding at level 1 (2026-11-21, not built)
+
+Run 7, items 4 and 5, settled by measuring how much of level 1's time a GPU could remove. Silesia as one tar (212 MB), 6 threads, page cache warm:
+
+| | CPU time | Wall time |
+| --- | ---: | ---: |
+| level 1 encode | 0.52 s | 0.10 s |
+| copying the tar (`cp`) | 0.04 s | 0.12 s |
+| level 1 decode (coder 15) | 0.33 s | 0.07 s |
+| copying the 135 MB output (`cp`) | 0.02 s | 0.04 s |
+
+With 6 threads, both directions already run as fast as copying the files: the time left is reading and writing. A GPU coder could only lower CPU time, which isn't the criterion ("beats 6 CPU threads"), and each 1 MiB block would cost at least one 0.25 ms round trip. Neither was built.
+
+## GPU spike: exhaustive transform search (2026-11-21)
+
+Run 7, item 6. A temporary mode made the level 7 engine code every delta stride 1–32, the median predictor for 1–4 bytes per pixel at every row length within a pixel of the detected one, and both branch filters, on every block (bytes after level 7, 6 threads):
+
+| File | Default | Exhaustive |
+| --- | ---: | ---: |
+| icon.tiff | 240,713 | 226,047 (−6.1%) |
+| mr (Silesia) | 2,946,384 | 2,923,439 (−0.8%) |
+| gradient.bmp | 2,425,921 | 2,422,167 (−0.15%) |
+| abstract.bmp, photo.bmp, 16-bit speech, x-ray, sao, osdb | | same within 4 bytes |
+
+Only each file's first block changed. `choose_transforms` sampled the first 64 KiB of a block, which in the first block is the file header, so the picture's predictor wasn't found. It now samples from the middle of the block (test `TransformTests.A_header_at_the_block_start_does_not_hide_the_image`). That gets the exhaustive search's gain at no cost: icon.tiff −7.3% and mr −2.0% at level 6. Totals at level 6: Silesia 66,718,740 → 66,541,811 bytes (−0.27%), images 9,145,185 → 9,080,119 (−0.71%), Canterbury and level 1 unchanged. With middle sampling, the exhaustive search adds only 0.3% on gradient.bmp, so there is nothing to move to the GPU.

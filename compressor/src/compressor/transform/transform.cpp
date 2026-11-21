@@ -272,7 +272,10 @@ void undo_transform(const Transform& transform, std::span<uint8_t> bytes)
 
 std::vector<Transform> choose_transforms(std::span<const uint8_t> bytes, bool thorough)
 {
-    const std::span<const uint8_t> sample = bytes.first(std::min(bytes.size(), sample_bytes));
+    // From the middle: a block's start may be a file header, unlike the rest of it.
+    const std::size_t sample_size = std::min(bytes.size(), sample_bytes);
+    const std::span<const uint8_t> sample =
+        bytes.subspan((bytes.size() - sample_size) / 2, sample_size);
     if (sample.size() < 1024)
     {
         return {};
