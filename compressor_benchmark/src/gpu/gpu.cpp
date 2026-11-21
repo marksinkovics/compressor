@@ -65,8 +65,8 @@ void register_gpu_benchmarks()
     {
         ::benchmark::RegisterBenchmark(std::string("Gpu/histogram/") + (gpu ? "gpu" : "cpu"),
                                        histogram, gpu)
-            ->Arg(1 << 20)
-            ->Arg(1 << 26)
+            ->Arg(1'048'576)  // 1 MiB
+            ->Arg(67'108'864) // 64 MiB
             // The calling thread mostly waits for the GPU: its CPU time would flatter it.
             ->UseRealTime()
             ->Unit(::benchmark::kMillisecond);

@@ -11,8 +11,8 @@
 namespace compressor
 {
 
-// The suffix array of `bytes`: the start of every suffix, in sorted order. Prefix doubling with
-// radix passes, O(n log n).
+// The suffix array of `bytes`: the start of every suffix, in sorted order (a suffix before every
+// longer one it prefixes). SA-IS, linear time.
 std::vector<uint32_t> suffix_array(std::span<const uint8_t> bytes);
 
 // Burrows-Wheeler transform with an implicit end marker smaller than every byte: `out` gets the

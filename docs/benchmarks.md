@@ -656,3 +656,16 @@ Run 7, item 0: `gpu/gpu.h` (`gpu::device()`, shared buffers, kernels by name, `r
 | 64 MiB | 19.7 ms (3.2 GiB/s) | 7.8 ms (8 GiB/s) |
 
 A GPU round trip (encode, commit, wait) costs about 0.25 ms, as much as the CPU needs for 1 MiB of simple work: GPU paths have to give the GPU much more work per dispatch than one simple pass over one block, or batch blocks.
+
+## GPU spike: suffix array (2026-11-21)
+
+Run 7, item 1. The BWT coders' suffix array, by prefix doubling with radix passes, took 84–94% of the BWT coder's time on text: 75–95 ms per MiB (CPU time, one thread). The GPU would have had to beat a good CPU algorithm, not that one:
+
+| Suffix array per MiB (CPU time) | dickens | mozilla | xml | nci | x-ray | sao |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| prefix doubling (before) | 78.9 ms | 94.1 ms | 75.3 ms | 88.8 ms | 31.4 ms | 27.9 ms |
+| SA-IS (now) | 31.8 ms | 32.2 ms | 19.9 ms | 28.2 ms | 34.1 ms | 31.5 ms |
+
+SA-IS is 2.5–3.8× faster on text and about 10% slower on binary data, where prefix doubling ends after a few rounds; its worst case is linear. The suffix array is unique, so every output stays byte for byte the same (the fuzz seeds regenerate identically). The BWT coder per MiB of dickens: 93 → 47 ms; BWT + CM: 257 → 208 ms.
+
+The GPU version wasn't built. A GPU radix sort's scatter pass over 1M 64-bit keys took 0.39 ms (2.7 G keys/s at 16M keys); with histogram and scan a pass costs about 0.6 ms, prefix doubling needs about 8 passes per round and some 12 rounds on text, so about 60 ms per MiB, and batching blocks would give the whole GPU about 20 MB/s against about 500 MB/s for SA-IS on 14 cores.

@@ -135,3 +135,40 @@ TEST(BwtTests, Damaged_payloads_fail_cleanly)
         EXPECT_TRUE(result || result.error() == compressor::Error::corrupt_payload);
     }
 }
+
+TEST(BwtTests, The_suffix_array_matches_a_plain_sort_where_sa_is_recurses)
+{
+    // SA-IS against sorting the suffixes directly, on inputs that exercise its recursion: runs,
+    // periodic strings, few symbols, all symbols.
+    std::vector<std::vector<uint8_t>> inputs;
+    for (const std::string_view text :
+         {"", "a", "aa", "ab", "ba", "banana", "mississippi", "abracadabra", "aaaaaaaaaaaab",
+          "baaaaaaaaaaaa", "abababababababab", "abcabcabcabcabd"})
+    {
+        inputs.emplace_back(text.begin(), text.end());
+    }
+    uint32_t state = 5;
+    for (const std::size_t size : {std::size_t{100}, std::size_t{1000}, std::size_t{5000}})
+    {
+        for (const unsigned alphabet : {2U, 4U, 256U})
+        {
+            std::vector<uint8_t> bytes(size);
+            for (uint8_t& byte : bytes)
+            {
+                state = (state * 1103515245U) + 12345U;
+                byte = static_cast<uint8_t>((state >> 16U) % alphabet);
+            }
+            inputs.push_back(bytes);
+        }
+    }
+    for (const auto& bytes : inputs)
+    {
+        std::vector<uint32_t> expected(bytes.size());
+        std::ranges::iota(expected, 0U);
+        std::ranges::sort(expected, [&](uint32_t a, uint32_t b) {
+            return std::ranges::lexicographical_compare(std::span(bytes).subspan(a),
+                                                        std::span(bytes).subspan(b));
+        });
+        EXPECT_EQ(compressor::suffix_array(bytes), expected) << bytes.size();
+    }
+}

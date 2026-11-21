@@ -7,6 +7,7 @@
 #include <expected>
 #include <numeric>
 #include <span>
+#include <utility>
 #include <vector>
 
 #include <compressor/entropy/rans.h>
@@ -89,66 +90,188 @@ std::vector<uint16_t> move_to_front(std::span<const uint8_t> bytes)
 
 } // namespace
 
+namespace
+{
+
+// SA-IS (Nong, Zhang and Chan, 2009): suffixes are classed S or L by whether they sort before or
+// after the next one, the leftmost S suffixes (LMS) are sorted by inducing from bucket edges, and
+// when their substrings aren't all different, the reduced string of their names is sorted
+// recursively. `s` ends with a unique smallest symbol 0; symbols are below `k`.
+void get_buckets(std::span<const int32_t> s, std::span<int32_t> buckets, bool ends)
+{
+    std::ranges::fill(buckets, 0);
+    for (const int32_t c : s)
+    {
+        ++buckets[static_cast<std::size_t>(c)];
+    }
+    int32_t sum = 0;
+    for (int32_t& bucket : buckets)
+    {
+        sum += bucket;
+        bucket = ends ? sum : sum - bucket;
+    }
+}
+
+void induce(std::span<const int32_t> s, std::span<int32_t> sa, const std::vector<uint8_t>& s_type,
+            std::span<int32_t> buckets)
+{
+    const std::size_t n = s.size();
+    get_buckets(s, buckets, false);
+    for (std::size_t i = 0; i < n; ++i)
+    {
+        const int32_t j = sa[i] - 1;
+        if (sa[i] > 0 && s_type[static_cast<std::size_t>(j)] == 0)
+        {
+            sa[static_cast<std::size_t>(
+                buckets[static_cast<std::size_t>(s[static_cast<std::size_t>(j)])]++)] = j;
+        }
+    }
+    get_buckets(s, buckets, true);
+    for (std::size_t i = n; i-- > 0;)
+    {
+        const int32_t j = sa[i] - 1;
+        if (sa[i] > 0 && s_type[static_cast<std::size_t>(j)] != 0)
+        {
+            sa[static_cast<std::size_t>(
+                --buckets[static_cast<std::size_t>(s[static_cast<std::size_t>(j)])])] = j;
+        }
+    }
+}
+
+void sa_is(std::span<const int32_t> s, std::span<int32_t> sa, std::size_t k)
+{
+    const std::size_t n = s.size();
+    std::vector<uint8_t> s_type(n, 0); // bytes rather than vector<bool>.s bits
+    s_type[n - 1] = 1;
+    for (std::size_t i = n - 1; i-- > 0;)
+    {
+        s_type[i] =
+            static_cast<uint8_t>(s[i] < s[i + 1] || (s[i] == s[i + 1] && s_type[i + 1] != 0));
+    }
+    const auto lms = [&](std::size_t i) {
+        return i > 0 && s_type[i] != 0 && s_type[i - 1] == 0;
+    };
+    std::vector<int32_t> buckets(k);
+
+    // Sort the LMS substrings: place the LMS positions at their bucket ends and induce.
+    get_buckets(s, buckets, true);
+    std::ranges::fill(sa, -1);
+    for (std::size_t i = 1; i < n; ++i)
+    {
+        if (lms(i))
+        {
+            sa[static_cast<std::size_t>(--buckets[static_cast<std::size_t>(s[i])])] =
+                static_cast<int32_t>(i);
+        }
+    }
+    induce(s, sa, s_type, buckets);
+
+    // Name them in that order; equal substrings share a name.
+    std::size_t lms_count = 0;
+    for (std::size_t i = 0; i < n; ++i)
+    {
+        if (lms(static_cast<std::size_t>(sa[i])))
+        {
+            sa[lms_count++] = sa[i];
+        }
+    }
+    std::fill(sa.begin() + static_cast<std::ptrdiff_t>(lms_count), sa.end(), -1);
+    int32_t names = 0;
+    std::size_t previous = n;
+    for (std::size_t i = 0; i < lms_count; ++i)
+    {
+        const auto position = static_cast<std::size_t>(sa[i]);
+        bool different = previous == n;
+        for (std::size_t d = 0; !different; ++d)
+        {
+            if (s[position + d] != s[previous + d] || s_type[position + d] != s_type[previous + d])
+            {
+                different = true;
+            }
+            else if (d > 0 && (lms(position + d) || lms(previous + d)))
+            {
+                break;
+            }
+        }
+        if (different)
+        {
+            ++names;
+            previous = position;
+        }
+        sa[lms_count + (position / 2)] = names - 1;
+    }
+    for (std::size_t i = n, j = n; i-- > lms_count;)
+    {
+        if (sa[i] >= 0)
+        {
+            sa[--j] = sa[i];
+        }
+    }
+
+    // Sort the LMS suffixes: by recursion unless every name is different.
+    const std::span<int32_t> reduced = sa.subspan(n - lms_count);
+    const std::span<int32_t> reduced_sa = sa.first(lms_count);
+    if (std::cmp_less(names, lms_count))
+    {
+        sa_is(reduced, reduced_sa, static_cast<std::size_t>(names));
+    }
+    else
+    {
+        for (std::size_t i = 0; i < lms_count; ++i)
+        {
+            reduced_sa[static_cast<std::size_t>(reduced[i])] = static_cast<int32_t>(i);
+        }
+    }
+
+    // Induce the whole order from the sorted LMS suffixes.
+    for (std::size_t i = 1, j = 0; i < n; ++i)
+    {
+        if (lms(i))
+        {
+            reduced[j++] = static_cast<int32_t>(i);
+        }
+    }
+    for (std::size_t i = 0; i < lms_count; ++i)
+    {
+        reduced_sa[i] = reduced[static_cast<std::size_t>(reduced_sa[i])];
+    }
+    std::fill(sa.begin() + static_cast<std::ptrdiff_t>(lms_count), sa.end(), -1);
+    get_buckets(s, buckets, true);
+    for (std::size_t i = lms_count; i-- > 0;)
+    {
+        const int32_t j = sa[i];
+        sa[i] = -1;
+        sa[static_cast<std::size_t>(
+            --buckets[static_cast<std::size_t>(s[static_cast<std::size_t>(j)])])] = j;
+    }
+    induce(s, sa, s_type, buckets);
+}
+
+} // namespace
+
 std::vector<uint32_t> suffix_array(std::span<const uint8_t> bytes)
 {
     const std::size_t n = bytes.size();
-    std::vector<uint32_t> sa(n);
+    std::vector<uint32_t> result(n);
     if (n == 0)
     {
-        return sa;
+        return result;
     }
-    // rank 0 is "past the end", so a suffix sorts before every longer one it prefixes.
-    std::vector<uint32_t> rank(n);
-    std::vector<uint32_t> next_rank(n);
-    std::vector<uint32_t> buffer(n);
+    // A unique smallest end symbol, so a suffix sorts before every longer one it prefixes.
+    std::vector<int32_t> s(n + 1);
     for (std::size_t i = 0; i < n; ++i)
     {
-        rank[i] = uint32_t{bytes[i]} + 1;
+        s[i] = int32_t{bytes[i]} + 1;
     }
-    std::size_t ranks = 257;
-    std::vector<uint32_t> count;
-    for (std::size_t k = 1;; k *= 2)
+    s[n] = 0;
+    std::vector<int32_t> sa(n + 1);
+    sa_is(s, sa, 257);
+    // sa[0] is the end symbol's own suffix.
+    for (std::size_t i = 0; i < n; ++i)
     {
-        const auto second = [&](std::size_t i) {
-            return i + k < n ? rank[i + k] : 0U;
-        };
-        // Radix sort by (rank[i], rank[i + k]): second key, then a stable pass on the first.
-        count.assign(ranks + 1, 0);
-        for (std::size_t i = 0; i < n; ++i)
-        {
-            ++count[second(i)];
-        }
-        std::partial_sum(count.begin(), count.end(), count.begin());
-        for (std::size_t i = n; i-- > 0;)
-        {
-            buffer[--count[second(i)]] = static_cast<uint32_t>(i);
-        }
-        count.assign(ranks + 1, 0);
-        for (std::size_t i = 0; i < n; ++i)
-        {
-            ++count[rank[i]];
-        }
-        std::partial_sum(count.begin(), count.end(), count.begin());
-        for (std::size_t j = n; j-- > 0;)
-        {
-            const uint32_t i = buffer[j];
-            sa[--count[rank[i]]] = i;
-        }
-        next_rank[sa[0]] = 1;
-        for (std::size_t j = 1; j < n; ++j)
-        {
-            const uint32_t a = sa[j - 1];
-            const uint32_t b = sa[j];
-            const bool same = rank[a] == rank[b] && second(a) == second(b);
-            next_rank[b] = next_rank[a] + (same ? 0 : 1);
-        }
-        rank.swap(next_rank);
-        ranks = rank[sa[n - 1]];
-        if (ranks == n)
-        {
-            return sa;
-        }
+        result[i] = static_cast<uint32_t>(sa[i + 1]);
     }
+    return result;
 }
 
 uint32_t forward_bwt(std::span<const uint8_t> bytes, std::vector<uint8_t>& out)
