@@ -50,6 +50,8 @@ std::string coder_name(uint8_t coder)
         return "LZT (LZ77 + tANS)";
     case compressor::Coder::lzt_optimal:
         return "LZT, optimal parse";
+    case compressor::Coder::huffman_streams:
+        return "Huffman (4 streams)";
     case compressor::Coder::lz77_huffman_dictionary:
     case compressor::Coder::lzr_dictionary:
     case compressor::Coder::cm_dictionary:

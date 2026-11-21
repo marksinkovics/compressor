@@ -364,6 +364,16 @@ try
     write(dir / "container" / "coder7.ingot", with_coder(words(6000), compressor::Coder::bwt_cm));
     write(dir / "container" / "coder8.ingot", with_coder(text(6000), compressor::Coder::tans));
     write(dir / "container" / "coder13.ingot", with_coder(words(9000), compressor::Coder::lzt));
+    {
+        // Coder 15 only codes blocks of 64 KiB and up.
+        compressor::BlockEncoder encoder([] {
+            return std::make_unique<compressor::Engine>(16, 1);
+        }, 16, 1);
+        std::istringstream in(text(70'000));
+        std::ostringstream out;
+        (void)encoder.encode(in, out).has_value();
+        write(dir / "container" / "coder15.ingot", out.str());
+    }
     write(dir / "container" / "coder14.ingot",
           with_coder(words(9000), compressor::Coder::lzt_optimal));
     {

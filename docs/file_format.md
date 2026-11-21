@@ -34,7 +34,7 @@ A pipeline block's payload starts with a descriptor naming what was done to the 
 |---:|---|
 | 1 | Transform count `n`, at most 4. Each transform turns bytes into bytes; decoding undoes them last to first |
 | 5 × n | Each transform: id, then a 4-byte parameter (see below) |
-| 1 | Coder: 2 = LZ77 + Huffman, 3 = BWT, 4 = rANS, 5 = LZR, 6 = CM, 7 = BWT + CM, 8 = tANS, 9 = LZ77 + Huffman with a dictionary, 10 = LZR with a dictionary, 11 = CM with a dictionary, 12 = LZ77 with the dictionary's codes, 13 = LZT, 14 = LZT with three repeat offsets. Others are reserved |
+| 1 | Coder: 2 = LZ77 + Huffman, 3 = BWT, 4 = rANS, 5 = LZR, 6 = CM, 7 = BWT + CM, 8 = tANS, 9 = LZ77 + Huffman with a dictionary, 10 = LZR with a dictionary, 11 = CM with a dictionary, 12 = LZ77 with the dictionary's codes, 13 = LZT, 14 = LZT with three repeat offsets, 15 = Huffman in four streams. Others are reserved |
 | rest | The coder's output |
 
 Transforms (`compressor/include/compressor/transform/transform.h`); positions count from the start of the block:
@@ -87,6 +87,8 @@ LZT (coder 13, `compressor/src/compressor/lzt/lzt.cpp`), LZ77 coded the way zstd
 A literal run `r` or a match length minus 3 `v` is coded as itself below 16; above, with `t = floor(log2 v)`, as `16 + 2(t − 4) + (the bit below the top one)`, with the `t − 1` lower bits as extra bits. An offset code is 0 for the last sequence's offset again (an error in the first sequence); otherwise `1 + floor(log2 offset)`, with the bits below the top one as extra bits. Offsets reach anywhere before in the block. The encoder no longer writes coder 13 (run 5 replaced it with coder 14); it still decodes.
 
 Coder 14 (`lzt_optimal_encode()`) is coder 13's layout with two differences. Its four tANS streams use the compact table: the number of used byte values, then for each in increasing order its gap after the previous one (the first counted from 0) and its count, all varints, together exactly 2^11. And it keeps three repeat offsets, most recent first, starting as 1, 4, 8: offset code `k` from 0 to 2 uses repeat `k` and moves it to the front; a code from 3 is the offset `2^(code − 3)` plus `code − 3` extra bits, pushed in front (the third repeat dropped). Match lengths have no upper limit (the length code covers 32 bits). The encoder finds its sequences with a cost-based parse over the whole block (two passes, the second priced by the first one's symbol counts; matches from 4-byte hash chains 64 deep), at level 7 only, raw and with the best pipeline's transform.
+
+Huffman in four streams (coder 15) codes the block like a Huffman block, in four streams the decoder runs in step: the 128 code-length bytes as a Huffman block stores them, the byte sizes of streams 0, 1 and 2 (4 bytes each, little-endian; stream 3 is the rest), then the four streams. Stream `i` codes bytes `[i × q, (i + 1) × q)` of the block, `q = ceil(size / 4)`, MSB-first and padded with zero bits to a byte, as a Huffman block's payload. The encoder writes it instead of a Huffman block for blocks of 64 KiB and more (it decodes 2.6× faster; smaller blocks keep method 1, 14 bytes shorter).
 
 rANS (coder 4) is the transformed bytes themselves, rANS-coded over an alphabet of 256. tANS (coder 8) is the same with tANS (below). The encoder only tries them after a transform, where they win on noisy samples such as Silesia's x-ray after a delta, and takes rANS only when it is more than 0.5% smaller than tANS, which decodes about twice as fast.
 
@@ -195,7 +197,7 @@ Both codes must be complete (Kraft sum exactly 1, lengths up to 15) and the end-
 
 ## Choosing the method
 
-Per block, the encoder writes whichever is smaller: stored is `size` bytes after the block header, Huffman `128 + payload`. A tie goes to stored, which decodes faster. From level 2 on (`ingot encode -L 2..9`, default 6) it also tries LZ77 + Huffman with zlib's match-search settings for that level, and takes it only when strictly smaller. Level 1 never writes pipeline blocks. Every code is at least 1 bit, so blocks up to 147 bytes always come out stored, and so does already-compressed data such as PNG or JPEG. A stored file is the input plus `17 + 13 × blocks` bytes.
+Per block, the encoder writes whichever is smaller: stored is `size` bytes after the block header, Huffman `128 + payload`. A tie goes to stored, which decodes faster. From level 2 on (`ingot encode -L 2..9`, default 6) it also tries LZ77 + Huffman with zlib's match-search settings for that level, and takes it only when strictly smaller. Level 1 writes no other pipeline blocks than coder 15. Every code is at least 1 bit, so blocks up to 147 bytes always come out stored, and so does already-compressed data such as PNG or JPEG. A stored file is the input plus `17 + 13 × blocks` bytes.
 
 ## Code lengths
 

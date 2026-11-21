@@ -638,3 +638,10 @@ Autonomous run 6, item 2. Folder archives now store directories first, then syml
 | `fuzz/` (small seeds of many kinds) | 62,588 | 64,068 (+2.4%) | 55,359 | 55,245 (−0.2%) |
 
 Ordering by extension and then file name instead of path lost on the sources (+2.2% at level 6): it split each directory's files apart, and level 6's matches reach only 32 KiB back. Choosing the transform per file wasn't built: blocks are fixed-size and span files, so it would need variable-size blocks, a format change; large files already get blocks of their own, and the grouping makes mixed blocks rarer.
+
+## Faster decoding (2026-11-20)
+
+Autonomous run 6, item 5, CPU time of `ingot decode -T 1`.
+
+- **Huffman in four streams** (coder 15, for blocks of 64 KiB and up): Silesia at level 1 decodes in 0.38 CPU seconds instead of 1.00 for the same data as Huffman blocks (2.6×, about 560 MB per CPU second), for 3,094 bytes more on 212 MB; encoding is unchanged (1.0 CPU second). Four independent table lookups per step overlap; one stream is a chain of load, table lookup and shift per symbol (about 13 cycles). Rewriting the single-stream loop first (an unaligned 64-bit load per symbol, or per three symbols) gained nothing (0.81–1.15 against 0.79 seconds), so method 1 kept its loop.
+- **CM mixer** (level 9): making the mixer's input count a template parameter, so the compiler unrolls and vectorizes its int64 dot product and update, gave the same time within noise (1.88–2.00 against 1.97 CPU seconds for 3 MB of dickens). Level 9 decoding is spent waiting on its hashed-context lines (`find_lines` about 20%), counters and APMs bit by bit, not on the mixer's arithmetic; the model's arithmetic is part of the format, so a faster mixer would mean new CM files. Not kept.

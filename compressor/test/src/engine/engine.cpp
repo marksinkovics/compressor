@@ -514,7 +514,9 @@ TEST_F(EngineTests, From_level_2_repetitive_text_becomes_an_lz77_huffman_pipelin
     const std::string text = repeat("the same sentence, over and over again. ", 2000);
     compressor::Engine fast(compressor::default_block_size_log2, 1);
     const compressor::EncodedBlock huffman = fast.encode_block(bytes(text));
-    EXPECT_EQ(huffman.method_, compressor::Method::huffman);
+    // 80 KB: level 1's Huffman coding in four streams.
+    ASSERT_EQ(huffman.method_, compressor::Method::pipeline);
+    EXPECT_EQ(huffman.payload_[1], static_cast<uint8_t>(compressor::Coder::huffman_streams));
 
     for (const unsigned level : {2U, 6U})
     {
@@ -727,4 +729,52 @@ TEST_F(EngineTests, At_level_7_far_repeats_take_the_optimal_lzt_coder)
             EXPECT_NE(coder, static_cast<uint8_t>(compressor::Coder::lzt_optimal)) << level;
         }
     }
+}
+
+TEST_F(EngineTests, Large_huffman_blocks_take_four_streams_and_decode_back)
+{
+    compressor::Engine engine(compressor::default_block_size_log2, 1);
+    for (const std::size_t size : {std::size_t{65535}, std::size_t{65536}, std::size_t{65537},
+                                   std::size_t{100'003}, std::size_t{1} << 20U})
+    {
+        const std::string text = pseudo_random_text(size);
+        const compressor::EncodedBlock block = engine.encode_block(bytes(text));
+        const bool streams = size >= 65536;
+        EXPECT_EQ(block.method_,
+                  streams ? compressor::Method::pipeline : compressor::Method::huffman)
+            << size;
+        EXPECT_EQ(decode_block(engine, block), decoded(text)) << size;
+    }
+    // One symbol: one-bit codes in every stream.
+    const std::string same(70'000, 'q');
+    const compressor::EncodedBlock block = engine.encode_block(bytes(same));
+    ASSERT_EQ(block.method_, compressor::Method::pipeline);
+    EXPECT_EQ(decode_block(engine, block), decoded(same));
+}
+
+TEST_F(EngineTests, Damaged_four_stream_blocks_are_corrupt)
+{
+    compressor::Engine engine(compressor::default_block_size_log2, 1);
+    const std::string text = pseudo_random_text(90'000);
+    const compressor::EncodedBlock block = engine.encode_block(bytes(text));
+    ASSERT_EQ(block.payload_[1], static_cast<uint8_t>(compressor::Coder::huffman_streams));
+    const auto corrupt = std::unexpected(compressor::Error::corrupt_payload);
+    compressor::EncodedBlock cut = block;
+    cut.payload_.resize(cut.payload_.size() - 1);
+    EXPECT_EQ(decode_block(engine, cut), corrupt);
+    compressor::EncodedBlock longer = block;
+    longer.payload_.push_back(0);
+    EXPECT_EQ(decode_block(engine, longer), corrupt);
+    compressor::EncodedBlock sizes = block;
+    sizes.payload_[2 + 128] = static_cast<uint8_t>(sizes.payload_[2 + 128] + 1); // stream 0
+    EXPECT_EQ(decode_block(engine, sizes), corrupt);
+    compressor::EncodedBlock huge = block;
+    huge.payload_[2 + 128 + 3] = 0xFF;
+    EXPECT_EQ(decode_block(engine, huge), corrupt);
+    compressor::EncodedBlock lengths = block;
+    std::fill_n(lengths.payload_.begin() + 2, 128, 0);
+    EXPECT_EQ(decode_block(engine, lengths), corrupt);
+    compressor::EncodedBlock header_only = block;
+    header_only.payload_.resize(2 + 100);
+    EXPECT_EQ(decode_block(engine, header_only), corrupt);
 }

@@ -79,6 +79,10 @@ enum class Coder : uint8_t
     // As lzt, with three repeat offsets, a cost-based parse and compact tANS tables
     // (lzt_optimal_encode()).
     lzt_optimal = 14,
+    // The block's bytes Huffman-coded in four streams, a quarter each, decoded in step: the code
+    // lengths as a Huffman block stores them, the byte sizes of streams 0-2 (4 bytes each), then
+    // the streams, each MSB-first and padded to a byte.
+    huffman_streams = 15,
 };
 inline constexpr std::size_t pipeline_descriptor_bytes = 2; // with no transforms
 inline constexpr std::size_t pipeline_transform_bytes = 5;  // id, then a 4-byte parameter

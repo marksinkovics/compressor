@@ -1,7 +1,9 @@
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <expected>
 #include <iostream>
 #include <memory>
@@ -193,6 +195,198 @@ private:
     uint64_t buffer_ = 0;
     std::size_t buffered_ = 0;
 };
+
+constexpr std::size_t streams = 4;
+constexpr std::size_t min_streams_block = std::size_t{64} * 1024;
+constexpr std::size_t huffman_streams_header = code_lengths_bytes + (4 * (streams - 1));
+
+// The stream that codes bytes [i * quarter, (i + 1) * quarter) of the block.
+std::size_t quarter_of(std::size_t size)
+{
+    return (size + streams - 1) / streams;
+}
+
+void encode_huffman_streams(std::span<const uint8_t> bytes, const CodeLengths& lengths,
+                            const Codes& codes, std::vector<uint8_t>& out)
+{
+    for (std::size_t i = 0; i < code_lengths_bytes; ++i)
+    {
+        out.push_back(static_cast<uint8_t>((lengths[2 * i] & 0x0FU) |
+                                           ((lengths[(2 * i) + 1] & 0x0FU) << 4U)));
+    }
+    const std::size_t quarter = quarter_of(bytes.size());
+    std::array<std::vector<uint8_t>, streams> coded;
+    for (std::size_t k = 0; k < streams; ++k)
+    {
+        const std::span<const uint8_t> part =
+            bytes.subspan(std::min(k * quarter, bytes.size()),
+                          std::min(quarter, bytes.size() - std::min(k * quarter, bytes.size())));
+        uint64_t bits = 0;
+        for (const uint8_t symbol : part)
+        {
+            bits += codes[symbol].length;
+        }
+        coded[k].resize((bits + 7) / 8);
+        BitWriter writer(coded[k]);
+        for (const uint8_t symbol : part)
+        {
+            writer.put(codes[symbol]);
+        }
+        writer.flush();
+    }
+    for (std::size_t k = 0; k + 1 < streams; ++k)
+    {
+        for (unsigned shift = 0; shift < 32; shift += 8)
+        {
+            out.push_back(static_cast<uint8_t>(coded[k].size() >> shift));
+        }
+    }
+    for (const auto& stream : coded)
+    {
+        out.insert(out.end(), stream.begin(), stream.end());
+    }
+}
+
+// One stream's bits from the front, for the fast part of the decoding loop.
+struct StreamCursor
+{
+    const uint8_t* data = nullptr;
+    std::size_t size = 0;     // bytes
+    std::size_t position = 0; // bits
+    uint32_t left = 0;        // symbols still to decode
+
+    // Whether 8 bytes from the current one are in the stream: one load then covers any code.
+    bool roomy() const
+    {
+        return (position >> 3U) + 8 <= size;
+    }
+
+    uint32_t peek() const
+    {
+        uint64_t word = 0;
+        std::memcpy(&word, data + (position >> 3U), 8);
+        if constexpr (std::endian::native == std::endian::little)
+        {
+            word = std::byteswap(word);
+        }
+        return static_cast<uint32_t>((word << (position & 7U)) >> (64 - max_code_length));
+    }
+};
+
+std::expected<void, Error> decode_huffman_streams(std::span<const uint8_t> payload, uint32_t size,
+                                                  std::vector<uint8_t>& out)
+{
+    const auto corrupt = std::unexpected(Error::corrupt_payload);
+    if (payload.size() < huffman_streams_header)
+    {
+        return corrupt;
+    }
+    CodeLengths lengths{};
+    for (std::size_t i = 0; i < code_lengths_bytes; ++i)
+    {
+        lengths[2 * i] = payload[i] & 0x0FU;
+        lengths[(2 * i) + 1] = payload[i] >> 4U;
+    }
+    if (!valid_code_lengths(lengths) || lengths == CodeLengths{})
+    {
+        return corrupt;
+    }
+    std::array<StreamCursor, streams> cursors;
+    std::size_t at = huffman_streams_header;
+    const std::size_t quarter = quarter_of(size);
+    for (std::size_t k = 0; k < streams; ++k)
+    {
+        std::size_t bytes = payload.size() - at;
+        if (k + 1 < streams)
+        {
+            bytes = 0;
+            for (unsigned i = 0; i < 4; ++i)
+            {
+                bytes |= std::size_t{payload[code_lengths_bytes + (4 * k) + i]} << (8 * i);
+            }
+            if (bytes > payload.size() - at)
+            {
+                return corrupt;
+            }
+        }
+        const std::size_t first = std::min<std::size_t>(k * quarter, size);
+        cursors[k] = {.data = payload.data() + at,
+                      .size = bytes,
+                      .position = 0,
+                      .left = static_cast<uint32_t>(std::min<std::size_t>(quarter, size - first))};
+        // Every symbol takes at least one bit, so a corrupt size can't allocate too much.
+        if (cursors[k].left > bytes * 8)
+        {
+            return corrupt;
+        }
+        at += bytes;
+    }
+    const DecodeTable table = build_decode_table(canonical_codes(lengths));
+    const std::size_t start = out.size();
+    out.resize(start + size);
+    uint8_t* const target = out.data() + start;
+    const auto fail = [&] {
+        out.resize(start);
+        return corrupt;
+    };
+    std::array<uint8_t*, streams> write{};
+    for (std::size_t k = 0; k < streams; ++k)
+    {
+        write[k] = target + std::min<std::size_t>(k * quarter, size);
+    }
+    // In step while every stream has a symbol left and room for an unchecked load: four
+    // independent lookup chains.
+    while (cursors[0].left > 0 && cursors[3].left > 0 && cursors[0].roomy() && cursors[1].roomy() &&
+           cursors[2].roomy() && cursors[3].roomy())
+    {
+        const DecodeEntry a = table[cursors[0].peek()];
+        const DecodeEntry b = table[cursors[1].peek()];
+        const DecodeEntry c = table[cursors[2].peek()];
+        const DecodeEntry d = table[cursors[3].peek()];
+        if (a.length == 0 || b.length == 0 || c.length == 0 || d.length == 0)
+        {
+            return fail();
+        }
+        *write[0]++ = a.symbol;
+        *write[1]++ = b.symbol;
+        *write[2]++ = c.symbol;
+        *write[3]++ = d.symbol;
+        cursors[0].position += a.length;
+        cursors[1].position += b.length;
+        cursors[2].position += c.length;
+        cursors[3].position += d.length;
+        for (auto& cursor : cursors)
+        {
+            --cursor.left;
+        }
+    }
+    // The rest of each stream through the careful reader, which checks every bound.
+    for (std::size_t k = 0; k < streams; ++k)
+    {
+        StreamCursor& cursor = cursors[k];
+        BitReader reader(std::span(cursor.data, cursor.size).subspan(cursor.position >> 3U));
+        if ((cursor.position & 7U) != 0)
+        {
+            (void)reader.peek();
+            reader.consume(cursor.position & 7U);
+        }
+        for (; cursor.left > 0; --cursor.left)
+        {
+            const DecodeEntry entry = table[reader.peek()];
+            if (entry.length == 0 || entry.length > reader.remaining())
+            {
+                return fail();
+            }
+            *write[k]++ = entry.symbol;
+            reader.consume(entry.length);
+        }
+        if (reader.remaining() >= 8 || reader.peek() != 0)
+        {
+            return fail();
+        }
+    }
+    return {};
+}
 
 } // namespace
 
@@ -426,6 +620,7 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
                     return std::vector<uint8_t>{}; // a token without a code: not a candidate
                 }
                 break;
+            case Coder::huffman_streams: // only as the block's own Huffman coding, below
             case Coder::lz77_huffman_dictionary:
             case Coder::lzr_dictionary:
             case Coder::cm_dictionary:
@@ -543,17 +738,24 @@ EncodedBlock Engine::encode_block(std::span<const uint8_t> bytes)
         return encoded;
     }
 
+    PROFILE_SCOPE("Encode symbols")
+    // Large blocks in four streams, which decode 2.6x faster; small ones as a Huffman block, 14
+    // bytes smaller and quick anyway.
+    if (bytes.size() >= min_streams_block)
     {
-        PROFILE_SCOPE("Encode symbols")
-        encoded.code_lengths_ = lengths;
-        encoded.payload_.resize(payload_bytes);
-        BitWriter writer(encoded.payload_);
-        for (const uint8_t symbol : bytes)
-        {
-            writer.put(codes_[symbol]);
-        }
-        writer.flush();
+        encoded.method_ = Method::pipeline;
+        encoded.payload_ = {0, static_cast<uint8_t>(Coder::huffman_streams)};
+        encode_huffman_streams(bytes, lengths, codes_, encoded.payload_);
+        return encoded;
     }
+    encoded.code_lengths_ = lengths;
+    encoded.payload_.resize(payload_bytes);
+    BitWriter writer(encoded.payload_);
+    for (const uint8_t symbol : bytes)
+    {
+        writer.put(codes_[symbol]);
+    }
+    writer.flush();
     return encoded;
 }
 
@@ -679,6 +881,10 @@ std::expected<void, Error> Engine::decode_pipeline(const EncodedBlock& block,
     else if (payload[0] == static_cast<uint8_t>(Coder::lzt_optimal))
     {
         decoded = lzt_optimal_decode(payload.subspan(1), out, block.size_);
+    }
+    else if (payload[0] == static_cast<uint8_t>(Coder::huffman_streams))
+    {
+        decoded = decode_huffman_streams(payload.subspan(1), block.size_, out);
     }
     else if (payload[0] == static_cast<uint8_t>(Coder::lz77_huffman_dictionary) ||
              payload[0] == static_cast<uint8_t>(Coder::lzr_dictionary) ||
