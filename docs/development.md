@@ -192,6 +192,8 @@ Tool: [Google benchmark framework](https://github.com/google/benchmark) (vcpkg p
 ```bash
 bash tools/fetch-corpus.sh               # once: Canterbury and Silesia into corpus/ (git-ignored)
 bash tools/fetch-corpus.sh images        # macOS only: uncompressed images made with sips
+bash tools/fetch-corpus.sh pictures      # macOS + ImageMagick: the image track's PNG corpus (Kodak and drawn pictures)
+python3 tools/images.py                 # lossless and lossy image coders on corpus/pictures (about 10 minutes)
 bash tools/bench.sh --out new.json       # all three sets, about 2 minutes (default: build/release/benchmark.json)
 bash tools/bench.sh --filter 'Engine/.*/canterbury'
 python3 tools/bench-compare.py docs/benchmarks/decode-table.json new.json
@@ -199,6 +201,8 @@ bash tools/bench-cli.sh --out cli.json  # ingot end to end, file I/O included
 python3 tools/compare.py                # ingot against gzip, zstd, xz, bzip2, brotli (about 10 minutes)
 python3 tools/compare.py --corpus canterbury images --tools ingot xz --no-save
 ```
+
+`tools/images.py` measures image coders on `corpus/pictures` (classes `photo`, `screen`, `graphic`, `alpha`): lossless as PNG at maximum effort, WebP lossless, JPEG XL lossless and ingot's levels on the raw pixels, every round trip compared pixel for pixel (exit status 1 if one differs); lossy as JPEG, WebP, AVIF (ffmpeg with SVT-AV1) and JPEG XL swept over quality settings, each decoded and scored with `ssimulacra2`, with bits per pixel interpolated at the target scores (default 70, 80, 90). Times are CPU seconds, one thread per coder; `--jobs` images run at once. It writes `docs/benchmarks/images/<date>-<commit>.json` unless `--no-save`; `--classes`, `--coders` (name prefixes) and `--corpus` narrow a run. ctest's `ImagesHarness.Lossless` runs it on `ingot/test/pictures/` with ingot only. The tools come from Homebrew (`brew install imagemagick webp jpeg-xl ffmpeg`; `ssimulacra2` comes with `jpeg-xl`).
 
 `tools/compare.py` packs each corpus into one reproducible tar (`build/compare/`) and runs `ingot -L 1/6/7/9`, `gzip -6/-9`, `zstd -3/-19`, `xz -6/-9`, `bzip2 -9` and `brotli -q 9` from the command line, checking every round trip; ingot, zstd and xz get `--threads` (default 6). It reports wall time and CPU time (user + system over all threads, which other programs' load hardly changes; `enc/cpu-s` and `dec/cpu-s` are MB per CPU second) and writes `docs/benchmarks/history/<date>-<commit>.json` (`--no-save` doesn't) and prints, for the ingot rows, the change in size and speed against the newest earlier file. Commit the file with the change it measures. `--dir PATH` adds any folder; ctest's `CompareHarness.Samples` runs it on the samples with ingot only. The tools come from Homebrew (`brew install zstd xz brotli`).
 

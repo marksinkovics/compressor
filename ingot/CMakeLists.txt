@@ -53,6 +53,15 @@ if(Python3_Interpreter_FOUND)
     )
 endif()
 
+find_program(MAGICK magick)
+if(Python3_Interpreter_FOUND AND MAGICK)
+    add_test(NAME ImagesHarness.Lossless
+        COMMAND "${Python3_EXECUTABLE}" -I "${CMAKE_SOURCE_DIR}/tools/images.py"
+            --corpus "${PROJECT_SOURCE_DIR}/test/pictures" --lossless --coders ingot --jobs 2
+            --no-save --app "$<TARGET_FILE:${PROJECT_NAME}>"
+    )
+endif()
+
 # The WebAssembly demo, when emsdk is in build/emsdk (docs/development.md, "WebAssembly demo").
 if(EXISTS "${CMAKE_SOURCE_DIR}/build/emsdk/emsdk_env.sh")
     add_test(NAME Web.Demo COMMAND bash "${CMAKE_SOURCE_DIR}/tools/web.sh" test)

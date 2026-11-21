@@ -35,7 +35,8 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 - Run 7 item 8, `grep` on the GPU, was not built: decoding is 85–97% of its time.
 - Run 7 item 9, CM over many blocks on the GPU, was not kept (20 MB/s at best with 1024 blocks, below 6 CPU threads).
 - Run 7 item 10, image groundwork, is done on the CPU (per-class predictor and colour transform choice; no GPU needed). Run 7 is finished: of the GPU experiments only item 2 (LZT match lists) kept GPU code.
-- **Next:** run 8 item 1, image corpus and `tools/images.py`.
+- Run 8 (list at the end of `docs/roadmap.md`, same branch, Claude commits): item 1, the image corpus (`tools/fetch-corpus.sh pictures`) and `tools/images.py`, is done.
+- **Next:** run 8 item 2, the lossless image coder (`ingot image`).
 
 ## Commands
 
@@ -50,6 +51,7 @@ bash tools/quality.sh check       # clang-format, clang-tidy, shellcheck, shfmt 
 bash tools/bench.sh               # release benchmarks -> JSON; corpora via tools/fetch-corpus.sh (docs/benchmarks.md)
 bash tools/bench-cli.sh           # ingot end to end with hyperfine (python3 fallback)
 python3 tools/compare.py          # against gzip/zstd/xz/bzip2/brotli; history in docs/benchmarks/history/
+python3 tools/images.py           # image coders on corpus/pictures; history in docs/benchmarks/images/
 bash tools/web.sh serve           # WebAssembly demo on localhost:8000 (needs build/emsdk; docs/development.md)
 ```
 

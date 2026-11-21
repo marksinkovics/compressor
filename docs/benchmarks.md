@@ -796,3 +796,31 @@ Run 7, item 10, for run 8's lossless coder: which pixel predictor and reversible
 - On photos a decorrelating colour transform saves about 3.5 of 13 bits per pixel; subtract green and RCT are within 0.02 of each other, YCoCg-R about 0.1 behind. On screens and graphics YCoCg-R is best; on the icons a transform loses slightly.
 - No predictor wins everywhere: GAP on photos (MED 0.12 behind with context), Paeth on screens, the average or GAP on graphics, MED on the icons. Run 8's coder should pick the transform and predictor per image or per tile by an estimate like this one, which costs one pass per candidate on the CPU: that is item 6's exhaustive search, and it needs no GPU at these sizes.
 - The GPU isn't needed for the image experiments either: `ssimulacra2` takes 0.05 CPU s on a 0.4-megapixel Kodak image and 0.41 s on a 4-megapixel one, so a rate search with ten evaluations per image costs about a second per megapixel. A DCT per 8×8 block is cheaper than one pass of the metric.
+
+## Image track: corpus and baseline (2026-11-21)
+
+Run 8, item 1. `tools/fetch-corpus.sh pictures` builds `corpus/pictures/`: `photo/` (the 24 Kodak images, 768×512, downloaded with a pinned SHA-256, and Sonoma, a rendered landscape, 2048²), `screen/` (an editor, a document page and an application window, drawn by ImageMagick from this repository's text at a fixed commit), `graphic/` (a bar chart, flat shapes on a gradient, the Radial Sky Blue gradient) and `alpha/` (Safari's icon and a text label with a soft shadow). No real screenshots: capturing the screen would record whatever is on it. `tools/images.py` measures the coders; full numbers in `docs/benchmarks/images/2026-11-21-e54e048.json`.
+
+Lossless, mean bits per pixel (encode / decode CPU seconds per image, one thread); every round trip checked pixel for pixel:
+
+| Class (images) | PNG, max effort | WebP lossless `-z 9` | JPEG XL `-d 0 -e 7` | ingot `-L 6` on PAM | ingot `-L 9` on PAM |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| photo (25) | 13.107 (0.97 / 0.21) | 9.323 (6.48 / 0.15) | **8.550** (0.68 / 0.11) | 13.030 (0.16 / 0.02) | 9.722 (5.26 / 0.56) |
+| screen (3) | 0.599 | **0.112** | 0.171 | 0.569 | 0.191 |
+| graphic (3) | 2.944 | 2.234 | **2.126** | 2.932 | 2.392 |
+| alpha (2) | 1.248 | 0.735 | 0.741 | 1.249 | **0.729** |
+
+Lossy, mean bits per pixel at each SSIMULACRA2 score ("–": a coder's quality range doesn't reach the score on every image; lossy WebP and SVT-AV1 code chroma at half resolution, which caps photos and screens below 90):
+
+| Class | Score | JPEG | WebP | AVIF (SVT-AV1) | JPEG XL |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| photo | 70 | 1.125 | 0.951 | 0.942 | **0.850** |
+| photo | 80 | 1.792 | 1.487 | 1.517 | **1.313** |
+| photo | 90 | 4.095 | – | – | **2.651** |
+| screen | 70 | 0.450 | 0.193 | 0.166 | **0.066** |
+| screen | 80 | 0.603 | 0.251 | 0.238 | **0.084** |
+| graphic | 70 | 0.320 | 0.169 | **0.089** | 0.162 |
+| graphic | 80 | 0.476 | 0.283 | **0.135** | 0.241 |
+| graphic | 90 | 1.136 | – | – | **0.520** |
+
+The targets for item 2: JPEG XL lossless on photos (8.55 bpp) and WebP lossless on screens (0.112). Treating the pixels as a byte stream, as ingot's general levels do, is 14% behind JPEG XL on photos even at level 9.
