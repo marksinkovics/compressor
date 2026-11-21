@@ -26,6 +26,10 @@ public:
                 (const std::filesystem::path&, const std::string&, const std::filesystem::path&),
                 (override));
     MOCK_METHOD(bool, verify, (const std::filesystem::path&), (override));
+    MOCK_METHOD(bool, read_range,
+                (const std::filesystem::path&, const std::string&, compressor::ByteRange,
+                 const std::filesystem::path&),
+                (override));
     MOCK_METHOD(compressor::SearchResult, grep,
                 (const std::filesystem::path&, const compressor::SearchOptions&,
                  const std::vector<std::string>&),

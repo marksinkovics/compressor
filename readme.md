@@ -24,6 +24,7 @@ ingot decode -i photos.ingot -o photos-copy           # extracts into a new fold
 ingot list -l photos.ingot
 ingot extract photos.ingot 2024/beach.bmp -o beach.bmp
 ingot grep -n "TODO" sources.ingot                   # fixed-string search, like grep -n
+ingot cat --range 1000000:1000100 big.log.ingot       # bytes 1,000,000-1,000,099, one block decoded
 ingot encode -f gzip -i notes.txt -o notes.txt.gz     # or -f zip for a folder
 ```
 

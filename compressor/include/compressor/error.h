@@ -22,6 +22,7 @@ enum class Error : std::uint8_t
     file_failed,
     dictionary_missing,
     dictionary_mismatch,
+    bad_range,
 };
 
 std::string_view describe(Error error);

@@ -17,6 +17,7 @@
 #include <compressor/dictionary/dictionary.h>
 #include <compressor/error.h>
 #include <compressor/lz77/lz77.h>
+#include <compressor/range/range.h>
 
 namespace compressor
 {
@@ -41,6 +42,7 @@ struct Settings
     bool count = false;
     bool names = false;
     std::string dictionary;
+    std::string range;
     std::vector<std::string> inputs;
     std::size_t size = default_dictionary_bytes;
 };
@@ -169,10 +171,17 @@ int CLI::run(std::span<const char* const> args)
     add_threads(*extract, extract_settings);
 
     auto* cat = add_archive_command(app, "cat",
-                                    "Write one file from a folder archive to standard "
-                                    "output",
+                                    "Write one file from a folder archive, or an ingot file's "
+                                    "contents, to standard output",
                                     cat_settings);
-    add_path(*cat, cat_settings);
+    cat->add_option("path", cat_settings.path,
+                    "File in the archive; none for an ingot file that is not an archive");
+    cat->add_option("--range", cat_settings.range,
+                    "Only bytes FROM:TO (TO not included; FROM: to the end, :TO from the start), "
+                    "decoding only the blocks that hold them")
+        ->check(::CLI::Validator([](const std::string& text) {
+        return parse_range(text) ? std::string{} : std::string("expected FROM:TO, FROM <= TO");
+    }, "FROM:TO"));
     add_threads(*cat, cat_settings);
     add_dictionary(*cat, cat_settings);
 
@@ -343,6 +352,13 @@ int CLI::run(std::span<const char* const> args)
             return EXIT_FAILURE;
         }
         const auto compressor = make_compressor_(*compressor_settings);
+        // cat of a whole archive file keeps going through extract(), which checks its CRC.
+        if (cat->parsed() && (!settings.range.empty() || settings.path.empty()))
+        {
+            const ByteRange range = parse_range(settings.range).value_or(ByteRange{});
+            return finish(compressor->read_range(settings.input, settings.path, range, output),
+                          "Reading " + settings.input);
+        }
         return finish(compressor->extract(settings.input, settings.path, output),
                       "Extracting " + settings.path + " from " + settings.input);
     }

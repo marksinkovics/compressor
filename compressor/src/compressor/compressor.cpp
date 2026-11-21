@@ -748,6 +748,64 @@ bool Compressor::extract(const fs::path& archive, const std::string& path, const
     return true;
 }
 
+bool Compressor::read_range(const fs::path& input, const std::string& path, ByteRange range,
+                            const fs::path& output)
+{
+    std::ostream& err = streams_.err;
+    constexpr std::string_view action = "read";
+    const auto report_failure = [&](const Failure& failure) {
+        report(err, action, input, failure);
+    };
+    if (is_standard(input))
+    {
+        err << "Cannot read a range of standard input: it must be a file\n";
+        return false;
+    }
+    if (is_archive_file(input))
+    {
+        if (path.empty())
+        {
+            err << "Cannot read " << input.string()
+                << ": it is a folder archive; name a file in it\n";
+            return false;
+        }
+        auto opened = open_archive(err, action, input);
+        if (!opened)
+        {
+            return false;
+        }
+        const auto selected = select_subtree(opened->info.index.entries, archive_path(path));
+        if (!selected || selected->front().type != EntryType::file)
+        {
+            err << "Cannot read " << path << ": it is not a file in " << input.string() << '\n';
+            return false;
+        }
+        return write_output(streams_, output, [&](std::ostream& out) {
+            return extract_range(*decoder_, opened->file, opened->info, selected->front(), range,
+                                 out);
+        }, report_failure);
+    }
+    if (!path.empty())
+    {
+        err << "Cannot read " << path << " from " << input.string()
+            << ": it is not a folder archive\n";
+        return false;
+    }
+    std::ifstream file(input, std::ios::in | std::ios::binary);
+    if (!file)
+    {
+        err << "Cannot open input file: " << input.string() << '\n';
+        return false;
+    }
+    return write_output(streams_, output, [&](std::ostream& out) -> Result {
+        if (auto decoded = decode_range(*decoder_, file, range, out); !decoded)
+        {
+            return std::unexpected(Failure{.error = decoded.error(), .detail = {}});
+        }
+        return {};
+    }, report_failure);
+}
+
 bool Compressor::verify(const fs::path& input)
 {
     PROFILE_SESSION("Compressor::Verify")

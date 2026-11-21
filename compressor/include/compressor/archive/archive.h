@@ -12,6 +12,7 @@
 
 #include <compressor/archive/index.h>
 #include <compressor/error.h>
+#include <compressor/range/range.h>
 #include <compressor/stream/decoder.h>
 #include <compressor/stream/encoder.h>
 
@@ -64,6 +65,13 @@ std::expected<void, Failure> extract_entries(IBlockDecoder& decoder, std::istrea
                                              const ArchiveInfo& info,
                                              std::span<const Entry> entries,
                                              const std::filesystem::path& directory);
+
+// Writes bytes `range` of a file entry to `out`, decoding only the blocks that hold them (each
+// checked against its block CRC; the file's CRC needs the whole file). bad_range when the range
+// starts past the file's end; a `to` past it stops at the end.
+std::expected<void, Failure> extract_range(IBlockDecoder& decoder, std::istream& in,
+                                           const ArchiveInfo& info, const Entry& file,
+                                           ByteRange range, std::ostream& out);
 
 // Writes the contents of a file entry to `out`, checking its CRC.
 std::expected<void, Failure> extract_file(IBlockDecoder& decoder, std::istream& in,

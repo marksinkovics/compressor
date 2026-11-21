@@ -15,6 +15,7 @@
 
 #include <compressor/cli.h>
 #include <compressor/dictionary/dictionary.h>
+#include <compressor/range/range.h>
 
 namespace fs = std::filesystem;
 using ::testing::HasSubstr;
@@ -513,4 +514,27 @@ TEST_F(CLITests, Train_passes_the_samples_output_and_size)
     compressor_ = std::make_unique<MockICompressor>();
     EXPECT_NE(run({"train", input_}), EXIT_SUCCESS); // no output
     EXPECT_NE(run({"train", input_, "-o", output_, "--size", "10"}), EXIT_SUCCESS);
+}
+
+TEST_F(CLITests, Cat_with_a_range_or_without_a_path_reads_a_range)
+{
+    EXPECT_CALL(*compressor_, read_range(fs::path(input_), std::string("dir/file"),
+                                         compressor::ByteRange{.from = 10, .to = 20},
+                                         fs::path(compressor::standard_stream)))
+        .WillOnce(Return(true));
+    EXPECT_EQ(run({"cat", "--range", "10:20", input_, "dir/file"}), EXIT_SUCCESS);
+
+    compressor_ = std::make_unique<MockICompressor>();
+    EXPECT_CALL(*compressor_,
+                read_range(fs::path(input_), std::string(), compressor::ByteRange{}, ::testing::_))
+        .WillOnce(Return(true));
+    EXPECT_EQ(run({"cat", input_}), EXIT_SUCCESS);
+
+    compressor_ = std::make_unique<MockICompressor>();
+    EXPECT_CALL(*compressor_, extract(::testing::_, std::string("dir/file"), ::testing::_))
+        .WillOnce(Return(true));
+    EXPECT_EQ(run({"cat", input_, "dir/file"}), EXIT_SUCCESS);
+
+    compressor_ = std::make_unique<MockICompressor>();
+    EXPECT_NE(run({"cat", "--range", "20:10", input_}), EXIT_SUCCESS);
 }

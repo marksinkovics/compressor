@@ -11,6 +11,7 @@
 #include <vector>
 
 #include <compressor/dictionary/dictionary.h>
+#include <compressor/range/range.h>
 #include <compressor/search/search.h>
 #include <compressor/stats/stats.h>
 #include <compressor/stream/decoder.h>
@@ -77,6 +78,10 @@ public:
     // not exist unless `path` is a file; only a file can go to the standard output.
     virtual bool extract(const std::filesystem::path& archive, const std::string& path,
                          const std::filesystem::path& output) = 0;
+    // Writes bytes `range` of an ingot file's decoded data, or with `path` of that file in a folder
+    // archive, to `output`, decoding only the blocks that hold them. Needs a seekable input.
+    virtual bool read_range(const std::filesystem::path& input, const std::string& path,
+                            ByteRange range, const std::filesystem::path& output) = 0;
     // Decodes everything and checks every checksum, writing nothing but a line on success.
     virtual bool verify(const std::filesystem::path& input) = 0;
     // Prints what the input holds and how well it compresses; any file, an ingot file is decoded.
@@ -117,6 +122,8 @@ public:
     bool list(const std::filesystem::path& archive, bool details) override;
     bool extract(const std::filesystem::path& archive, const std::string& path,
                  const std::filesystem::path& output) override;
+    bool read_range(const std::filesystem::path& input, const std::string& path, ByteRange range,
+                    const std::filesystem::path& output) override;
     bool verify(const std::filesystem::path& input) override;
     bool stats(const std::filesystem::path& input, const StatsOptions& options) override;
     SearchResult grep(const std::filesystem::path& input, const SearchOptions& options,

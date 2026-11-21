@@ -35,6 +35,8 @@ std::string_view describe(Error error)
         return "it was encoded with a dictionary; give it with -D";
     case Error::dictionary_mismatch:
         return "it was encoded with a different dictionary";
+    case Error::bad_range:
+        return "the range starts past the end of the data";
     }
     return "unknown error";
 }

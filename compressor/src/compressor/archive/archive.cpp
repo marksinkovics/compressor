@@ -37,6 +37,7 @@
 #include <compressor/data/data.h>
 #include <compressor/error.h>
 #include <compressor/fmindex/fmindex.h>
+#include <compressor/range/range.h>
 #include <compressor/stream/decoder.h>
 #include <compressor/stream/encoder.h>
 #include <compressor/stream/stdio.h>
@@ -960,6 +961,38 @@ std::expected<void, Failure> extract_file(IBlockDecoder& decoder, std::istream& 
 {
     std::vector<Target> targets{target(file, file.path)};
     return decode_targets(decoder, in, info, std::move(targets), Sink::stream, out.rdbuf());
+}
+
+std::expected<void, Failure> extract_range(IBlockDecoder& decoder, std::istream& in,
+                                           const ArchiveInfo& info, const Entry& file,
+                                           ByteRange range, std::ostream& out)
+{
+    if (range.from > file.size)
+    {
+        return std::unexpected(Failure{.error = Error::bad_range, .detail = file.path});
+    }
+    const uint64_t to = std::min(range.to.value_or(file.size), file.size);
+    if (range.from == to)
+    {
+        return {};
+    }
+    const uint8_t log2 = info.block_size_log2;
+    const std::vector<uint64_t>& table = info.index.block_offsets;
+    const uint64_t start = file.offset + range.from;
+    const uint64_t end = file.offset + to;
+    const uint64_t first = start >> log2;
+    const uint64_t last = (end - 1) >> log2;
+    std::vector<uint64_t> offsets(table.begin() + static_cast<std::ptrdiff_t>(first),
+                                  table.begin() + static_cast<std::ptrdiff_t>(last + 1));
+    offsets.push_back(last + 1 < table.size() ? table[last + 1]
+                                              : info.index_offset - end_block_bytes);
+    SliceBuf slice(out.rdbuf(), start - (first << log2), end - start);
+    std::ostream sliced(&slice);
+    if (auto decoded = decoder.decode_blocks(in, sliced, log2, offsets); !decoded)
+    {
+        return std::unexpected(Failure{.error = decoded.error(), .detail = file.path});
+    }
+    return {};
 }
 
 std::expected<void, Failure> verify_archive(IBlockDecoder& decoder, std::istream& in,
