@@ -1,0 +1,1496 @@
+{
+ "date": "2026-11-21",
+ "commit": "95c27d8",
+ "targets": [
+  70.0,
+  80.0,
+  90.0
+ ],
+ "records": [
+  {
+   "class": "alpha",
+   "name": "icon.png",
+   "width": 1024,
+   "height": 1024,
+   "alpha": true,
+   "lossless": {
+    "png": {
+     "bpp": 2.0605087280273438,
+     "encode_s": 0.5306549999999999,
+     "decode_s": 0.1389950000000001,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 1.2271728515625,
+     "encode_s": 2.9849829999999997,
+     "decode_s": 0.07875399999999999,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 1.2437515258789062,
+     "encode_s": 1.068835,
+     "decode_s": 0.17566399999999938,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 1.12835693359375,
+     "encode_s": 0.46754300000000004,
+     "decode_s": 0.3221600000000011,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 2.0760116577148438,
+     "encode_s": 0.14038299999999992,
+     "decode_s": 0.03149399999999947,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 1.225311279296875,
+     "encode_s": 9.490238,
+     "decode_s": 1.1903690000000022,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "alpha",
+   "name": "label.png",
+   "width": 900,
+   "height": 300,
+   "alpha": true,
+   "lossless": {
+    "png": {
+     "bpp": 0.43537777777777775,
+     "encode_s": 0.063334,
+     "decode_s": 0.036465,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 0.24237037037037037,
+     "encode_s": 0.508244,
+     "decode_s": 0.015550999999999982,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 0.23908148148148148,
+     "encode_s": 0.12003599999999992,
+     "decode_s": 0.02887800000000007,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 0.23922962962962963,
+     "encode_s": 0.08391700000000002,
+     "decode_s": 0.05773700000000004,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 0.4213037037037037,
+     "encode_s": 0.03907299999999991,
+     "decode_s": 0.010182000000000135,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 0.2321777777777778,
+     "encode_s": 1.8071860000000002,
+     "decode_s": 0.27852599999999983,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "graphic",
+   "name": "chart.png",
+   "width": 1200,
+   "height": 800,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 0.056416666666666664,
+     "encode_s": 0.11164399999999997,
+     "decode_s": 0.09873500000000002,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 0.01965,
+     "encode_s": 2.232577,
+     "decode_s": 0.02504300000000015,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 0.029091666666666665,
+     "encode_s": 0.32830899999999996,
+     "decode_s": 0.05540600000000051,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 0.018683333333333333,
+     "encode_s": 0.16906700000000008,
+     "decode_s": 0.10576100000000022,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 0.08328333333333333,
+     "encode_s": 0.08325200000000033,
+     "decode_s": 0.02100999999999953,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 0.035208333333333335,
+     "encode_s": 4.904074,
+     "decode_s": 0.03617900000000063,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "graphic",
+   "name": "gradient.png",
+   "width": 1501,
+   "height": 1501,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 8.6183929789645,
+     "encode_s": 6.403517000000001,
+     "decode_s": 1.4166189999999999,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 6.635260259538278,
+     "encode_s": 29.237545,
+     "decode_s": 0.9220059999999961,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 6.292233336780587,
+     "encode_s": 3.773603999999999,
+     "decode_s": 0.4221029999999999,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 6.373483189754466,
+     "encode_s": 2.8678719999999913,
+     "decode_s": 2.8128990000000016,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 8.560486213721166,
+     "encode_s": 1.0324229999999943,
+     "decode_s": 0.06255900000000025,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 7.071407425029993,
+     "encode_s": 28.768857999999994,
+     "decode_s": 1.8445730000000111,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "graphic",
+   "name": "shapes.png",
+   "width": 1000,
+   "height": 1000,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 0.157648,
+     "encode_s": 0.105751,
+     "decode_s": 0.07703399999999999,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 0.048304,
+     "encode_s": 1.495892,
+     "decode_s": 0.022298999999999847,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 0.055872,
+     "encode_s": 0.3015089999999998,
+     "decode_s": 0.06267699999999987,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 0.046672,
+     "encode_s": 0.1782560000000002,
+     "decode_s": 0.10665699999999978,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 0.150848,
+     "encode_s": 0.0723480000000003,
+     "decode_s": 0.018104999999999816,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 0.069448,
+     "encode_s": 4.386458999999999,
+     "decode_s": 0.038935000000000386,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "photo",
+   "name": "kodim01.png",
+   "width": 768,
+   "height": 512,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 15.84088134765625,
+     "encode_s": 0.11860399999999999,
+     "decode_s": 0.09734300000000001,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 10.1605224609375,
+     "encode_s": 8.886524,
+     "decode_s": 0.07751400000000075,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 9.507364908854166,
+     "encode_s": 0.5864539999999998,
+     "decode_s": 0.09792000000000023,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 9.517374674479166,
+     "encode_s": 0.5995249999999999,
+     "decode_s": 0.6417939999999991,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 14.671976725260416,
+     "encode_s": 0.10671899999999823,
+     "decode_s": 0.024692000000001713,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 10.446329752604166,
+     "encode_s": 4.321635000000001,
+     "decode_s": 0.42285599999999945,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "photo",
+   "name": "kodim02.png",
+   "width": 768,
+   "height": 512,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 12.556864420572916,
+     "encode_s": 0.17262399999999944,
+     "decode_s": 0.13500800000000046,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 9.166707356770834,
+     "encode_s": 4.278711,
+     "decode_s": 0.10181199999999979,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 8.576700846354166,
+     "encode_s": 0.6279060000000012,
+     "decode_s": 0.09248199999999862,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 8.218058268229166,
+     "encode_s": 0.49424000000000134,
+     "decode_s": 0.5038639999999983,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 12.6845703125,
+     "encode_s": 0.10544800000000087,
+     "decode_s": 0.02704499999999932,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 8.115030924479166,
+     "encode_s": 3.8995599999999992,
+     "decode_s": 0.8361699999999992,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "photo",
+   "name": "kodim03.png",
+   "width": 768,
+   "height": 512,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 10.990397135416666,
+     "encode_s": 0.3053809999999988,
+     "decode_s": 0.1636450000000007,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 7.799763997395833,
+     "encode_s": 5.4073080000000004,
+     "decode_s": 0.11485399999999935,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 6.830586751302083,
+     "encode_s": 0.5684419999999992,
+     "decode_s": 0.08785400000000188,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 6.369588216145833,
+     "encode_s": 0.4001369999999991,
+     "decode_s": 0.38953600000000144,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 11.04241943359375,
+     "encode_s": 0.12123300000000015,
+     "decode_s": 0.022757999999999612,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 7.648295084635417,
+     "encode_s": 4.89453,
+     "decode_s": 0.390706999999999,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "photo",
+   "name": "kodim04.png",
+   "width": 512,
+   "height": 768,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 12.961263020833334,
+     "encode_s": 0.14870399999999862,
+     "decode_s": 0.12683400000000056,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 9.2579345703125,
+     "encode_s": 6.3419989999999995,
+     "decode_s": 0.09722000000000008,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 8.533650716145834,
+     "encode_s": 0.5795010000000005,
+     "decode_s": 0.09081500000000098,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 8.260721842447916,
+     "encode_s": 0.5236839999999994,
+     "decode_s": 0.5656560000000006,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 12.861796061197916,
+     "encode_s": 0.10639199999999605,
+     "decode_s": 0.031313000000004365,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 10.116251627604166,
+     "encode_s": 4.579869000000002,
+     "decode_s": 0.412195999999998,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "photo",
+   "name": "kodim05.png",
+   "width": 768,
+   "height": 512,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 16.4146728515625,
+     "encode_s": 0.10234499999999969,
+     "decode_s": 0.10599200000000053,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 11.319010416666666,
+     "encode_s": 6.278182000000001,
+     "decode_s": 0.07782499999999715,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 10.07635498046875,
+     "encode_s": 0.6772290000000005,
+     "decode_s": 0.09627100000000155,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 10.16693115234375,
+     "encode_s": 0.730603999999996,
+     "decode_s": 0.7140459999999997,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 16.05352783203125,
+     "encode_s": 0.10144800000000131,
+     "decode_s": 0.029050000000001575,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 12.2144775390625,
+     "encode_s": 4.603494000000001,
+     "decode_s": 0.4201289999999993,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "photo",
+   "name": "kodim06.png",
+   "width": 768,
+   "height": 512,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 13.573323567708334,
+     "encode_s": 0.19065499999999957,
+     "decode_s": 0.11562800000000095,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 9.443033854166666,
+     "encode_s": 7.346239000000001,
+     "decode_s": 0.0871619999999993,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 8.765523274739584,
+     "encode_s": 0.6074229999999972,
+     "decode_s": 0.09171100000000365,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 8.668538411458334,
+     "encode_s": 0.5673870000000001,
+     "decode_s": 0.5681879999999992,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 12.921346028645834,
+     "encode_s": 0.108903999999999,
+     "decode_s": 0.01968700000000112,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 9.36859130859375,
+     "encode_s": 4.271010999999998,
+     "decode_s": 0.8566660000000006,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "photo",
+   "name": "kodim07.png",
+   "width": 768,
+   "height": 512,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 11.50457763671875,
+     "encode_s": 0.25944000000000145,
+     "decode_s": 0.14616299999999782,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 8.436767578125,
+     "encode_s": 5.845024999999996,
+     "decode_s": 0.0999810000000032,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 7.491617838541667,
+     "encode_s": 0.5521729999999998,
+     "decode_s": 0.0878779999999999,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 7.230448404947917,
+     "encode_s": 0.4527560000000008,
+     "decode_s": 0.451512000000001,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 11.582132975260416,
+     "encode_s": 0.12257100000000065,
+     "decode_s": 0.023810000000000997,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 8.629659016927084,
+     "encode_s": 4.7945519999999995,
+     "decode_s": 0.3923299999999976,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "photo",
+   "name": "kodim08.png",
+   "width": 768,
+   "height": 512,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 16.006571451822918,
+     "encode_s": 0.11618799999999752,
+     "decode_s": 0.098468000000004,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 11.123087565104166,
+     "encode_s": 7.894882000000003,
+     "decode_s": 0.07978900000000166,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 10.432088216145834,
+     "encode_s": 0.7360350000000011,
+     "decode_s": 0.10003299999999982,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 10.424397786458334,
+     "encode_s": 0.7607749999999989,
+     "decode_s": 0.6958300000000008,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 15.706319173177084,
+     "encode_s": 0.0981740000000002,
+     "decode_s": 0.02867499999999623,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 12.071736653645834,
+     "encode_s": 4.598354999999998,
+     "decode_s": 0.3513680000000008,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "photo",
+   "name": "kodim09.png",
+   "width": 512,
+   "height": 768,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 11.85467529296875,
+     "encode_s": 0.17798199999999653,
+     "decode_s": 0.13157500000000155,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 8.8302001953125,
+     "encode_s": 6.439378000000001,
+     "decode_s": 0.10794800000000038,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 7.915730794270833,
+     "encode_s": 0.6145160000000018,
+     "decode_s": 0.0889819999999979,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 7.751810709635417,
+     "encode_s": 0.5049850000000013,
+     "decode_s": 0.5157130000000016,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 12.023417154947916,
+     "encode_s": 0.10516499999999951,
+     "decode_s": 0.02333099999999888,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 8.623758951822916,
+     "encode_s": 4.612084000000003,
+     "decode_s": 0.8148939999999953,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "photo",
+   "name": "kodim10.png",
+   "width": 512,
+   "height": 768,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 12.063435872395834,
+     "encode_s": 0.16846999999999923,
+     "decode_s": 0.13389800000000207,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 8.9635009765625,
+     "encode_s": 7.544960999999997,
+     "decode_s": 0.09534099999999768,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 8.07269287109375,
+     "encode_s": 0.6408770000000032,
+     "decode_s": 0.09696699999999936,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 7.96099853515625,
+     "encode_s": 0.5256770000000017,
+     "decode_s": 0.5434100000000015,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 12.213338216145834,
+     "encode_s": 0.11005500000000268,
+     "decode_s": 0.026439000000003432,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 9.439737955729166,
+     "encode_s": 4.8263510000000025,
+     "decode_s": 0.3844220000000007,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "photo",
+   "name": "kodim11.png",
+   "width": 768,
+   "height": 512,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 12.921101888020834,
+     "encode_s": 0.19947999999999766,
+     "decode_s": 0.11255900000000096,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 9.09814453125,
+     "encode_s": 7.705133,
+     "decode_s": 0.08746699999999663,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 8.58367919921875,
+     "encode_s": 0.6324560000000048,
+     "decode_s": 0.08474499999999097,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 8.31988525390625,
+     "encode_s": 0.5652080000000055,
+     "decode_s": 0.5482029999999938,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 12.93341064453125,
+     "encode_s": 0.11461800000000011,
+     "decode_s": 0.02539900000000017,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 9.700785319010416,
+     "encode_s": 4.586348000000001,
+     "decode_s": 0.39724999999999966,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "photo",
+   "name": "kodim12.png",
+   "width": 768,
+   "height": 512,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 11.568094889322916,
+     "encode_s": 0.20209900000000403,
+     "decode_s": 0.15743799999999553,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 8.20361328125,
+     "encode_s": 7.076862999999996,
+     "decode_s": 0.10405800000000909,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 7.407450358072917,
+     "encode_s": 0.6103239999999985,
+     "decode_s": 0.09337499999999466,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 7.098876953125,
+     "encode_s": 0.4356299999999891,
+     "decode_s": 0.4372540000000029,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 11.383158365885416,
+     "encode_s": 0.11467400000000083,
+     "decode_s": 0.028815999999999065,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 8.049092610677084,
+     "encode_s": 4.666680999999997,
+     "decode_s": 0.4041169999999994,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "photo",
+   "name": "kodim13.png",
+   "width": 768,
+   "height": 512,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 18.09906005859375,
+     "encode_s": 0.07962700000000211,
+     "decode_s": 0.08238399999999757,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 12.162923177083334,
+     "encode_s": 6.5640730000000005,
+     "decode_s": 0.06386400000000236,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 11.332051595052084,
+     "encode_s": 0.6857490000000013,
+     "decode_s": 0.09711300000000023,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 11.366292317708334,
+     "encode_s": 0.8344960000000015,
+     "decode_s": 0.7971899999999934,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 17.818522135416668,
+     "encode_s": 0.09831600000000407,
+     "decode_s": 0.027542999999994322,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 13.058390299479166,
+     "encode_s": 4.657778,
+     "decode_s": 0.35259599999999836,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "photo",
+   "name": "kodim14.png",
+   "width": 768,
+   "height": 512,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 15.028299967447916,
+     "encode_s": 0.11191899999999322,
+     "decode_s": 0.11385100000000392,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 10.425008138020834,
+     "encode_s": 6.702359000000001,
+     "decode_s": 0.0860010000000031,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 9.451009114583334,
+     "encode_s": 0.631498999999998,
+     "decode_s": 0.08862600000000498,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 9.358988444010416,
+     "encode_s": 0.6765390000000053,
+     "decode_s": 0.6840639999999922,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 14.608968098958334,
+     "encode_s": 0.10018800000000283,
+     "decode_s": 0.024971000000000743,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 10.926432291666666,
+     "encode_s": 4.867724000000003,
+     "decode_s": 0.4215429999999998,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "photo",
+   "name": "kodim15.png",
+   "width": 768,
+   "height": 512,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 12.440226236979166,
+     "encode_s": 0.20815300000000292,
+     "decode_s": 0.12716599999999545,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 8.694173177083334,
+     "encode_s": 5.222672999999993,
+     "decode_s": 0.09678800000000365,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 7.9613037109375,
+     "encode_s": 0.5928249999999906,
+     "decode_s": 0.08499600000000385,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 7.53851318359375,
+     "encode_s": 0.574348999999998,
+     "decode_s": 0.503224000000003,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 12.413248697916666,
+     "encode_s": 0.10788599999999349,
+     "decode_s": 0.022083000000002073,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 9.625223795572916,
+     "encode_s": 4.547325999999998,
+     "decode_s": 0.9023810000000054,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "photo",
+   "name": "kodim16.png",
+   "width": 768,
+   "height": 512,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 11.658671061197916,
+     "encode_s": 0.22712399999999633,
+     "decode_s": 0.13972499999999854,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 8.428792317708334,
+     "encode_s": 7.850883000000003,
+     "decode_s": 0.09800299999999851,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 7.740193684895833,
+     "encode_s": 0.6226240000000018,
+     "decode_s": 0.09124699999999564,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 7.50811767578125,
+     "encode_s": 0.4569720000000004,
+     "decode_s": 0.41728299999999763,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 11.95806884765625,
+     "encode_s": 0.11691300000000382,
+     "decode_s": 0.026505999999997698,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 8.158162434895834,
+     "encode_s": 4.486641999999996,
+     "decode_s": 0.37514699999999834,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "photo",
+   "name": "kodim17.png",
+   "width": 512,
+   "height": 768,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 12.688130696614584,
+     "encode_s": 0.16499200000000513,
+     "decode_s": 0.13007999999999953,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 9.016276041666666,
+     "encode_s": 6.057716999999997,
+     "decode_s": 0.10287299999999533,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 7.998392740885417,
+     "encode_s": 0.5962519999999927,
+     "decode_s": 0.08582900000000393,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 7.830810546875,
+     "encode_s": 0.4500540000000015,
+     "decode_s": 0.4571070000000006,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 12.575968424479166,
+     "encode_s": 0.10805099999999612,
+     "decode_s": 0.02467600000000658,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 8.98663330078125,
+     "encode_s": 4.397537,
+     "decode_s": 0.8149399999999929,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "photo",
+   "name": "kodim18.png",
+   "width": 512,
+   "height": 768,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 15.860799153645834,
+     "encode_s": 0.09696899999999431,
+     "decode_s": 0.09617400000000487,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 11.3365478515625,
+     "encode_s": 5.686084000000001,
+     "decode_s": 0.07491200000000475,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 10.589436848958334,
+     "encode_s": 0.6356360000000052,
+     "decode_s": 0.09182099999999593,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 10.548482259114584,
+     "encode_s": 0.6882130000000046,
+     "decode_s": 0.7291179999999926,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 15.964925130208334,
+     "encode_s": 0.08877999999999986,
+     "decode_s": 0.024813999999999226,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 12.520792643229166,
+     "encode_s": 4.355550000000001,
+     "decode_s": 0.34579800000000205,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "photo",
+   "name": "kodim19.png",
+   "width": 512,
+   "height": 768,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 13.643880208333334,
+     "encode_s": 0.13823900000000577,
+     "decode_s": 0.12239299999999531,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 9.8013916015625,
+     "encode_s": 7.1661280000000005,
+     "decode_s": 0.09937099999999788,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 9.12567138671875,
+     "encode_s": 0.656562000000001,
+     "decode_s": 0.08733000000000146,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 8.948811848958334,
+     "encode_s": 0.5598379999999992,
+     "decode_s": 0.5376740000000026,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 15.25537109375,
+     "encode_s": 0.10437800000000408,
+     "decode_s": 0.02807899999999819,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 10.676798502604166,
+     "encode_s": 4.508732000000002,
+     "decode_s": 0.43531300000000783,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "photo",
+   "name": "kodim20.png",
+   "width": 768,
+   "height": 512,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 10.273763020833334,
+     "encode_s": 0.2625030000000024,
+     "decode_s": 0.11478000000000321,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 7.307902018229167,
+     "encode_s": 5.697101999999994,
+     "decode_s": 0.08025299999999902,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 6.894632975260417,
+     "encode_s": 0.5171979999999934,
+     "decode_s": 0.07146900000000755,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 6.763163248697917,
+     "encode_s": 0.4426030000000054,
+     "decode_s": 0.4225900000000138,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 10.120402018229166,
+     "encode_s": 0.10947800000000996,
+     "decode_s": 0.023917999999994777,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 7.71221923828125,
+     "encode_s": 4.378269000000003,
+     "decode_s": 0.35936399999999935,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "photo",
+   "name": "kodim21.png",
+   "width": 768,
+   "height": 512,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 13.8248291015625,
+     "encode_s": 0.14226899999999176,
+     "decode_s": 0.12736400000000003,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 9.929646809895834,
+     "encode_s": 6.785671000000001,
+     "decode_s": 0.11919799999999725,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 9.097493489583334,
+     "encode_s": 0.6254440000000017,
+     "decode_s": 0.08656899999999723,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 8.9215087890625,
+     "encode_s": 0.5469039999999978,
+     "decode_s": 0.5343039999999917,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 13.759928385416666,
+     "encode_s": 0.11206599999999867,
+     "decode_s": 0.02474500000001001,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 10.1746826171875,
+     "encode_s": 4.184617000000017,
+     "decode_s": 0.38379299999999716,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "photo",
+   "name": "kodim22.png",
+   "width": 768,
+   "height": 512,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 14.258138020833334,
+     "encode_s": 0.12245800000000173,
+     "decode_s": 0.11215699999998918,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 10.491984049479166,
+     "encode_s": 6.03233199999999,
+     "decode_s": 0.08380100000000823,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 9.730875651041666,
+     "encode_s": 0.6377679999999941,
+     "decode_s": 0.08925299999999936,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 9.763264973958334,
+     "encode_s": 0.6442180000000093,
+     "decode_s": 0.6905210000000039,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 14.109375,
+     "encode_s": 0.09538100000000327,
+     "decode_s": 0.023841999999987706,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 11.47637939453125,
+     "encode_s": 4.172509000000005,
+     "decode_s": 0.3631379999999922,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "photo",
+   "name": "kodim23.png",
+   "width": 768,
+   "height": 512,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 11.331868489583334,
+     "encode_s": 0.2206070000000011,
+     "decode_s": 0.15811199999998848,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 8.5877685546875,
+     "encode_s": 6.558924999999988,
+     "decode_s": 0.11964800000001219,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 7.78118896484375,
+     "encode_s": 0.6347250000000031,
+     "decode_s": 0.09776400000001217,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 7.499165852864583,
+     "encode_s": 0.5503590000000003,
+     "decode_s": 0.48776300000000106,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 11.536946614583334,
+     "encode_s": 0.11643600000000731,
+     "decode_s": 0.021096000000000004,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 9.390706380208334,
+     "encode_s": 4.434948999999989,
+     "decode_s": 0.42370800000000486,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "photo",
+   "name": "kodim24.png",
+   "width": 768,
+   "height": 512,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 14.342244466145834,
+     "encode_s": 0.16723299999999597,
+     "decode_s": 0.11347300000001326,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 9.962076822916666,
+     "encode_s": 7.738182999999992,
+     "decode_s": 0.08710000000000662,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 9.048238118489584,
+     "encode_s": 0.6829660000000075,
+     "decode_s": 0.10370799999999747,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 8.924214680989584,
+     "encode_s": 0.6065949999999987,
+     "decode_s": 0.5777439999999956,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 14.138427734375,
+     "encode_s": 0.11302300000001253,
+     "decode_s": 0.0216869999999858,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 10.892293294270834,
+     "encode_s": 4.263795000000002,
+     "decode_s": 0.36606099999998776,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "photo",
+   "name": "sonoma.png",
+   "width": 2048,
+   "height": 2048,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 5.966678619384766,
+     "encode_s": 20.947581,
+     "decode_s": 2.6849789999999985,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 5.12884521484375,
+     "encode_s": 20.92142899999999,
+     "decode_s": 1.688089000000005,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 4.813188552856445,
+     "encode_s": 3.8945320000000123,
+     "decode_s": 0.6481270000000023,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 4.709888458251953,
+     "encode_s": 2.608737000000005,
+     "decode_s": 2.386011999999994,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 5.411001205444336,
+     "encode_s": 1.670059000000009,
+     "decode_s": 0.08538499999997384,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 5.031221389770508,
+     "encode_s": 47.809365000000014,
+     "decode_s": 3.5433269999999766,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "screen",
+   "name": "code.png",
+   "width": 1920,
+   "height": 1080,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 0.5323958333333333,
+     "encode_s": 0.18454400000000248,
+     "decode_s": 0.11272400000000005,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 0.09339506172839507,
+     "encode_s": 1.9002689999999944,
+     "decode_s": 0.047586000000009676,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 0.08540895061728396,
+     "encode_s": 0.6658749999999998,
+     "decode_s": 0.11953099999999495,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 0.09119984567901235,
+     "encode_s": 0.41977400000000387,
+     "decode_s": 0.2763259999999974,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 0.47064814814814815,
+     "encode_s": 0.15182100000001242,
+     "decode_s": 0.0234479999999877,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 0.16957175925925927,
+     "encode_s": 7.8419370000000015,
+     "decode_s": 0.12354200000000048,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "screen",
+   "name": "document.png",
+   "width": 1600,
+   "height": 1200,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 0.7842416666666666,
+     "encode_s": 0.22594200000000342,
+     "decode_s": 0.09940199999999777,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 0.16915833333333333,
+     "encode_s": 2.406244999999984,
+     "decode_s": 0.04587000000000785,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 0.2691625,
+     "encode_s": 0.7147890000000103,
+     "decode_s": 0.1364679999999936,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 0.15620416666666667,
+     "encode_s": 0.39784700000001294,
+     "decode_s": 0.24390599999999552,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 0.7501166666666667,
+     "encode_s": 0.1496700000000004,
+     "decode_s": 0.028351999999998156,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 0.24218333333333333,
+     "encode_s": 8.006914999999992,
+     "decode_s": 0.1878759999999886,
+     "lossless": true
+    }
+   }
+  },
+  {
+   "class": "screen",
+   "name": "interface.png",
+   "width": 1440,
+   "height": 900,
+   "alpha": false,
+   "lossless": {
+    "png": {
+     "bpp": 0.48017283950617284,
+     "encode_s": 0.11869800000000907,
+     "decode_s": 0.0779759999999925,
+     "lossless": true
+    },
+    "webp": {
+     "bpp": 0.07429629629629629,
+     "encode_s": 1.1627620000000007,
+     "decode_s": 0.028740999999996575,
+     "lossless": true
+    },
+    "jxl": {
+     "bpp": 0.15719135802469136,
+     "encode_s": 0.4276660000000021,
+     "decode_s": 0.07126200000000438,
+     "lossless": true
+    },
+    "ingot image": {
+     "bpp": 0.0902037037037037,
+     "encode_s": 0.245711,
+     "decode_s": 0.1499109999999888,
+     "lossless": true
+    },
+    "ingot -L 6": {
+     "bpp": 0.48691975308641977,
+     "encode_s": 0.08831700000000353,
+     "decode_s": 0.01585299999999279,
+     "lossless": true
+    },
+    "ingot -L 9": {
+     "bpp": 0.1600864197530864,
+     "encode_s": 5.888372000000004,
+     "decode_s": 0.052615000000002965,
+     "lossless": true
+    }
+   }
+  }
+ ]
+}
