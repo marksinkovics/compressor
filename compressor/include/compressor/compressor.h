@@ -40,6 +40,8 @@ struct CompressorSettings
     bool search_index = false; // folder archives get an FM-index for search()
     // Encoding primes the LZ77 and LZR coders with it; decoding needs it for blocks coded so.
     std::shared_ptr<const Dictionary> dictionary;
+    // Above 0: encode() also writes OUTPUT.repair, with parity worth this percent of the output.
+    unsigned repair_percent = 0;
 };
 
 // stdin and stdout through StdioInputBuf and StdioOutputBuf, and std::cerr.
@@ -78,6 +80,10 @@ public:
     // not exist unless `path` is a file; only a file can go to the standard output.
     virtual bool extract(const std::filesystem::path& archive, const std::string& path,
                          const std::filesystem::path& output) = 0;
+    // Rebuilds `input` from its repair file (`repair`; empty: INPUT.repair) into `output` (empty:
+    // `input` itself), or reports that it is intact or can't be rebuilt.
+    virtual bool repair(const std::filesystem::path& input, const std::filesystem::path& repair,
+                        const std::filesystem::path& output) = 0;
     // Writes bytes `range` of an ingot file's decoded data, or with `path` of that file in a folder
     // archive, to `output`, decoding only the blocks that hold them. Needs a seekable input.
     virtual bool read_range(const std::filesystem::path& input, const std::string& path,
@@ -124,6 +130,8 @@ public:
                  const std::filesystem::path& output) override;
     bool read_range(const std::filesystem::path& input, const std::string& path, ByteRange range,
                     const std::filesystem::path& output) override;
+    bool repair(const std::filesystem::path& input, const std::filesystem::path& repair,
+                const std::filesystem::path& output) override;
     bool verify(const std::filesystem::path& input) override;
     bool stats(const std::filesystem::path& input, const StatsOptions& options) override;
     SearchResult grep(const std::filesystem::path& input, const SearchOptions& options,
@@ -134,6 +142,10 @@ public:
                const std::filesystem::path& output, std::size_t size) override;
 
 private:
+    // Writes OUTPUT.repair for `output` when settings_.repair_percent asks for it.
+    bool protect(const std::filesystem::path& output);
+    bool encode_other_format(const std::filesystem::path& input,
+                             const std::filesystem::path& output, OutputFormat format);
     bool encode_folder(const std::filesystem::path& input, const std::filesystem::path& output);
     bool decode_folder(const std::filesystem::path& input, const std::filesystem::path& output);
 

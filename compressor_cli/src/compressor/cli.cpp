@@ -43,6 +43,8 @@ struct Settings
     bool names = false;
     std::string dictionary;
     std::string range;
+    unsigned repair = 0;
+    std::string repair_file;
     std::vector<std::string> inputs;
     std::size_t size = default_dictionary_bytes;
 };
@@ -148,6 +150,11 @@ int CLI::run(std::span<const char* const> args)
                      "For a folder archive: add an FM-index, so search finds patterns without "
                      "decoding (slower to encode, larger)");
     encode
+        ->add_option("--repair", encode_settings.repair,
+                     "Also write OUTPUT.repair, parity worth this percent of the output, so "
+                     "that damage to it can be undone with the repair command")
+        ->check(::CLI::Range(1U, 100U));
+    encode
         ->add_option("-f,--format", encode_settings.format,
                      "ingot (default), gzip (a file) or zip (a folder)")
         ->check(::CLI::IsMember({"ingot", "gzip", "zip"}));
@@ -240,6 +247,21 @@ int CLI::run(std::span<const char* const> args)
     search->add_flag("-c,--count", search_settings.count, "Print each file's number of matches");
     add_threads(*search, search_settings);
 
+    Settings repair_settings;
+    auto* repair = app.add_subcommand(
+        "repair", "Rebuild a damaged file from its repair data (encode --repair), in place "
+                  "unless -o is given; says whether it is intact or can't be rebuilt");
+    repair->add_option("input", repair_settings.input, "File to repair")
+        ->required()
+        ->check(::CLI::ExistingFile);
+    repair_settings.output.clear();
+    repair
+        ->add_option("-r,--repair-file", repair_settings.repair_file,
+                     "Repair data; default: INPUT.repair")
+        ->check(::CLI::ExistingFile);
+    repair->add_option("-o,--output", repair_settings.output,
+                       "Write the repaired file here instead of replacing the input");
+
     Settings train_settings;
     auto* train = app.add_subcommand(
         "train", "Build a dictionary from sample files for encoding many small, similar files "
@@ -279,6 +301,7 @@ int CLI::run(std::span<const char* const> args)
                                      unsigned level) -> std::optional<CompressorSettings> {
         CompressorSettings result{
             .threads = threads, .level = level, .search_index = settings.search_index};
+        result.repair_percent = settings.repair;
         if (!settings.dictionary.empty())
         {
             auto dictionary = read_dictionary(settings.dictionary);
@@ -293,6 +316,13 @@ int CLI::run(std::span<const char* const> args)
         return result;
     };
 
+    if (repair->parsed())
+    {
+        const auto compressor = make_compressor_({.threads = 1, .level = default_level});
+        return finish(compressor->repair(repair_settings.input, repair_settings.repair_file,
+                                         repair_settings.output),
+                      "Repairing " + repair_settings.input);
+    }
     if (train->parsed())
     {
         std::vector<std::filesystem::path> inputs(train_settings.inputs.begin(),

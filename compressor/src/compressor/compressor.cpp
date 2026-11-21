@@ -36,6 +36,7 @@
 #include <compressor/error.h>
 #include <compressor/fmindex/fmindex.h>
 #include <compressor/lz77/lz77.h>
+#include <compressor/repair/repair.h>
 #include <compressor/search/search.h>
 #include <compressor/stats/stats.h>
 #include <compressor/stream/decoder.h>
@@ -545,12 +546,17 @@ bool Compressor::encode(const fs::path& input, const fs::path& output)
     std::error_code error;
     if (!is_standard(input) && fs::is_directory(input, error))
     {
-        return encode_folder(input, output);
+        return encode_folder(input, output) && protect(output);
+    }
+    if (settings_.repair_percent > 0 && is_standard(output))
+    {
+        streams_.err << "Cannot write repair data for standard output: give an output file\n";
+        return false;
     }
     return transcode(streams_, "encode", input, output,
                      [this](std::istream& in, std::ostream& out) {
         return encoder_->encode(in, out);
-    });
+    }) && protect(output);
 }
 
 bool Compressor::decode(const fs::path& input, const fs::path& output)
@@ -567,6 +573,21 @@ bool Compressor::decode(const fs::path& input, const fs::path& output)
 }
 
 bool Compressor::encode_as(const fs::path& input, const fs::path& output, OutputFormat format)
+{
+    if (format == OutputFormat::ingot)
+    {
+        return encode(input, output);
+    }
+    if (settings_.repair_percent > 0 && is_standard(output))
+    {
+        streams_.err << "Cannot write repair data for standard output: give an output file\n";
+        return false;
+    }
+    return encode_other_format(input, output, format) && protect(output);
+}
+
+bool Compressor::encode_other_format(const fs::path& input, const fs::path& output,
+                                     OutputFormat format)
 {
     PROFILE_SESSION("Compressor::EncodeAs")
     std::ostream& err = streams_.err;
@@ -748,6 +769,160 @@ bool Compressor::extract(const fs::path& archive, const std::string& path, const
     return true;
 }
 
+namespace
+{
+
+fs::path repair_path_for(const fs::path& file)
+{
+    return {file.string() + ".repair"};
+}
+
+// A seekable temporary file next to `target`, renamed over it once `write` succeeds.
+template <class Write> bool write_seekable(std::ostream& err, const fs::path& target, Write write)
+{
+    std::random_device random;
+    std::ostringstream name;
+    name << '.' << target.filename().string() << '.' << std::hex << random() << ".tmp";
+    const fs::path temp = target.parent_path() / name.str();
+    std::error_code error;
+    {
+        std::fstream out(temp, std::ios::in | std::ios::out | std::ios::binary | std::ios::trunc);
+        if (!out)
+        {
+            err << "Cannot open output file: " << target.string() << '\n';
+            return false;
+        }
+        if (!write(out))
+        {
+            out.close();
+            fs::remove(temp, error);
+            return false;
+        }
+    }
+    fs::rename(temp, target, error);
+    if (error)
+    {
+        err << "Cannot replace " << target.string() << ": " << error.message() << '\n';
+        fs::remove(temp, error);
+        return false;
+    }
+    return true;
+}
+
+std::string shard_list(const std::vector<unsigned>& shards)
+{
+    std::string list;
+    for (const unsigned shard : shards)
+    {
+        list += (list.empty() ? "" : ", ") + std::to_string(shard);
+    }
+    return list;
+}
+
+std::string describe_check(const RepairCheck& check)
+{
+    if (check.intact())
+    {
+        return "intact";
+    }
+    std::string text =
+        std::to_string(check.damaged_data.size() + check.damaged_parity.size()) + " of " +
+        std::to_string(check.layout.data_shards + check.layout.parity_shards) + " shards damaged";
+    if (!check.damaged_data.empty())
+    {
+        text += " (data " + shard_list(check.damaged_data) + ")";
+    }
+    if (!check.damaged_parity.empty())
+    {
+        text += " (parity " + shard_list(check.damaged_parity) + ")";
+    }
+    if (!check.size_matches)
+    {
+        text += ", wrong size";
+    }
+    return text + (check.recoverable()
+                       ? ", recoverable with ingot repair"
+                       : ", not recoverable (at most " +
+                             std::to_string(check.layout.parity_shards) + " can be rebuilt)");
+}
+
+} // namespace
+
+bool Compressor::protect(const fs::path& output)
+{
+    if (settings_.repair_percent == 0)
+    {
+        return true;
+    }
+    std::ostream& err = streams_.err;
+    std::ifstream file(output, std::ios::in | std::ios::binary);
+    std::error_code error;
+    const auto size = fs::file_size(output, error);
+    if (!file || error)
+    {
+        err << "Cannot read " << output.string() << " to write its repair data\n";
+        return false;
+    }
+    return write_seekable(err, repair_path_for(output), [&](std::fstream& out) {
+        if (auto written = write_repair(file, size, settings_.repair_percent, out); !written)
+        {
+            report(err, "write repair data for", output, {.error = written.error(), .detail = {}});
+            return false;
+        }
+        return true;
+    });
+}
+
+bool Compressor::repair(const fs::path& input, const fs::path& repair, const fs::path& output)
+{
+    std::ostream& err = streams_.err;
+    const fs::path sidecar = repair.empty() ? repair_path_for(input) : repair;
+    const fs::path target = output.empty() ? input : output;
+    std::ifstream file(input, std::ios::in | std::ios::binary);
+    std::ifstream parity(sidecar, std::ios::in | std::ios::binary);
+    if (!file || !parity)
+    {
+        err << "Cannot open " << (!file ? input : sidecar).string() << '\n';
+        return false;
+    }
+    const auto check = check_repair(file, parity);
+    if (!check)
+    {
+        report(err, "repair", input, {.error = check.error(), .detail = sidecar.string()});
+        return false;
+    }
+    if (check->intact() && target == input)
+    {
+        streams_.out << input.string() << ": intact\n";
+        return true;
+    }
+    if (!check->recoverable())
+    {
+        err << "Cannot repair " << input.string() << ": " << describe_check(*check) << '\n';
+        return false;
+    }
+    const bool written = write_seekable(err, target, [&](std::fstream& out) {
+        if (auto rebuilt = repair_file(file, parity, out); !rebuilt)
+        {
+            report(err, "repair", input, {.error = rebuilt.error(), .detail = {}});
+            return false;
+        }
+        return true;
+    });
+    if (written)
+    {
+        streams_.out << input.string() << ": rebuilt "
+                     << check->damaged_data.size() + check->damaged_parity.size()
+                     << " damaged shards";
+        if (!check->damaged_data.empty())
+        {
+            streams_.out << " (data " << shard_list(check->damaged_data) << ")";
+        }
+        streams_.out << (target == input ? "" : " into " + target.string()) << '\n';
+    }
+    return written;
+}
+
 bool Compressor::read_range(const fs::path& input, const std::string& path, ByteRange range,
                             const fs::path& output)
 {
@@ -810,6 +985,17 @@ bool Compressor::verify(const fs::path& input)
 {
     PROFILE_SESSION("Compressor::Verify")
     std::ostream& err = streams_.err;
+    // With repair data next to it, say what it finds first: damage there may explain a failure.
+    std::error_code exists_error;
+    if (!is_standard(input) && fs::exists(repair_path_for(input), exists_error))
+    {
+        std::ifstream file(input, std::ios::in | std::ios::binary);
+        std::ifstream parity(repair_path_for(input), std::ios::in | std::ios::binary);
+        const auto check = check_repair(file, parity);
+        streams_.out << input.string() << ": repair data "
+                     << (check ? describe_check(*check) : std::string(describe(check.error())))
+                     << '\n';
+    }
     std::expected<void, Failure> result;
     if (is_archive_file(input))
     {

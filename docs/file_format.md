@@ -231,3 +231,21 @@ Errors (`compressor::Error`):
 | `file_failed` | An archived file or directory can't be read, or an extracted one can't be created or written; the message names the path |
 
 `ingot decode` reports the error on stderr, exits non-zero and doesn't create or change the output file. Decoding to standard output can't take back what is already written: the blocks before the failing one stay in the output.
+
+## Repair file
+
+`ingot encode --repair PERCENT` writes `OUTPUT.repair` beside the output (`compressor/include/compressor/repair/repair.h`); it protects any file, so `-f gzip` and `-f zip` outputs get one too. The protected file is cut into `k` shards of `shard size` bytes (the last padded with zeros; shards of at least 64 KiB, at most 200 of them) and `m` parity shards (`ceil(k × PERCENT / 100)`, at least 1, `k + m ≤ 255`) are computed over GF(2^8) (polynomial `0x11D`) as `parity[p] = Σ_i C[p][i] · data[i]` byte by byte, with the Cauchy matrix `C[p][i] = 1 / ((k + p) XOR i)`. Any `k` intact shards of the `k + m` rebuild the file, so up to `m` damaged shards are recoverable.
+
+| Offset | Size | Field |
+|---:|---:|---|
+| 0 | 4 | Magic `89 49 4E 52` (`\x89INR`) |
+| 4 | 1 | Version: 1 |
+| 5 | 8 | Size of the protected file |
+| 13 | 8 | Shard size |
+| 21 | 1 | `k` |
+| 22 | 1 | `m` |
+| 23 | 4 × (k + m) | CRC32 of each shard (the data shards with their padding, then the parity shards) |
+| … | 4 | CRC32 of everything before it |
+| … | m × shard size | The parity shards |
+
+`ingot repair FILE [-r REPAIR] [-o OUTPUT]` checks every shard's CRC32 and rebuilds the damaged data shards (in place through a temporary file, or into OUTPUT); `verify` reports what the repair file finds when `FILE.repair` exists. A cut file counts its missing shards as damaged. A damaged repair-file header is reported as `corrupt_header`; damaged parity shards just count against `m`.

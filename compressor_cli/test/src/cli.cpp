@@ -55,6 +55,7 @@ protected:
             threads_ = settings.threads;
             level_ = settings.level;
             dictionary_ = settings.dictionary;
+            repair_percent_ = settings.repair_percent;
             return std::move(compressor_);
         }, out_, err_);
         return cli.run(argv);
@@ -67,6 +68,7 @@ protected:
     std::optional<unsigned> threads_;
     std::optional<unsigned> level_;
     std::shared_ptr<const compressor::Dictionary> dictionary_;
+    unsigned repair_percent_ = 0;
     std::ostringstream out_;
     std::ostringstream err_;
 };
@@ -537,4 +539,22 @@ TEST_F(CLITests, Cat_with_a_range_or_without_a_path_reads_a_range)
 
     compressor_ = std::make_unique<MockICompressor>();
     EXPECT_NE(run({"cat", "--range", "20:10", input_}), EXIT_SUCCESS);
+}
+
+TEST_F(CLITests, Encode_passes_the_repair_percent_and_repair_its_files)
+{
+    EXPECT_CALL(*compressor_, encode(::testing::_, ::testing::_)).WillOnce(Return(true));
+    EXPECT_EQ(run({"encode", "--repair", "7", "-i", input_, "-o", output_}), EXIT_SUCCESS);
+    EXPECT_EQ(repair_percent_, 7U);
+    compressor_ = std::make_unique<MockICompressor>();
+    EXPECT_NE(run({"encode", "--repair", "0", "-i", input_, "-o", output_}), EXIT_SUCCESS);
+
+    compressor_ = std::make_unique<MockICompressor>();
+    EXPECT_CALL(*compressor_, repair(fs::path(input_), fs::path(), fs::path()))
+        .WillOnce(Return(true));
+    EXPECT_EQ(run({"repair", input_}), EXIT_SUCCESS);
+    compressor_ = std::make_unique<MockICompressor>();
+    EXPECT_CALL(*compressor_, repair(fs::path(input_), fs::path(input_), fs::path(output_)))
+        .WillOnce(Return(false));
+    EXPECT_EQ(run({"repair", input_, "-r", input_, "-o", output_}), EXIT_FAILURE);
 }
