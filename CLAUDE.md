@@ -39,7 +39,8 @@ Huffman-coding compressor in C++ (CMake + Ninja), macOS first, then Linux and Wi
 - Run 8 item 2, the lossless image coder (`ingot image`, `image/`), is done: photos 1.9% below JPEG XL lossless, screens level with WebP lossless; 448/448 pass.
 - Run 8 item 3, the lossy experiment (`image encode --quality`), is done: photos within 0.6–2.6% of JPEG XL, screens 2–5× behind; 451/451 pass.
 - Run 8 item 4, progressive and region decoding (`image decode --partial`, `--region`), is done; 454/454 pass.
-- **Next:** run 8 item 5, notes on video (`docs/video.md`).
+- Run 8 item 5, notes on video (`docs/video.md`), is done. Run 8 is finished, and so is the commit permission for runs 7 and 8.
+- **Next:** nothing planned; candidates are in `docs/video.md` (a video run), the open items of run 8 (PNG input, 16-bit images, a lossless strip CRC) and the FSKit milestone.
 
 ## Commands
 
